@@ -3,7 +3,7 @@
 // Asking the client for something.
 //
 // Three things a rep asks for, all landing in the same room the owner already
-// has a link to: connect the bank, send a document, sign something. The
+// has a link to: send statements, send a document, sign something. The
 // backend guarantees an email on every one of them and adds a text on top when
 // the owner has opted in, so the choice here is "also text them", not "email
 // or text". That is worth being explicit about on screen, because a rep who
@@ -27,7 +27,11 @@ type Result = {
 type Kind = "bank" | "document" | "signature";
 
 const KINDS: Array<{ key: Kind; label: string; blurb: string }> = [
-  { key: "bank", label: "Connect bank", blurb: "Opens their room, where they can connect the bank or upload statements." },
+  // Deliberately NOT "connect bank". Plaid is team-only today: there is no
+  // unauthenticated link-token endpoint, so a client opening this room can
+  // upload statements and nothing else. Calling it a bank connection would
+  // promise the owner something the room cannot do.
+  { key: "bank", label: "Send their room", blurb: "Emails them their secure upload room, where they can send statements." },
   { key: "document", label: "Request a document", blurb: "Adds it to their checklist and tells them it is there." },
   { key: "signature", label: "Request a signature", blurb: "Lands on the same checklist as their documents." },
 ];
