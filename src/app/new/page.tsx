@@ -12,11 +12,20 @@
 // requested and which programs the file can even reach, and it is far better
 // answered by the person standing in the shop than inferred from a bank
 // statement three days later.
+//
+// The consent block is the exception to "keep it short", and it is not
+// negotiable. Carriers audit the screen a person saw before their number was
+// enrolled, so every element of it is load-bearing: the phone field stays
+// optional, the two SMS permissions are separate and start unchecked, the
+// terms checkbox is its own box rather than a line inside the SMS one, and the
+// wording is fetched from the server so what is displayed is byte-identical to
+// what gets stored as proof. Nothing here is pre-ticked, and nothing about the
+// file depends on any of it being ticked at all.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 // The shared vocabulary — same slugs the backend uses to pick document
@@ -58,6 +67,11 @@ type Form = {
   funding_goal: string;
   funding_purpose: string;
   notes: string;
+  smsTransactional: boolean;
+  smsMarketing: boolean;
+  acceptedLegal: boolean;
+  consentMethod: "in_person_device" | "rep_attested";
+  consenterName: string;
 };
 
 const EMPTY: Form = {
@@ -72,6 +86,22 @@ const EMPTY: Form = {
   funding_goal: "",
   funding_purpose: "",
   notes: "",
+  smsTransactional: false,
+  smsMarketing: false,
+  acceptedLegal: false,
+  consentMethod: "in_person_device",
+  consenterName: "",
+};
+
+type Disclosure = {
+  version: string;
+  brand: string;
+  transactional: string;
+  marketing: string;
+  legal: string;
+  terms_url: string;
+  privacy_url: string;
+  support_email: string;
 };
 
 export default function NewFile() {
@@ -81,11 +111,29 @@ export default function NewFile() {
   const [f, setF] = useState<Form>(EMPTY);
   const [error, setError] = useState<string | null>(null);
 
+  // The wording is the server's, not this component's. If this request fails
+  // the consent block does not render at all, which is the correct failure:
+  // capturing agreement to text we cannot display is worse than capturing
+  // nothing and asking again later from the file.
+  const disclosure = useQuery({
+    queryKey: ["sms-disclosure"],
+    queryFn: async () =>
+      api<Disclosure>("/dealer-os/sms-disclosure", {
+        authToken: (await getToken()) ?? undefined,
+      }),
+    staleTime: 60 * 60 * 1000,
+  });
+  const d = disclosure.data;
+
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }));
 
   // A way to reach them, not both. A rep often has only one.
   const reachable = f.phone.trim().length > 0 || f.email.trim().length > 0;
-  const canSubmit = f.name.trim().length > 0 && reachable;
+  // Blocked in the button rather than left to the server, because a 400 here
+  // would throw away a form the rep filled in standing in a shop.
+  const consentIncomplete =
+    (f.smsTransactional || f.smsMarketing) && !f.acceptedLegal;
+  const canSubmit = f.name.trim().length > 0 && reachable && !consentIncomplete;
 
   const create = useMutation({
     mutationFn: async () => {
@@ -111,6 +159,19 @@ export default function NewFile() {
       }
       const goal = Number(f.funding_goal.replace(/[^0-9.]/g, ""));
       if (goal > 0) body.funding_goal = goal;
+
+      // Only sent when something was actually agreed to. The server writes the
+      // disclosure text from its own copy, so none is sent from here.
+      if (f.phone.trim() && (f.smsTransactional || f.smsMarketing)) {
+        body.sms_consent = {
+          phone: f.phone.trim(),
+          transactional: f.smsTransactional,
+          marketing: f.smsMarketing,
+          accepted_legal: f.acceptedLegal,
+          method: f.consentMethod,
+          consenter_name: f.consenterName.trim() || null,
+        };
+      }
 
       return api<{ id: string; name: string }>("/dealer-os/dealers", {
         method: "POST",
@@ -179,7 +240,7 @@ export default function NewFile() {
 
               <div className="row mt" style={{ gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <label className="lbl">Phone</label>
+                  <label className="lbl">Phone (optional)</label>
                   <input
                     className="field"
                     type="tel"
@@ -190,7 +251,7 @@ export default function NewFile() {
                   />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <label className="lbl">Email</label>
+                  <label className="lbl">Email (optional)</label>
                   <input
                     className="field"
                     type="email"
@@ -206,6 +267,107 @@ export default function NewFile() {
               )}
             </div>
           </div>
+
+          {f.phone.trim().length > 0 && d && (
+            <div className="panel mt">
+              <div className="panel-h">Permission to text them</div>
+              <div className="panel-b">
+                <p className="sub" style={{ marginTop: 0 }}>
+                  Hand the phone or tablet to the owner and let them tick these themselves.
+                  Their number is not enrolled in anything unless they do. Leave it all
+                  unticked and the file still opens; you just send links by email instead.
+                </p>
+
+                <div className={`consent mt${f.smsTransactional ? " on" : ""}`}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={f.smsTransactional}
+                      onChange={(e) => set("smsTransactional", e.target.checked)}
+                    />
+                    <span className="ctext">
+                      <span className="ctitle">Account and application texts</span>
+                      {d.transactional}
+                    </span>
+                  </label>
+                </div>
+
+                <div className={`consent${f.smsMarketing ? " on" : ""}`}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={f.smsMarketing}
+                      onChange={(e) => set("smsMarketing", e.target.checked)}
+                    />
+                    <span className="ctext">
+                      <span className="ctitle">Promotional texts</span>
+                      {d.marketing}
+                    </span>
+                  </label>
+                </div>
+
+                <div className={`consent${f.acceptedLegal ? " on" : ""}`}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={f.acceptedLegal}
+                      onChange={(e) => set("acceptedLegal", e.target.checked)}
+                    />
+                    <span className="ctext">
+                      <span className="ctitle">Terms and Privacy Policy</span>
+                      I have read and agree to the {d.brand}{" "}
+                      <a href={d.terms_url} target="_blank" rel="noreferrer">
+                        Terms and Conditions
+                      </a>{" "}
+                      and{" "}
+                      <a href={d.privacy_url} target="_blank" rel="noreferrer">
+                        Privacy Policy
+                      </a>
+                      .
+                    </span>
+                  </label>
+                </div>
+
+                {(f.smsTransactional || f.smsMarketing) && (
+                  <>
+                    <label className="lbl mt">Who agreed</label>
+                    <input
+                      className="field"
+                      placeholder="Name of the person who ticked the boxes"
+                      value={f.consenterName}
+                      onChange={(e) => set("consenterName", e.target.value)}
+                    />
+                    <label className="lbl mt">How</label>
+                    <select
+                      className="field"
+                      value={f.consentMethod}
+                      onChange={(e) =>
+                        set("consentMethod", e.target.value as Form["consentMethod"])
+                      }
+                    >
+                      <option value="in_person_device">They ticked the boxes themselves</option>
+                      <option value="rep_attested">They told me yes and I ticked for them</option>
+                    </select>
+                    <p className="consent-note">
+                      Answer this honestly. It is recorded with your name, the time, and the
+                      exact wording shown above, and it is what we produce if a carrier or a
+                      regulator asks how this number came to be on our list. Them ticking it
+                      themselves is the stronger record, so hand the device over whenever you
+                      can.
+                    </p>
+                  </>
+                )}
+
+                {(f.smsTransactional || f.smsMarketing) && !f.acceptedLegal && (
+                  <div className="note mt">
+                    The Terms and Privacy Policy box has to be ticked too. The text message
+                    programs are described there, so agreeing to texts without it is not a
+                    record we could stand behind.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="panel mt">
             <div className="panel-h">Where they are</div>
