@@ -129,10 +129,19 @@ export default function NewFile() {
 
   // A way to reach them, not both. A rep often has only one.
   const reachable = f.phone.trim().length > 0 || f.email.trim().length > 0;
-  // Blocked in the button rather than left to the server, because a 400 here
-  // would throw away a form the rep filled in standing in a shop.
-  const consentIncomplete =
-    (f.smsTransactional || f.smsMarketing) && !f.acceptedLegal;
+
+  // Mirrors the server's normalize_phone, which refuses anything it cannot be
+  // confident about. Checked here as well as there because the server rejects
+  // the whole request, and a 400 would throw away a form the rep filled in
+  // standing in a shop.
+  const phoneDigits = f.phone.replace(/\D/g, "");
+  const phoneUsable =
+    phoneDigits.length === 10 ||
+    (phoneDigits.length === 11 && phoneDigits.startsWith("1")) ||
+    (f.phone.trim().startsWith("+") && phoneDigits.length >= 8 && phoneDigits.length <= 15);
+
+  const wantsSms = f.smsTransactional || f.smsMarketing;
+  const consentIncomplete = wantsSms && (!f.acceptedLegal || !phoneUsable);
   const canSubmit = f.name.trim().length > 0 && reachable && !consentIncomplete;
 
   const create = useMutation({
@@ -268,6 +277,13 @@ export default function NewFile() {
             </div>
           </div>
 
+          {f.phone.trim().length > 0 && disclosure.isError && (
+            <div className="note mt">
+              The consent wording could not be loaded, so the text opt-in cannot be shown.
+              Open the file anyway and add it from the file once you are back on signal.
+            </div>
+          )}
+
           {f.phone.trim().length > 0 && d && (
             <div className="panel mt">
               <div className="panel-h">Permission to text them</div>
@@ -328,7 +344,7 @@ export default function NewFile() {
                   </label>
                 </div>
 
-                {(f.smsTransactional || f.smsMarketing) && (
+                {wantsSms && (
                   <>
                     <label className="lbl mt">Who agreed</label>
                     <input
@@ -358,11 +374,18 @@ export default function NewFile() {
                   </>
                 )}
 
-                {(f.smsTransactional || f.smsMarketing) && !f.acceptedLegal && (
+                {wantsSms && !f.acceptedLegal && (
                   <div className="note mt">
                     The Terms and Privacy Policy box has to be ticked too. The text message
                     programs are described there, so agreeing to texts without it is not a
                     record we could stand behind.
+                  </div>
+                )}
+
+                {wantsSms && !phoneUsable && (
+                  <div className="note mt">
+                    That phone number is not complete enough to enrol. Check the digits, or
+                    untick the text boxes and open the file without them.
                   </div>
                 )}
               </div>
