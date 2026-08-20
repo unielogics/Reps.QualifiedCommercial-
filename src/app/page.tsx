@@ -43,11 +43,11 @@ export default function MyFiles() {
   return (
     <>
       <div className="hd">
-        <h2>{isRep ? "My files" : "All files"}</h2>
+        <h2>{isRep ? "Portfolio" : "All applications"}</h2>
         <p className="lede">
           {isRep
-            ? "Every business you have opened a file on. Open one to request documents, run the numbers and work it to a decision."
-            : "Every file the field team is working."}
+            ? "Every application you have opened, and what each one is waiting on."
+            : "Every application the field team is working."}
         </p>
       </div>
 
@@ -111,7 +111,7 @@ export default function MyFiles() {
                       {/* Opens the file's own page, where the conversation
                           lives. The heavy analysis stays on Capital OS and is
                           one link away from there rather than duplicated. */}
-                      <Link className="linky" href={`/files/${r.id}`}>
+                      <Link className="linky" href={`/applications/${r.id}`}>
                         Open →
                       </Link>
                     </td>

@@ -60,8 +60,8 @@ function Brand() {
 }
 
 const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
-  { href: "/", label: "My files", icon: "home" },
-  { href: "/new", label: "New file", icon: "plus" },
+  { href: "/", label: "Portfolio", icon: "home" },
+  { href: "/new", label: "Open application", icon: "plus" },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -206,7 +206,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
             Capital OS →
           </a>
         </div>
-        <div className="content">{children}</div>
+        <div className={pathname.startsWith("/applications/") ? "content content--wide" : "content"}>
+          {children}
+        </div>
       </div>
     </div>
   );
