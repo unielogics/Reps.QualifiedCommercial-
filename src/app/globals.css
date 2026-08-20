@@ -267,3 +267,34 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .consent .ctitle { display: block; font-weight: 600; color: var(--ink); margin-bottom: 3px; }
 .consent a { color: var(--accent); text-decoration: underline; }
 .consent-note { font-size: 12.5px; line-height: 1.5; color: var(--muted); margin-top: 10px; }
+
+/* --- file conversation ------------------------------------------------------
+   Four channels share one panel and one composer, so the channel has to be
+   readable from the message itself and not only from which tab is selected. A
+   rep who glances away and back must not mistake the client thread for the
+   desk thread, which is why the client channel gets its own ground and a
+   standing warning line rather than just a different tab label. */
+.thr { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 2px; max-height: 56vh; overflow-y: auto; }
+.thr-empty { color: var(--muted); font-size: 13px; padding: 20px 2px; }
+.thr-day { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 640; }
+.thr-day::before, .thr-day::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+
+.msg { display: flex; flex-direction: column; gap: 3px; }
+.msg-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.msg-who { font-size: 12.5px; font-weight: 640; color: var(--ink); }
+.msg-role { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); font-weight: 640; }
+.msg-when { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.msg-b { font-size: 14px; line-height: 1.6; color: var(--ink2); white-space: pre-wrap; word-break: break-word;
+         background: var(--sunken2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+.msg.mine .msg-b { background: var(--accent-100); border-color: var(--accent-200); }
+.msg.client-ch .msg-b { background: var(--warn-tint); border-color: rgba(161, 92, 7, 0.22); }
+.msg.ai .msg-b { background: var(--surface); }
+.msg-edit { font-size: 11px; color: var(--faint); }
+
+.composer { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px; }
+.composer textarea { resize: vertical; min-height: 68px; }
+.composer-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.composer-row .hint { font-size: 11.5px; color: var(--faint); flex: 1; min-width: 120px; }
+.warnline { font-size: 12.5px; color: var(--warn); background: var(--warn-tint);
+            border: 1px solid rgba(161, 92, 7, 0.22); border-radius: 8px; padding: 8px 11px; }
+.linky { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent); cursor: pointer; text-decoration: underline; }

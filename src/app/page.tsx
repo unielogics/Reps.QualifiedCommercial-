@@ -20,8 +20,6 @@ type FileRow = {
   created_at: string;
 };
 
-const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
-
 function scoreTone(score: number | null): string {
   if (score === null) return "c-mut";
   if (score >= 80) return "c-ok";
@@ -110,16 +108,12 @@ export default function MyFiles() {
                       </span>
                     </td>
                     <td className="r">
-                      {/* The full cockpit lives on Capital OS; this app opens
-                          into it rather than reimplementing every module. */}
-                      <a
-                        className="linky"
-                        href={`${AUDIT_URL}/dealers/${r.id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      {/* Opens the file's own page, where the conversation
+                          lives. The heavy analysis stays on Capital OS and is
+                          one link away from there rather than duplicated. */}
+                      <Link className="linky" href={`/files/${r.id}`}>
                         Open →
-                      </a>
+                      </Link>
                     </td>
                   </tr>
                 ))}
