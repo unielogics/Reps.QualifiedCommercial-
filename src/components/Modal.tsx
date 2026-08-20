@@ -65,8 +65,28 @@ export default function Modal({
         <div className="panel-h" style={{ borderBottom: "1px solid var(--line)" }}>
           <b style={{ fontFamily: "var(--fh)", fontSize: 15 }}>{title}</b>
           <span style={{ flex: 1 }} />
-          <button type="button" className="linky" onClick={onClose}>
-            Close
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close"
+            style={{
+              border: "1px solid var(--line)",
+              background: "var(--surface)",
+              color: "var(--muted)",
+              borderRadius: 8,
+              width: 28,
+              height: 28,
+              display: "grid",
+              placeItems: "center",
+              cursor: "pointer",
+              padding: 0,
+              flexShrink: 0,
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
         <div style={{ padding: 16 }}>{children}</div>

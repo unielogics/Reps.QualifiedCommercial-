@@ -202,9 +202,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <b>{isTeam && !isRep ? "Field Desk · team view" : "Field Desk"}</b>
           <div className="sp" />
           {name && <span className="chip">{name}</span>}
-          <a className="chip" href={AUDIT_URL} title="Open Capital OS">
-            Capital OS →
-          </a>
         </div>
         <div className={pathname.startsWith("/applications/") ? "content content--wide" : "content"}>
           {children}

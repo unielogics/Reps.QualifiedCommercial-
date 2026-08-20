@@ -31,6 +31,7 @@ type FileRow = {
 };
 
 type Rep = {
+  funnel: Funnel;
   rep_user_id: string | null;
   rep_name: string;
   rep_email: string | null;
@@ -46,13 +47,53 @@ type Rep = {
   files: FileRow[];
 };
 
+type Funnel = {
+  opened: number;
+  authorizations_sent: number;
+  bank_linked: number;
+  credit_returned: number;
+  verified: number;
+  application_submitted: number;
+  contract_executed: number;
+};
+
 type Production = { since: string | null; totals: Rep; reps: Rep[] };
+
+const STAGES: Array<{ key: keyof Funnel; label: string }> = [
+  { key: "opened", label: "Opened" },
+  { key: "authorizations_sent", label: "Authorizations sent" },
+  { key: "bank_linked", label: "Bank linked" },
+  { key: "credit_returned", label: "Credit returned" },
+  { key: "application_submitted", label: "Application submitted" },
+  { key: "contract_executed", label: "Contract executed" },
+];
+
+/** Where the funnel actually leaks, said in a sentence.
+ *
+ * A bar chart shows the drop; it does not say which drop is the one to act on.
+ * The largest single fall is almost always sent-to-linked, because that is the
+ * only stage that depends on the applicant doing something on their own. */
+function reading(f: Funnel): string {
+  const pairs = STAGES.slice(1).map((s, i) => ({
+    from: STAGES[i].label,
+    to: s.label,
+    lost: f[STAGES[i].key] - f[s.key],
+  }));
+  const worst = pairs.reduce((a, b) => (b.lost > a.lost ? b : a), pairs[0]);
+  if (!worst || worst.lost <= 0) return "No drop between stages in this window.";
+  return `The largest drop is between ${worst.from.toLowerCase()} and ${worst.to.toLowerCase()}: ${worst.lost} file${worst.lost === 1 ? "" : "s"}.`;
+}
 
 const WINDOWS = [
   { days: 30, label: "30 days" },
   { days: 90, label: "90 days" },
   { days: 365, label: "12 months" },
 ];
+
+function pct(n: number, of: number): string {
+  if (!of) return "—";
+  return `${Math.round((n / of) * 100)}% of opened`;
+}
 
 function ago(iso: string | null): string {
   if (!iso) return "—";
@@ -103,7 +144,9 @@ export default function ProductionPage() {
     <>
       <div className="hd">
         <h2>Production</h2>
-        <p className="lede">What the field team has opened, and how much of it turned into a real file.</p>
+        <p className="lede">
+          Field output measured at the verification line, not at the point a file was opened.
+        </p>
       </div>
 
       <div className="row mt" style={{ gap: 8 }}>
@@ -127,25 +170,55 @@ export default function ProductionPage() {
       {t && (
         <div className="kpis mt">
           <div className="kpi">
-            <span className="lbl">Files opened</span>
-            <b className="knum">{t.files_opened}</b>
+            <span className="lbl">Applications opened</span>
+            <b className="knum num">{t.funnel.opened}</b>
+          </div>
+          <div className="kpi">
+            <span className="lbl">Bank linked</span>
+            <b className="knum num">{t.funnel.bank_linked}</b>
+            <span className="sub">{pct(t.funnel.bank_linked, t.funnel.opened)}</span>
+          </div>
+          <div className="kpi">
+            <span className="lbl">Fully verified</span>
+            <b className="knum num">{t.funnel.verified}</b>
+            <span className="sub">{pct(t.funnel.verified, t.funnel.opened)}</span>
+          </div>
+          <div className="kpi">
+            <span className="lbl">Contracts executed</span>
+            <b className="knum num">{t.funnel.contract_executed}</b>
           </div>
           <div className="kpi">
             <span className="lbl">With documents</span>
-            <b className="knum">{t.with_documents}</b>
-            <span className="sub">
-              {t.files_opened > 0
-                ? `${Math.round((t.with_documents / t.files_opened) * 100)}% of files opened`
-                : "—"}
+            <b className="knum num">{t.with_documents}</b>
+            <span className="sub">{pct(t.with_documents, t.funnel.opened)}</span>
+          </div>
+        </div>
+      )}
+
+      {t && (
+        <div className="panel mt">
+          <div className="panel-h">
+            Verification funnel
+            <span style={{ flex: 1 }} />
+            <span className="sub">All reps, this window</span>
+          </div>
+          <div className="panel-b">
+            {STAGES.map((st) => {
+              const v = t.funnel[st.key];
+              const top = t.funnel.opened || 1;
+              return (
+                <div className="barrow" key={st.key}>
+                  <div className="bn">{st.label}</div>
+                  <div className="track">
+                    <div className="fill" style={{ width: `${Math.round((v / top) * 100)}%` }} />
+                  </div>
+                  <div className="bv num">{v}</div>
+                </div>
+              );
+            })}
+            <span className="sub" style={{ display: "block", marginTop: 12 }}>
+              {reading(t.funnel)}
             </span>
-          </div>
-          <div className="kpi">
-            <span className="lbl">Still working</span>
-            <b className="knum">{t.active}</b>
-          </div>
-          <div className="kpi">
-            <span className="lbl">Avg score</span>
-            <b className="knum">{t.avg_score ?? "—"}</b>
           </div>
         </div>
       )}
@@ -180,8 +253,9 @@ export default function ProductionPage() {
             </div>
             <div className="panel-b">
               <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-                <span className="cellchip c-acc">{r.files_opened} opened</span>
-                <span className="cellchip c-ok">{r.with_documents} with documents</span>
+                <span className="cellchip c-acc">{r.funnel.opened} opened</span>
+                <span className="cellchip c-ok">{r.funnel.verified} verified</span>
+                <span className="cellchip c-mut">{r.funnel.bank_linked} bank linked</span>
                 <span className="cellchip c-mut">{r.active} working</span>
                 {r.complete > 0 && <span className="cellchip c-ok">{r.complete} complete</span>}
                 {r.stalled > 0 && <span className="cellchip c-warn">{r.stalled} stalled</span>}
