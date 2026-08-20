@@ -19,6 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 import Conversation from "@/components/Conversation";
+import RequestPanel from "@/components/RequestPanel";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 
@@ -137,6 +138,10 @@ export default function FilePage({ params }: { params: Promise<{ id: string }> }
                 Documents, bank connection, DSCR and the capital paths all live in Capital OS.
               </span>
             </div>
+          </div>
+
+          <div className="mt">
+            <RequestPanel dealerId={id} canText={textable} />
           </div>
 
           <div className="panel mt">
