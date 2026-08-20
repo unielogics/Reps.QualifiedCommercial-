@@ -23,6 +23,7 @@ export type Verification = {
   returned: number;
   reason: string;
   stage: string;
+  credit_enabled: boolean;
 };
 
 export type Program = {
@@ -65,6 +66,8 @@ export type Dealer = {
   started_on: string | null;
   funding_goal: number | null;
   funding_purpose: string | null;
+  use_of_proceeds: Array<{ label: string; amount: number }> | null;
+  use_of_proceeds_note: string | null;
   created_at: string;
 };
 
@@ -75,6 +78,7 @@ const NO_VERIFICATION: Verification = {
   returned: 0,
   reason: "Awaiting both authorizations",
   stage: "intake",
+  credit_enabled: true,
 };
 
 export function useCase(id: string) {

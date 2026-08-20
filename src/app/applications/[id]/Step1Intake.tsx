@@ -16,6 +16,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import UseOfProceeds from "./UseOfProceeds";
 
 const ENTITY_TYPES = [
   "Limited liability company",
@@ -126,6 +127,53 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     if (raw === current) return;
     patch.mutate({ [k]: transform ? transform(raw) : raw.trim() || null });
   };
+
+  // The principal is created on first save rather than requiring a separate
+  // "add owner" step. A rep standing in a shop has the name and the mobile in
+  // front of them; making them press Add first is a step that gets skipped and
+  // then step 2 cannot send anything.
+  const saveOwner = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const token = (await getToken()) ?? undefined;
+      const existing = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
+      if (existing) {
+        // OwnerPatch takes first_name/last_name, not the display name the read
+        // model composes. Split here rather than adding a server field that
+        // would then have two sources of truth.
+        const out = { ...body };
+        if (typeof out.full_name === "string") {
+          const [f, ...r] = out.full_name.trim().split(/\s+/);
+          delete out.full_name;
+          out.first_name = f;
+          out.last_name = r.join(" ") || f;
+        }
+        return api(`/dealer-os/dealers/${dealerId}/owners/${existing.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(out),
+          authToken: token,
+        });
+      }
+      const name = String(body.full_name ?? "").trim();
+      const [first, ...rest] = name.split(/\s+/);
+      if (!first) throw new Error("A principal needs a name before contact details are saved.");
+      return api(`/dealer-os/dealers/${dealerId}/owners`, {
+        method: "POST",
+        body: JSON.stringify({
+          first_name: first,
+          last_name: rest.join(" ") || first,
+          email: body.email ?? null,
+          phone: body.phone ?? null,
+          is_primary: true,
+          is_guarantor: true,
+        }),
+        authToken: token,
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+    },
+  });
 
   const owner = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
   const smsGrant = (consent.data ?? []).find(
@@ -245,33 +293,83 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         <div className="panel-b">
           {owners.isLoading && <span className="sub">Loading…</span>}
           {!owners.isLoading && !owner && (
-            <p className="sub" style={{ margin: 0 }}>
+            <p className="sub" style={{ margin: "0 0 12px" }}>
               No principal recorded yet. The credit authorization is sent to a named person, so
-              this is needed before step 2 can complete.
+              this is needed before step 2 can send anything. Fill it in here and it is created
+              on save.
             </p>
           )}
-          {owner && (
+          {!owners.isLoading && (
             <div style={grid}>
               <div>
                 <label className="lbl">Principal name</label>
-                <input className="field" style={{ width: "100%" }} value={owner.full_name ?? ""} readOnly />
+                <input
+                  className="field"
+                  style={{ width: "100%" }}
+                  placeholder="Full name"
+                  defaultValue={owner?.full_name ?? ""}
+                  key={`n-${owner?.id ?? "new"}`}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== (owner?.full_name ?? "")) saveOwner.mutate({ full_name: v });
+                  }}
+                />
               </div>
               <div>
                 <label className="lbl">Ownership</label>
                 <input
-                  className="field"
+                  className="field num"
                   style={{ width: "100%" }}
-                  value={owner.ownership_pct !== null ? `${owner.ownership_pct}%` : "—"}
-                  readOnly
+                  placeholder="100"
+                  defaultValue={owner?.ownership_pct ?? ""}
+                  key={`o-${owner?.id ?? "new"}`}
+                  onBlur={(e) => {
+                    const n = Number(e.target.value.replace(/[^0-9.]/g, ""));
+                    if (e.target.value.trim() && n !== owner?.ownership_pct)
+                      saveOwner.mutate({ ownership_pct: n });
+                  }}
                 />
               </div>
               <div>
                 <label className="lbl">Mobile</label>
-                <input className="field" style={{ width: "100%" }} value={owner.phone ?? ""} readOnly />
+                <input
+                  className="field"
+                  style={{ width: "100%" }}
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="(000) 000-0000"
+                  defaultValue={owner?.phone ?? ""}
+                  key={`p-${owner?.id ?? "new"}`}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v !== (owner?.phone ?? "")) saveOwner.mutate({ phone: v || null });
+                  }}
+                />
               </div>
               <div>
                 <label className="lbl">Email</label>
-                <input className="field" style={{ width: "100%" }} value={owner.email ?? ""} readOnly />
+                <input
+                  className="field"
+                  style={{ width: "100%" }}
+                  type="email"
+                  inputMode="email"
+                  placeholder="name@business.com"
+                  defaultValue={owner?.email ?? ""}
+                  key={`e-${owner?.id ?? "new"}`}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v !== (owner?.email ?? "")) saveOwner.mutate({ email: v || null });
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {saveOwner.isError && (
+            <div className="note">
+              <div>
+                {saveOwner.error instanceof Error
+                  ? saveOwner.error.message
+                  : "The principal did not save."}
               </div>
             </div>
           )}
@@ -355,6 +453,14 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             The purpose decides which programs the file is screened against, so it is worth
             being specific here rather than leaving it at not sure.
           </span>
+
+          <UseOfProceeds
+            dealerId={dealerId}
+            requested={dealer?.funding_goal ?? null}
+            purpose={dealer?.funding_purpose ?? null}
+            rows={dealer?.use_of_proceeds ?? null}
+            note={dealer?.use_of_proceeds_note ?? null}
+          />
         </div>
       </div>
 

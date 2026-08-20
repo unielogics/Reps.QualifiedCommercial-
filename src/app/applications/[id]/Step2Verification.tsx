@@ -280,7 +280,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <button
               type="button"
               className="btn pri"
-              disabled={!owner}
+              disabled={!owner || !verification.credit_enabled}
               onClick={() => setModal("credit")}
             >
               Send credit authorization
@@ -288,7 +288,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <button
               type="button"
               className="btn"
-              disabled={!owner || send.isPending}
+              disabled={!owner || !verification.credit_enabled || send.isPending}
               onClick={() => send.mutate("credit")}
             >
               Resend
@@ -309,6 +309,16 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               A credit inquiry is authorized by a named person, so add the principal in step 1
               first.
             </span>
+          )}
+          {!verification.credit_enabled && (
+            <div className="note">
+              <div>
+                <b>Credit pulls are not switched on yet.</b> The bureau connection has no
+                credentials, so an authorization sent now would fail for the applicant after
+                they had already entered their details and consented. Everything else on this
+                file works; this one is waiting on configuration.
+              </div>
+            </div>
           )}
         </div>
       </div>
