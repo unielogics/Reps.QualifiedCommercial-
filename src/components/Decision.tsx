@@ -18,6 +18,14 @@ import { api } from "@/lib/api";
 
 type Blocking = { label?: string; detail?: string };
 
+type Program = {
+  key: string;
+  label: string;
+  eligible: boolean;
+  needs: string[];
+  blocked_by: string[];
+};
+
 type Decision = {
   verdict: string;
   headline: string;
@@ -28,6 +36,7 @@ type Decision = {
   best_path: { label?: string; path_key?: string } | null;
   goal_feasible: boolean | null;
   ready_for_forms: boolean;
+  programs: Program[];
 };
 
 function tone(v: string, capped: boolean): string {
@@ -110,6 +119,37 @@ export default function Decision({ dealerId }: { dealerId: string }) {
                 {d.blocking.length > 6 && (
                   <span className="sub">and {d.blocking.length - 6} more.</span>
                 )}
+              </>
+            )}
+
+            {d.programs.length > 0 && (
+              <>
+                <label className="lbl mt">Programs</label>
+                <span className="sub">
+                  Ordered by how close this file is. The first one it can reach is usually
+                  the one to work toward, not the biggest one on the list.
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                  {d.programs.slice(0, 6).map((p) => (
+                    <div key={p.key}>
+                      <div className="row" style={{ gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                        <span className={`cellchip ${p.eligible ? "c-ok" : "c-mut"}`}>
+                          {p.eligible ? "Reaches" : "Not yet"}
+                        </span>
+                        <b style={{ fontSize: 13.5 }}>{p.label}</b>
+                      </div>
+                      {/* blocked_by is the desk's own wording and is internal;
+                          needs is the borrower-safe list. Reps are internal, so
+                          both are useful here, but needs reads better so it
+                          leads. */}
+                      {(p.needs.length > 0 || p.blocked_by.length > 0) && (
+                        <span className="sub">
+                          {(p.needs.length > 0 ? p.needs : p.blocked_by).slice(0, 2).join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </>
             )}
 
