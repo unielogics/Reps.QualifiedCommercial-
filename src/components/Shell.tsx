@@ -12,6 +12,7 @@ import { SignedIn, UserButton, useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
+import MfaBanner from "./MfaBanner";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 
@@ -193,6 +194,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="foot">
           <SignedIn>
             <UserButton afterSignOutUrl="/sign-in" />
+            <Link href="/account/security" className="footlink" title="Account and security">
+              Security
+            </Link>
           </SignedIn>
         </div>
       </aside>
@@ -204,6 +208,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {name && <span className="chip">{name}</span>}
         </div>
         <div className={pathname.startsWith("/applications/") ? "content content--wide" : "content"}>
+          {/* Above the page, not inside it: the prompt has to be visible
+              wherever you land, not only on one screen you might not open. */}
+          <MfaBanner />
           {children}
         </div>
       </div>
