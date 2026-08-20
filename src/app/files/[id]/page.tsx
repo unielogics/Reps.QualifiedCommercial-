@@ -20,6 +20,8 @@ import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 import Conversation from "@/components/Conversation";
 import RequestPanel from "@/components/RequestPanel";
+import Decision from "@/components/Decision";
+import Meetings from "@/components/Meetings";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 
@@ -102,7 +104,8 @@ export default function FilePage({ params }: { params: Promise<{ id: string }> }
       </div>
 
       <div className="cg mt">
-        <div className="s8">
+        <div className="s8" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Decision dealerId={id} />
           <Conversation dealerId={id} meId={meId} />
         </div>
 
@@ -142,6 +145,10 @@ export default function FilePage({ params }: { params: Promise<{ id: string }> }
 
           <div className="mt">
             <RequestPanel dealerId={id} canText={textable} />
+          </div>
+
+          <div className="mt">
+            <Meetings dealerId={id} />
           </div>
 
           <div className="panel mt">

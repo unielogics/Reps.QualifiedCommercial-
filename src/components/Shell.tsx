@@ -8,7 +8,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SignedIn, UserButton } from "@clerk/nextjs";
+import { SignedIn, UserButton, useAuth } from "@clerk/nextjs";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
@@ -66,6 +68,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [rail, setRail] = useState(true);
   const { name, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
+  const { getToken } = useAuth();
+
+  // One grouped query for every file, not the per-file endpoint in a loop: a
+  // rep with forty files would otherwise fire forty requests to draw one
+  // number. Polled rather than pushed, because a badge that is a minute stale
+  // is fine and a websocket for this is not worth the operational weight.
+  const unread = useQuery({
+    queryKey: ["unread-summary"],
+    queryFn: async () =>
+      api<{ total: number; per_file: Record<string, number> }>("/dealer-os/unread-summary", {
+        authToken: (await getToken()) ?? undefined,
+      }),
+    enabled: isRep || isTeam,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const unreadTotal = unread.data?.total ?? 0;
 
   useEffect(() => {
     try {
@@ -157,6 +176,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Link key={item.href} href={item.href} className={on ? "on" : undefined}>
                   <Icon name={item.icon} />
                   <span>{item.label}</span>
+                  {item.href === "/" && unreadTotal > 0 && (
+                    <span
+                      className="navbadge"
+                      title={`${unreadTotal} unread message${unreadTotal === 1 ? "" : "s"}`}
+                    >
+                      {unreadTotal > 99 ? "99+" : unreadTotal}
+                    </span>
+                  )}
                 </Link>
               );
             })}
