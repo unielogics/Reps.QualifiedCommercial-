@@ -107,6 +107,20 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [modal, setModal] = useState<null | "bank" | "credit">(null);
   const [alsoText, setAlsoText] = useState(false);
   const [sent, setSent] = useState<string | null>(null);
+  const [accessCode, setAccessCode] = useState<string | null>(null);
+
+  // Rotation, not retrieval: the stored code is a hash and can never be shown
+  // again, so "show me the code" always means "mint a new one". The old code
+  // stops working the moment this returns — which is also the recovery when a
+  // code has leaked.
+  const rotateCode = useMutation({
+    mutationFn: async () =>
+      api<{ passcode: string | null }>(`/dealer-os/dealers/${dealerId}/room/access-code`, {
+        method: "POST",
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: (r) => setAccessCode(r.passcode ?? null),
+  });
 
   const plaid = useQuery({
     queryKey: ["plaid", dealerId],
@@ -154,6 +168,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
     onSuccess: (r) => {
       setModal(null);
       setSent((r as { detail?: string | null })?.detail ?? "Sent.");
+      const code = (r as { passcode?: string | null })?.passcode;
+      if (code) setAccessCode(code);
       void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
       void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
     },
@@ -187,6 +203,57 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             A soft inquiry does not affect the applicant&apos;s credit score. Delivery, opening
             and completion are timestamped in the audit trail.
           </span>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-h">
+          Room access code
+          <span style={{ flex: 1 }} />
+          <span className="sub">One code for everything the client does</span>
+        </div>
+        <div className="panel-b">
+          <div className="row" style={{ alignItems: "center", gap: 12 }}>
+            {accessCode ? (
+              <b
+                className="num"
+                style={{
+                  fontFamily: "var(--fh)",
+                  fontSize: 22,
+                  letterSpacing: "0.08em",
+                  color: "var(--accent)",
+                }}
+              >
+                {accessCode}
+              </b>
+            ) : (
+              <span className="sub">
+                The code is stored only as a hash and cannot be looked up. Mint one and read it
+                to the client; it opens their room, the bank connection, the credit
+                authorization and signing.
+              </span>
+            )}
+            <span style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="btn sm"
+              disabled={rotateCode.isPending}
+              onClick={() => rotateCode.mutate()}
+            >
+              {rotateCode.isPending ? "Minting…" : accessCode ? "New code" : "Show a new access code"}
+            </button>
+          </div>
+          {accessCode && (
+            <span className="sub" style={{ display: "block", marginTop: 8 }}>
+              Read it to the client now. Minting a new code invalidates this one, and it is not
+              shown again after you leave this screen.
+            </span>
+          )}
+          {rotateCode.isError && (
+            <div className="note">
+              <div>Could not mint a code. Try again.</div>
+            </div>
+          )}
         </div>
       </div>
 
