@@ -94,6 +94,17 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     },
   });
 
+  const sendForSignature = useMutation({
+    mutationFn: async () =>
+      api<{ emailed: boolean; texted: boolean; detail: string | null }>(
+        `/dealer-os/dealers/${dealerId}/contracts/${current?.key}/send-signature`,
+        { method: "POST", body: JSON.stringify({ channel: "email" }), authToken: (await getToken()) ?? undefined },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
+    },
+  });
+
   const preview = useMutation({
     mutationFn: async () =>
       api<{ url: string }>(`/dealer-os/dealers/${dealerId}/contracts/${current?.key}/url`, {
@@ -217,6 +228,16 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
                       Preview PDF
                     </button>
                   )}
+                  {caseDoc?.filled_sha256 && caseDoc.status !== "out_for_signature" && caseDoc.status !== "executed" && (
+                    <button
+                      type="button"
+                      className="btn pri"
+                      disabled={sendForSignature.isPending}
+                      onClick={() => sendForSignature.mutate()}
+                    >
+                      {sendForSignature.isPending ? "Sending…" : "Send for signature"}
+                    </button>
+                  )}
                 </div>
                 <span className="sub" style={{ display: "block", marginTop: 8 }}>
                   Every field it can answer is filled from steps 1 through 4: the client entity,
@@ -234,7 +255,26 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
                   <div className="note">
                     <div>
                       Every mapped field is filled ({Object.keys(gen.placed).length} placed).
-                      Review the preview, then send it for signature from the Messages tab.
+                      Preview it, then send it for signature. Sending freezes the paper: the
+                      client signs exactly what you previewed, on their own device.
+                    </div>
+                  </div>
+                )}
+                {sendForSignature.isSuccess && (
+                  <div className="note">
+                    <div>
+                      Sent. The client signs in their secure room — signature box first, the
+                      full agreement one toggle away. Their executed copy is emailed the moment
+                      it lands, and the status here flips to executed.
+                    </div>
+                  </div>
+                )}
+                {sendForSignature.isError && (
+                  <div className="note">
+                    <div>
+                      {sendForSignature.error instanceof Error
+                        ? sendForSignature.error.message
+                        : "That did not send."}
                     </div>
                   </div>
                 )}
