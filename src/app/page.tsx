@@ -34,6 +34,7 @@ type Row = {
   bank_linked: boolean;
   credit_returned: boolean;
   verified: boolean;
+  audit_client_since: string | null;
   created_at: string;
 };
 
@@ -61,6 +62,9 @@ function nextAction(r: Row): string {
 }
 
 function stageChip(r: Row) {
+  // Graduated files show it plainly: the client this rep brought in is now a
+  // full audit client, and the rep still sees the file they earned.
+  if (r.audit_client_since) return <span className="cellchip c-acc">Audit client</span>;
   if (r.status === "complete") return <span className="cellchip c-acc">Contract</span>;
   if (r.verified) return <span className="cellchip c-acc">Underwriting</span>;
   if (r.bank_linked || r.credit_returned) return <span className="cellchip c-warn">Verification</span>;
