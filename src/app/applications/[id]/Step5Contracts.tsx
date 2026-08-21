@@ -17,19 +17,41 @@
 // on a file which then gets declined on the first thing a lender looks at
 // costs the owner time and costs us the relationship.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 
-const PACKAGE = [
-  "Business loan agreement",
-  "Personal guarantee",
-  "ACH authorization",
-  "Fee disclosure",
-];
+type Template = {
+  key: string;
+  title: string;
+  page_count: number | null;
+  has_acroform: boolean;
+  revision: number;
+  active: boolean;
+  s3_key: string | null;
+};
 
 export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const { decision } = useCase(dealerId);
-  const [doc, setDoc] = useState(PACKAGE[0]);
+  const { getToken } = useAuth();
+  const [doc, setDoc] = useState<string | null>(null);
+
+  // The package comes from the registry the desk maintains, so a new
+  // agreement uploaded on the dashboard appears here without a deploy.
+  const templates = useQuery({
+    queryKey: ["contract-templates"],
+    queryFn: async () =>
+      api<Template[]>("/dealer-os/contract-templates", {
+        authToken: (await getToken()) ?? undefined,
+      }),
+  });
+  const pkg = (templates.data ?? []).filter((t) => t.active && t.s3_key);
+  useEffect(() => {
+    if (doc === null && pkg.length) setDoc(pkg[0].key);
+  }, [doc, pkg]);
+  const current = pkg.find((t) => t.key === doc) ?? pkg[0];
 
   const ready = decision?.ready_for_forms ?? false;
 
@@ -45,16 +67,21 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
         </div>
         <div className="panel-b">
           <div className="seg">
-            {PACKAGE.map((d) => (
+            {pkg.map((t) => (
               <button
-                key={d}
+                key={t.key}
                 type="button"
-                className={doc === d ? "on" : undefined}
-                onClick={() => setDoc(d)}
+                className={current?.key === t.key ? "on" : undefined}
+                onClick={() => setDoc(t.key)}
               >
-                {d}
+                {t.title}
               </button>
             ))}
+            {pkg.length === 0 && !templates.isLoading && (
+              <button type="button" className="on" disabled>
+                No agreements uploaded yet
+              </button>
+            )}
           </div>
           <span className="sub" style={{ display: "block", marginTop: 10 }}>
             Every field is filled from steps 1 through 4. Edit in place on the document and the
@@ -73,7 +100,10 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
 
       <div className="panel">
         <div className="panel-h">
-          {doc}
+          {current ? `${current.title} · r${current.revision}` : "Contract package"}
+          {current && !current.has_acroform && (
+            <span className="cellchip c-mut">Text document</span>
+          )}
           <span style={{ flex: 1 }} />
           <button type="button" className="btn sm" disabled>Previous</button>
           <button type="button" className="btn sm" disabled>Next</button>
@@ -94,13 +124,14 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
           >
             <div>
               <b style={{ fontFamily: "var(--fh)", fontSize: 15, display: "block" }}>
-                {doc} not loaded yet
+                {current
+                  ? `${current.title} is on file (${current.page_count ?? "?"} page${(current.page_count ?? 1) === 1 ? "" : "s"})`
+                  : "No agreements uploaded yet"}
               </b>
               <span className="sub" style={{ display: "block", marginTop: 6, maxWidth: 460 }}>
-                The package templates have not been uploaded. Once they are, this shows the
-                document page by page with every known value filled in place and the unfilled
-                ones marked, so a rep can see exactly what is still outstanding before asking
-                for a signature.
+                {current
+                  ? "In-place field fill for this document is the next piece: its values come from steps 1 through 4 and the executed copy signs through the client's secure room with hashes and a certificate."
+                  : "The desk uploads the package on the dashboard under Settings, then it appears here on every case."}
               </span>
             </div>
           </div>
