@@ -50,6 +50,8 @@ const PURPOSES: Array<[string, string]> = [
 type Owner = {
   id: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   email: string | null;
   phone: string | null;
   ownership_pct: number | null;
@@ -137,30 +139,21 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       const token = (await getToken()) ?? undefined;
       const existing = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
       if (existing) {
-        // OwnerPatch takes first_name/last_name, not the display name the read
-        // model composes. Split here rather than adding a server field that
-        // would then have two sources of truth.
-        const out = { ...body };
-        if (typeof out.full_name === "string") {
-          const [f, ...r] = out.full_name.trim().split(/\s+/);
-          delete out.full_name;
-          out.first_name = f;
-          out.last_name = r.join(" ") || f;
-        }
         return api(`/dealer-os/dealers/${dealerId}/owners/${existing.id}`, {
           method: "PATCH",
-          body: JSON.stringify(out),
+          body: JSON.stringify(body),
           authToken: token,
         });
       }
-      const name = String(body.full_name ?? "").trim();
-      const [first, ...rest] = name.split(/\s+/);
-      if (!first) throw new Error("A principal needs a name before contact details are saved.");
+      const first = String(body.first_name ?? "").trim();
+      const last = String(body.last_name ?? "").trim();
+      if (!first && !last)
+        throw new Error("A principal needs a name before contact details are saved.");
       return api(`/dealer-os/dealers/${dealerId}/owners`, {
         method: "POST",
         body: JSON.stringify({
-          first_name: first,
-          last_name: rest.join(" ") || first,
+          first_name: first || last,
+          last_name: last || first,
           email: body.email ?? null,
           phone: body.phone ?? null,
           is_primary: true,
@@ -301,17 +294,35 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
           )}
           {!owners.isLoading && (
             <div style={grid}>
+              {/* First and last are separate on purpose: the loan application
+                  and the credit bureau both want them split, and splitting a
+                  typed full name by guessing where the surname starts gets
+                  two-word surnames wrong. */}
               <div>
-                <label className="lbl">Principal name</label>
+                <label className="lbl">First name</label>
                 <input
                   className="field"
                   style={{ width: "100%" }}
-                  placeholder="Full name"
-                  defaultValue={owner?.full_name ?? ""}
-                  key={`n-${owner?.id ?? "new"}`}
+                  autoComplete="given-name"
+                  defaultValue={owner?.first_name ?? ""}
+                  key={`fn-${owner?.id ?? "new"}`}
                   onBlur={(e) => {
                     const v = e.target.value.trim();
-                    if (v && v !== (owner?.full_name ?? "")) saveOwner.mutate({ full_name: v });
+                    if (v && v !== (owner?.first_name ?? "")) saveOwner.mutate({ first_name: v });
+                  }}
+                />
+              </div>
+              <div>
+                <label className="lbl">Last name</label>
+                <input
+                  className="field"
+                  style={{ width: "100%" }}
+                  autoComplete="family-name"
+                  defaultValue={owner?.last_name ?? ""}
+                  key={`ln-${owner?.id ?? "new"}`}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== (owner?.last_name ?? "")) saveOwner.mutate({ last_name: v });
                   }}
                 />
               </div>

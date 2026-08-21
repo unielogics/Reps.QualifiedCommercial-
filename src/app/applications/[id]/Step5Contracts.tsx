@@ -19,9 +19,25 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+
+type CaseDoc = {
+  id: string;
+  template_key: string;
+  status: string;
+  field_values: Record<string, string> | null;
+  filled_sha256: string | null;
+};
+
+type GenerateResult = {
+  status: string;
+  placed: Record<string, string>;
+  missing_data: string[];
+  overlay_problems: string[];
+  download_url: string | null;
+};
 
 type Template = {
   key: string;
@@ -54,6 +70,37 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const current = pkg.find((t) => t.key === doc) ?? pkg[0];
 
   const ready = decision?.ready_for_forms ?? false;
+  const qc = useQueryClient();
+  const [gen, setGen] = useState<GenerateResult | null>(null);
+
+  const caseDocs = useQuery({
+    queryKey: ["case-contracts", dealerId],
+    queryFn: async () =>
+      api<CaseDoc[]>(`/dealer-os/dealers/${dealerId}/contracts`, {
+        authToken: (await getToken()) ?? undefined,
+      }),
+  });
+  const caseDoc = (caseDocs.data ?? []).find((d) => d.template_key === current?.key);
+
+  const generate = useMutation({
+    mutationFn: async () =>
+      api<GenerateResult>(`/dealer-os/dealers/${dealerId}/contracts/${current?.key}/generate`, {
+        method: "POST",
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: (r) => {
+      setGen(r);
+      void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
+    },
+  });
+
+  const preview = useMutation({
+    mutationFn: async () =>
+      api<{ url: string }>(`/dealer-os/dealers/${dealerId}/contracts/${current?.key}/url`, {
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: (r) => window.open(r.url, "_blank", "noopener"),
+  });
 
   return (
     <>
@@ -115,25 +162,100 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
               border: "1px solid var(--line)",
               borderRadius: "var(--r-sm)",
               background: "var(--surface)",
-              padding: "clamp(18px, 3vw, 34px)",
-              minHeight: 260,
-              display: "grid",
-              placeItems: "center",
-              textAlign: "center",
+              padding: "clamp(18px, 3vw, 30px)",
             }}
           >
-            <div>
-              <b style={{ fontFamily: "var(--fh)", fontSize: 15, display: "block" }}>
-                {current
-                  ? `${current.title} is on file (${current.page_count ?? "?"} page${(current.page_count ?? 1) === 1 ? "" : "s"})`
-                  : "No agreements uploaded yet"}
-              </b>
-              <span className="sub" style={{ display: "block", marginTop: 6, maxWidth: 460 }}>
-                {current
-                  ? "In-place field fill for this document is the next piece: its values come from steps 1 through 4 and the executed copy signs through the client's secure room with hashes and a certificate."
-                  : "The desk uploads the package on the dashboard under Settings, then it appears here on every case."}
+            {!current && (
+              <span className="sub">
+                The desk uploads the package on the dashboard under Settings, then it appears
+                here on every case.
               </span>
-            </div>
+            )}
+            {current && (
+              <>
+                <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                  <b style={{ fontFamily: "var(--fh)", fontSize: 15 }}>
+                    {caseDoc?.filled_sha256
+                      ? "Prepopulated copy on file"
+                      : "Not generated for this case yet"}
+                  </b>
+                  {caseDoc && (
+                    <span
+                      className={`cellchip ${
+                        caseDoc.status === "executed"
+                          ? "c-ok"
+                          : caseDoc.status === "out_for_signature"
+                            ? "c-acc"
+                            : caseDoc.status === "ready"
+                              ? "c-ok"
+                              : "c-warn"
+                      }`}
+                    >
+                      {caseDoc.status.replace(/_/g, " ")}
+                    </span>
+                  )}
+                  <span style={{ flex: 1 }} />
+                  <button
+                    type="button"
+                    className="btn pri"
+                    disabled={generate.isPending || caseDoc?.status === "out_for_signature" || caseDoc?.status === "executed"}
+                    onClick={() => generate.mutate()}
+                  >
+                    {generate.isPending
+                      ? "Filling…"
+                      : caseDoc?.filled_sha256
+                        ? "Regenerate from the case"
+                        : "Generate prepopulated agreement"}
+                  </button>
+                  {caseDoc?.filled_sha256 && (
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={preview.isPending}
+                      onClick={() => preview.mutate()}
+                    >
+                      Preview PDF
+                    </button>
+                  )}
+                </div>
+                <span className="sub" style={{ display: "block", marginTop: 8 }}>
+                  Every field it can answer is filled from steps 1 through 4: the client entity,
+                  the principal, the 3 percent commission, the use of funds sentence, and you on
+                  the consultant line. What the case does not know is listed, never guessed.
+                </span>
+
+                {gen && gen.missing_data.length > 0 && (
+                  <div className="warnline mt">
+                    Still blank, because the case has not collected it:{" "}
+                    {gen.missing_data.join(" · ")}
+                  </div>
+                )}
+                {gen && gen.missing_data.length === 0 && (
+                  <div className="note">
+                    <div>
+                      Every mapped field is filled ({Object.keys(gen.placed).length} placed).
+                      Review the preview, then send it for signature from the Messages tab.
+                    </div>
+                  </div>
+                )}
+                {gen && gen.overlay_problems.length > 0 && (
+                  <div className="note">
+                    <div>
+                      Template problem, tell the desk: {gen.overlay_problems.join(" · ")}
+                    </div>
+                  </div>
+                )}
+                {generate.isError && (
+                  <div className="note">
+                    <div>
+                      {generate.error instanceof Error
+                        ? generate.error.message
+                        : "The fill did not run."}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div
