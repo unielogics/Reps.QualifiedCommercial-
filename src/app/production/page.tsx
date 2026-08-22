@@ -44,7 +44,33 @@ type Rep = {
   fundable: number;
   avg_score: number | null;
   last_activity: string | null;
+  insights: Insights;
   files: FileRow[];
+};
+
+type CategoryMetric = {
+  industry: string;
+  opened: number;
+  approved_or_fundable: number;
+};
+
+type AmountMetric = {
+  average_requested: number | null;
+  average_approved: number | null;
+  approved_amount_source: string;
+  approved_amount_source_counts: Record<string, number>;
+};
+
+type Insights = {
+  underwriting_ready: number;
+  approved_or_fundable: number;
+  underwriting_ready_ratio: number | null;
+  approved_or_fundable_ratio: number | null;
+  document_ratio: number | null;
+  contract_execution_ratio: number | null;
+  amount_metrics: AmountMetric;
+  top_new_app_industries: CategoryMetric[];
+  top_approved_industries: CategoryMetric[];
 };
 
 type Funnel = {
@@ -95,6 +121,19 @@ function pct(n: number, of: number): string {
   return `${Math.round((n / of) * 100)}% of opened`;
 }
 
+function ratio(value: number | null): string {
+  return value === null ? "—" : `${value}%`;
+}
+
+function money(value: number | null): string {
+  if (value === null) return "—";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 function ago(iso: string | null): string {
   if (!iso) return "—";
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -110,6 +149,53 @@ function statusTone(s: string | null): string {
   if (s === "stalled") return "c-warn";
   if (!s) return "c-mut";
   return "c-acc";
+}
+
+function RatioBar({ label, value }: { label: string; value: number | null }) {
+  const width = Math.max(0, Math.min(100, value ?? 0));
+  return (
+    <div className="barrow">
+      <div className="bn">{label}</div>
+      <div className="track">
+        <div className="fill" style={{ width: `${width}%` }} />
+      </div>
+      <div className="bv num">{ratio(value)}</div>
+    </div>
+  );
+}
+
+function IndustryTable({ rows }: { rows: CategoryMetric[] }) {
+  return (
+    <div className="tblwrap">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th className="r">New apps</th>
+            <th className="r">Approved / fundable</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.industry}>
+              <td>
+                <b>{row.industry}</b>
+              </td>
+              <td className="r num">{row.opened}</td>
+              <td className="r num">{row.approved_or_fundable}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={3} className="sub">
+                No category trend yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function ProductionPage() {
@@ -172,25 +258,42 @@ export default function ProductionPage() {
           <div className="kpi">
             <span className="lbl">Applications opened</span>
             <b className="knum num">{t.funnel.opened}</b>
+            <span className="sub">New files in this window</span>
           </div>
           <div className="kpi">
-            <span className="lbl">Bank linked</span>
+            <span className="lbl">Bank evidence</span>
             <b className="knum num">{t.funnel.bank_linked}</b>
             <span className="sub">{pct(t.funnel.bank_linked, t.funnel.opened)}</span>
           </div>
           <div className="kpi">
-            <span className="lbl">Fully verified</span>
+            <span className="lbl">Underwriting ready</span>
             <b className="knum num">{t.funnel.verified}</b>
-            <span className="sub">{pct(t.funnel.verified, t.funnel.opened)}</span>
+            <span className="sub">{ratio(t.insights.underwriting_ready_ratio)}</span>
+          </div>
+          <div className="kpi">
+            <span className="lbl">Approved / fundable</span>
+            <b className="knum num">{t.insights.approved_or_fundable}</b>
+            <span className="sub">{ratio(t.insights.approved_or_fundable_ratio)}</span>
           </div>
           <div className="kpi">
             <span className="lbl">Contracts executed</span>
             <b className="knum num">{t.funnel.contract_executed}</b>
+            <span className="sub">{ratio(t.insights.contract_execution_ratio)}</span>
           </div>
           <div className="kpi">
             <span className="lbl">With documents</span>
             <b className="knum num">{t.with_documents}</b>
-            <span className="sub">{pct(t.with_documents, t.funnel.opened)}</span>
+            <span className="sub">{ratio(t.insights.document_ratio)}</span>
+          </div>
+          <div className="kpi">
+            <span className="lbl">Avg requested</span>
+            <b className="knum num">{money(t.insights.amount_metrics.average_requested)}</b>
+            <span className="sub">Funding goal where entered</span>
+          </div>
+          <div className="kpi">
+            <span className="lbl">Avg approved</span>
+            <b className="knum num">{money(t.insights.amount_metrics.average_approved)}</b>
+            <span className="sub">Source: {t.insights.amount_metrics.approved_amount_source}</span>
           </div>
         </div>
       )}
@@ -219,6 +322,49 @@ export default function ProductionPage() {
             <span className="sub" style={{ display: "block", marginTop: 12 }}>
               {reading(t.funnel)}
             </span>
+          </div>
+        </div>
+      )}
+
+      {t && (
+        <div className="cg mt">
+          <div className="panel s6">
+            <div className="panel-h">Loan ratios</div>
+            <div className="panel-b">
+              <RatioBar label="Underwriting ready" value={t.insights.underwriting_ready_ratio} />
+              <RatioBar label="Approved / fundable" value={t.insights.approved_or_fundable_ratio} />
+              <RatioBar label="Document coverage" value={t.insights.document_ratio} />
+              <RatioBar label="Contracts executed" value={t.insights.contract_execution_ratio} />
+            </div>
+          </div>
+          <div className="panel s6">
+            <div className="panel-h">Approved loan amounts</div>
+            <div className="panel-b">
+              <div className="kpis">
+                <div className="kpi">
+                  <span className="lbl">Average requested</span>
+                  <b className="knum num">{money(t.insights.amount_metrics.average_requested)}</b>
+                  <span className="sub">All files with a funding goal</span>
+                </div>
+                <div className="kpi">
+                  <span className="lbl">Average approved</span>
+                  <b className="knum num">{money(t.insights.amount_metrics.average_approved)}</b>
+                  <span className="sub">
+                    {Object.entries(t.insights.amount_metrics.approved_amount_source_counts)
+                      .map(([source, count]) => `${source}: ${count}`)
+                      .join(" · ") || "No approved amount source yet"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="panel s6">
+            <div className="panel-h">Trending new-app categories</div>
+            <IndustryTable rows={t.insights.top_new_app_industries} />
+          </div>
+          <div className="panel s6">
+            <div className="panel-h">Approved / fundable categories</div>
+            <IndustryTable rows={t.insights.top_approved_industries} />
           </div>
         </div>
       )}
@@ -257,12 +403,15 @@ export default function ProductionPage() {
                 <span className="cellchip c-ok">{r.funnel.verified} verified</span>
                 <span className="cellchip c-mut">{r.funnel.bank_linked} bank linked</span>
                 <span className="cellchip c-mut">{r.active} working</span>
+                <span className="cellchip c-acc">{ratio(r.insights.underwriting_ready_ratio)} underwriting ready</span>
+                <span className="cellchip c-ok">{r.insights.approved_or_fundable} approved/fundable</span>
                 {r.complete > 0 && <span className="cellchip c-ok">{r.complete} complete</span>}
                 {r.stalled > 0 && <span className="cellchip c-warn">{r.stalled} stalled</span>}
                 {r.declined > 0 && <span className="cellchip c-bad">{r.declined} declined</span>}
                 {r.avg_score !== null && (
                   <span className="sub">avg score {r.avg_score}</span>
                 )}
+                <span className="sub">avg requested {money(r.insights.amount_metrics.average_requested)}</span>
               </div>
 
               {isOpen && (

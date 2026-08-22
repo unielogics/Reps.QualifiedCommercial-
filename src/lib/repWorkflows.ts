@@ -1,4 +1,33 @@
 export type ComposeChannel = "email" | "sms";
+export type BankEvidenceSource = "plaid" | "upload" | "none";
+
+export type BankEvidenceRead = {
+  bank_linked: boolean;
+  bank_source: BankEvidenceSource;
+  statement_months: string[];
+  missing_statement_months: string[];
+  statement_target: number;
+  bucket_id?: string | null;
+  upload_url?: string | null;
+  passcode?: string | null;
+};
+
+export type BankUploadRequestResult = {
+  url: string;
+  passcode?: string | null;
+  delivered: boolean;
+  emailed: boolean;
+  texted: boolean;
+  detail?: string | null;
+  bucket_id?: string | null;
+  upload_link_id?: string | null;
+  requested_document_id?: string | null;
+};
+
+export type CalendarSlotDay = {
+  label: string;
+  slots: Array<{ starts_at: string; label: string; date_label: string }>;
+};
 
 export type ProgramPdfAttachment = {
   key: string;
@@ -29,6 +58,7 @@ export type StandaloneRepAppointment = {
   duration_min?: number | null;
   timezone?: string | null;
   invitee_name: string;
+  company?: string | null;
   invitee_email?: string | null;
   invitee_phone?: string | null;
   join_url?: string | null;

@@ -36,12 +36,13 @@ a { color: var(--accent); }
 
 /* ---------- shell ---------- */
 .app { display: grid; grid-template-columns: 242px 1fr; min-height: 100vh; }
-.app.rail { grid-template-columns: 62px 1fr; }
-.app.rail .brand > div:last-child, .app.rail .nav a span.navlbl, .app.rail .grp, .app.rail .side .ident, .app.rail .side .foot > div { display: none; }
-.app.rail .brand { padding: 18px 13px 12px; }
-.app.rail .nav a { justify-content: center; padding: 9px 0; }
+.app.rail { grid-template-columns: 76px 1fr; }
+.app.rail .brand > div:last-child, .app.rail .grp, .app.rail .side .ident, .app.rail .side .foot > div { display: none; }
+.app.rail .brand { padding: 18px 20px 12px; }
+.app.rail .nav a { justify-content: center; padding: 0; width: 52px; min-height: 48px; margin: 0 auto; }
+.app.rail .nav a > span:not(.navbadge) { display: none; }
 .app.rail .nav a .bdg { position: absolute; top: 2px; right: 8px; }
-.navtoggle { margin: 4px 10px 10px; align-self: flex-end; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 8px; width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer; font-size: 12px; }
+.navtoggle { margin: 4px 10px 10px; align-self: flex-end; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 8px; width: 44px; height: 44px; display: grid; place-items: center; cursor: pointer; font-size: 14px; }
 .navtoggle:hover { background: var(--sunken2); color: var(--ink); }
 .app.rail .navtoggle { align-self: center; margin: 4px 0 10px; }
 .side { background: var(--surface); border-right: 1px solid var(--line); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
@@ -49,9 +50,9 @@ a { color: var(--accent); }
 .brand .mark { width: 35px; height: 35px; border-radius: 10px; background: linear-gradient(150deg, var(--accent), var(--petrol)); display: grid; place-items: center; color: #fff; font-family: var(--fh); font-weight: 700; font-size: 13px; flex-shrink: 0; }
 .brand b { font-family: var(--fh); font-size: 14.5px; letter-spacing: 0; display: block; line-height: 1.15; }
 .brand span { font-size: 10px; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; }
-.nav { padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; flex: 1; }
+.nav { padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
 .nav .grp { font-size: 9.5px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--faint); padding: 14px 10px 5px; font-weight: 700; }
-.nav a { display: flex; align-items: center; gap: 10px; padding: 7.5px 10px; border-radius: 9px; color: var(--ink2); text-decoration: none; font-weight: 500; font-size: 13px; cursor: pointer; position: relative; }
+.nav a { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 12px; border-radius: 8px; color: var(--ink2); text-decoration: none; font-weight: 500; font-size: 13px; cursor: pointer; position: relative; }
 .nav a:hover { background: var(--sunken2); }
 .nav a.on { background: var(--accent-100); color: var(--accent); font-weight: 600; }
 .nav a.on::before { content: ""; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--accent); }
@@ -65,7 +66,7 @@ a { color: var(--accent); }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 99px; font-size: 11.5px; font-weight: 650; border: 1px solid var(--line); color: var(--ink2); text-decoration: none; }
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
 .seg { display: inline-flex; background: var(--sunken); border-radius: 10px; padding: 3px; gap: 2px; }
-.seg button { border: 0; background: transparent; color: var(--muted); font-weight: 600; font-size: 12px; padding: 5.5px 12px; border-radius: 8px; cursor: pointer; font-family: var(--fb); }
+.seg button { border: 0; background: transparent; color: var(--muted); font-weight: 600; font-size: 12px; min-height: 44px; padding: 0 14px; border-radius: 8px; cursor: pointer; font-family: var(--fb); }
 .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--sh1); }
 .content { --pad-y: 22px; --pad-x: 26px; padding: var(--pad-y) var(--pad-x) 44px; max-width: 1180px; width: 100%; margin: 0 auto; }
 /* Cockpit routes use the full viewport; the dealers list stays at 1180. */
@@ -160,20 +161,20 @@ a { color: var(--accent); }
 .linky:hover { text-decoration: underline; }
 
 /* ---------- controls ---------- */
-.btn { display: inline-flex; align-items: center; gap: 7px; border-radius: 10px; font-weight: 650; font-size: 12.5px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); font-family: inherit; line-height: 1; text-decoration: none; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border-radius: 10px; font-weight: 650; font-size: 12.5px; padding: 0 16px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); font-family: inherit; line-height: 1; text-decoration: none; }
 .btn:hover { background: var(--sunken2); }
 .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.pri:hover { background: var(--accent-700); }
-.btn.sm { padding: 5px 10px; font-size: 11.5px; border-radius: 8px; }
+.btn.sm { min-height: 44px; padding: 0 12px; font-size: 11.5px; border-radius: 8px; }
 .btn:disabled { opacity: 0.55; cursor: default; }
 /* Popover menu — compact action list anchored to a header chip (bucket actions). */
 .popwrap { position: relative; display: inline-flex; align-items: center; }
 .popmenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 212px; background: var(--surface); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--sh2); padding: 5px; display: flex; flex-direction: column; gap: 1px; }
-.popmenu .mi { display: block; width: 100%; text-align: left; border: 0; background: transparent; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink2); padding: 7px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.popmenu .mi { display: block; width: 100%; min-height: 44px; text-align: left; border: 0; background: transparent; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink2); padding: 8px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 .popmenu .mi:hover { background: var(--sunken2); }
 .popmenu .mi:disabled { opacity: 0.55; cursor: default; }
 .popmenu .mi small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 1px; white-space: normal; }
-.field { border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; font-size: 13px; font-family: inherit; color: var(--ink); background: var(--surface); outline: none; min-width: 0; width: 100%; }
+.field { border: 1px solid var(--line); border-radius: 9px; min-height: 44px; padding: 9px 11px; font-size: 13px; font-family: inherit; color: var(--ink); background: var(--surface); outline: none; min-width: 0; width: 100%; }
 .field:focus { border-color: var(--accent-400); }
 .field.grow { flex: 1; min-width: 180px; }
 
@@ -183,6 +184,19 @@ a { color: var(--accent); }
 .modalHead { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .modalHead b { font-family: var(--fh); font-size: 15px; letter-spacing: 0; }
 .modalBody { padding: 16px; overflow-y: auto; min-height: 0; }
+.modalClose { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
+.modalClose:hover { background: var(--sunken2); color: var(--ink); }
+.bookingCalendar { display: grid; grid-template-columns: 190px minmax(0, 1fr) 220px; gap: 12px; align-items: stretch; }
+.slotRail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.slotRail button { min-height: 54px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); border-radius: 8px; padding: 8px 10px; text-align: left; cursor: pointer; font-family: inherit; }
+.slotRail button b { display: block; font-family: var(--fh); font-size: 13px; line-height: 1.2; }
+.slotRail button span { display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px; }
+.slotRail button.on { border-color: var(--accent); background: var(--accent-100); color: var(--accent); box-shadow: 0 0 0 2px var(--accent-100); }
+.slotGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); align-content: start; gap: 8px; min-width: 0; }
+.slotGrid button { min-height: 44px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); border-radius: 8px; padding: 0 12px; cursor: pointer; font-weight: 650; font-family: inherit; }
+.slotGrid button:hover, .slotGrid button.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+.slotSummary { border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); padding: 13px; min-height: 100px; display: flex; flex-direction: column; gap: 5px; }
+.slotSummary b { font-family: var(--fh); font-size: 15px; line-height: 1.3; }
 .wizardModalGrid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
 .wizardRail { display: flex; flex-direction: column; gap: 12px; }
 .appform { display: grid; grid-template-columns: minmax(0, 1.28fr) minmax(280px, 0.72fr); gap: 16px; align-items: start; }
@@ -198,6 +212,9 @@ a { color: var(--accent); }
   .modalOverlay { padding: 0; align-items: stretch; }
   .modalDialog { width: 100vw; max-height: 100vh; min-height: 100vh; border-radius: 0; border-left: 0; border-right: 0; }
   .modalBody { padding: 12px; }
+  .bookingCalendar { grid-template-columns: 1fr; }
+  .slotRail { flex-direction: row; overflow-x: auto; padding-bottom: 2px; }
+  .slotRail button { min-width: 150px; flex: 0 0 auto; }
 }
 
 /* ---------- tables ---------- */

@@ -170,26 +170,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </button>
 
         <nav className="nav">
-          <div className="grp">
-            {nav.map((item) => {
-              const on =
-                item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-              return (
-                <Link key={item.href} href={item.href} className={on ? "on" : undefined}>
-                  <Icon name={item.icon} />
-                  <span>{item.label}</span>
-                  {item.href === "/" && unreadTotal > 0 && (
-                    <span
-                      className="navbadge"
-                      title={`${unreadTotal} unread message${unreadTotal === 1 ? "" : "s"}`}
-                    >
-                      {unreadTotal > 99 ? "99+" : unreadTotal}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+          {nav.map((item) => {
+            const on =
+              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            return (
+              <Link key={item.href} href={item.href} className={on ? "on" : undefined}>
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                {item.href === "/" && unreadTotal > 0 && (
+                  <span
+                    className="navbadge"
+                    title={`${unreadTotal} unread message${unreadTotal === 1 ? "" : "s"}`}
+                  >
+                    {unreadTotal > 99 ? "99+" : unreadTotal}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="foot">

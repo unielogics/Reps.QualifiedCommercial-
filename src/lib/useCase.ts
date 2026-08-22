@@ -18,6 +18,9 @@ import { api } from "./api";
 
 export type Verification = {
   bank_linked: boolean;
+  bank_source: "plaid" | "upload" | "none";
+  statement_months: string[];
+  missing_statement_months: string[];
   credit_returned: boolean;
   unlocked: boolean;
   returned: number;
@@ -73,6 +76,9 @@ export type Dealer = {
 
 const NO_VERIFICATION: Verification = {
   bank_linked: false,
+  bank_source: "none",
+  statement_months: [],
+  missing_statement_months: [],
   credit_returned: false,
   unlocked: false,
   returned: 0,

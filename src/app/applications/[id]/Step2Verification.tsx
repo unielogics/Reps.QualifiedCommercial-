@@ -14,11 +14,12 @@
 // a different conversation from "opened but abandoned", and a rep who cannot
 // tell them apart chases the wrong way.
 
-import { useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, apiUpload } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflows";
 import Modal from "@/components/Modal";
 
 type PlaidItem = {
@@ -50,6 +51,13 @@ type DeliveryRow = {
   status: string;
   at: string;
   detail: string;
+};
+
+type DocumentRead = {
+  id: string;
+  filename: string;
+  kind: string;
+  status: string;
 };
 
 function when(iso: string | null | undefined): string {
@@ -104,10 +112,12 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const { dealer, verification } = useCase(dealerId);
-  const [modal, setModal] = useState<null | "bank" | "credit">(null);
+  const uploadInput = useRef<HTMLInputElement | null>(null);
+  const [modal, setModal] = useState<null | "bank" | "upload" | "credit">(null);
   const [alsoText, setAlsoText] = useState(false);
   const [sent, setSent] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   // Rotation, not retrieval: the stored code is a hash and can never be shown
   // again, so "show me the code" always means "mint a new one". The old code
@@ -126,6 +136,14 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
     queryKey: ["plaid", dealerId],
     queryFn: async () =>
       api<PlaidState>(`/dealer-os/dealers/${dealerId}/plaid`, {
+        authToken: (await getToken()) ?? undefined,
+      }),
+  });
+
+  const evidence = useQuery({
+    queryKey: ["bank-evidence", dealerId],
+    queryFn: async () =>
+      api<BankEvidenceRead>(`/dealer-os/dealers/${dealerId}/bank-evidence`, {
         authToken: (await getToken()) ?? undefined,
       }),
   });
@@ -172,16 +190,75 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       if (code) setAccessCode(code);
       void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
       void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
     },
   });
 
-  const bankTone = verification.bank_linked ? "c-ok" : "c-warn";
+  const requestUpload = useMutation({
+    mutationFn: async () =>
+      api<BankUploadRequestResult>(`/dealer-os/dealers/${dealerId}/bank-upload-request`, {
+        method: "POST",
+        body: JSON.stringify({ channel: alsoText ? "sms" : "email" }),
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: (r) => {
+      setModal(null);
+      setSent(r.detail ?? "Statement upload request sent.");
+      if (r.passcode) setAccessCode(r.passcode);
+      void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
+    },
+  });
+
+  const uploadStatements = useMutation({
+    mutationFn: async (files: File[]) => {
+      const token = (await getToken()) ?? undefined;
+      const uploaded: DocumentRead[] = [];
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("kind", "statement");
+        uploaded.push(
+          await apiUpload<DocumentRead>(`/dealer-os/dealers/${dealerId}/documents`, form, {
+            authToken: token,
+          }),
+        );
+      }
+      return uploaded;
+    },
+    onSuccess: (docs) => {
+      setSent(
+        docs.length === 1
+          ? `${docs[0]?.filename ?? "Statement"} uploaded and sent to extraction.`
+          : `${docs.length} statements uploaded and sent to extraction.`,
+      );
+      void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+    },
+  });
+
+  const evidenceData = evidence.data;
+  const bankSource = evidenceData?.bank_source ?? verification.bank_source;
+  const statementMonths = evidenceData?.statement_months ?? verification.statement_months;
+  const missingStatementMonths =
+    evidenceData?.missing_statement_months ?? verification.missing_statement_months;
+  const bankLinked = evidenceData?.bank_linked ?? verification.bank_linked;
+  const handleFiles = (list: FileList | File[]) => {
+    const files = Array.from(list).filter((file) => file.size > 0);
+    if (files.length) uploadStatements.mutate(files);
+  };
+
+  const bankTone = bankLinked ? "c-ok" : "c-warn";
   const creditTone = verification.credit_returned ? "c-ok" : "c-warn";
-  const kv: React.CSSProperties = {
+  const kv: CSSProperties = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     gap: 12,
   };
+  const modalError = modal === "upload" ? requestUpload.error : send.error;
+  const modalIsError = modal === "upload" ? requestUpload.isError : send.isError;
+  const modalPending = modal === "upload" ? requestUpload.isPending : send.isPending;
 
   return (
     <>
@@ -195,9 +272,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
         <div className="panel-b">
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>
-            Two authorizations are required before the credit application opens: a read-only
-            bank connection and a soft credit inquiry. Each is sent to the principal from this
-            screen, by email or SMS, and returns to this case automatically.
+            Two authorizations are required before the credit application opens: bank evidence
+            through Plaid or uploaded statements, and a soft credit inquiry. Each client request
+            is sent from this screen, by email or SMS, and returns to this case automatically.
           </p>
           <span className="sub" style={{ display: "block", marginTop: 8 }}>
             A soft inquiry does not affect the applicant&apos;s credit score. Delivery, opening
@@ -264,36 +341,43 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               <path d="M3 10l9-6 9 6M5 10v9h14v-9M9 19v-6h6v6" />
             </svg>
           </IconTile>
-          Bank connection · Plaid
+          Bank evidence
           <span style={{ flex: 1 }} />
           <span className={`cellchip ${bankTone}`}>
-            {verification.bank_linked ? "Connected" : "Awaiting applicant"}
+            {bankLinked
+              ? bankSource === "upload"
+                ? "Uploaded statements"
+                : "Connected"
+              : "Awaiting applicant"}
           </span>
         </div>
         <div className="panel-b">
           <div style={kv}>
             <div>
-              <span className="lbl">Institution</span>
+              <span className="lbl">Plaid institution</span>
               <b style={{ display: "block" }}>{item?.institution_name ?? "—"}</b>
             </div>
             <div>
-              <span className="lbl">History retrieved</span>
+              <span className="lbl">Evidence source</span>
               <b className="num" style={{ display: "block" }}>
-                {verification.bank_linked ? "6 months" : "—"}
+                {bankSource === "upload" ? "Upload" : bankSource === "plaid" ? "Plaid" : "—"}
               </b>
             </div>
             <div>
-              <span className="lbl">Accounts</span>
+              <span className="lbl">Statement coverage</span>
               <b className="num" style={{ display: "block" }}>
-                {plaid.data?.items.length
-                  ? `${plaid.data.items.length} linked`
+                {statementMonths.length
+                  ? `${statementMonths.length} month${statementMonths.length === 1 ? "" : "s"}`
                   : "—"}
               </b>
             </div>
           </div>
           <div className="row mt">
             <button type="button" className="btn pri" onClick={() => setModal("bank")}>
-              Send bank link request
+              Connect with Plaid
+            </button>
+            <button type="button" className="btn" onClick={() => setModal("upload")}>
+              Request statement upload
             </button>
             <button
               type="button"
@@ -301,15 +385,98 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               disabled={send.isPending}
               onClick={() => send.mutate("bank")}
             >
-              Resend
+              Resend Plaid
             </button>
             <span style={{ flex: 1 }} />
             <span className="sub">{when(item?.last_synced_at)}</span>
           </div>
+          <div
+            className={`dropzone mt${dragging ? " drag" : ""}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => uploadInput.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") uploadInput.current?.click();
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              handleFiles(e.dataTransfer.files);
+            }}
+            style={{ padding: 22 }}
+          >
+            <input
+              ref={uploadInput}
+              type="file"
+              multiple
+              accept=".pdf,.csv,.xlsx,.xls,image/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                if (e.target.files) handleFiles(e.target.files);
+                e.currentTarget.value = "";
+              }}
+            />
+            <b>Drop bank statements here</b>
+            <span className="sub" style={{ display: "block", marginTop: 5 }}>
+              Agent uploads are stored on the file, mirrored into the linked bucket, and sent
+              through extraction as statements.
+            </span>
+            {uploadStatements.isPending && (
+              <span className="sub" style={{ display: "block", marginTop: 8 }}>
+                Uploading and extracting statements…
+              </span>
+            )}
+          </div>
+          <div className="row mt" style={{ gap: 8 }}>
+            {statementMonths.slice(-6).map((month) => (
+              <span key={month} className="cellchip c-ok">
+                {month}
+              </span>
+            ))}
+            {missingStatementMonths.map((month) => (
+              <span key={month} className="cellchip c-warn">
+                Missing {month}
+              </span>
+            ))}
+            {!statementMonths.length && !missingStatementMonths.length && (
+              <span className="sub">No uploaded statement coverage has been extracted yet.</span>
+            )}
+          </div>
+          {evidenceData?.upload_url && (
+            <span className="sub" style={{ display: "block", marginTop: 8 }}>
+              Client room:{" "}
+              <a href={evidenceData.upload_url} target="_blank" rel="noreferrer">
+                open upload room
+              </a>
+            </span>
+          )}
+          {requestUpload.isError && (
+            <div className="note">
+              <div>
+                {requestUpload.error instanceof Error
+                  ? requestUpload.error.message
+                  : "Could not send the upload request."}
+              </div>
+            </div>
+          )}
+          {uploadStatements.isError && (
+            <div className="note">
+              <div>
+                {uploadStatements.error instanceof Error
+                  ? uploadStatements.error.message
+                  : "Could not upload those statements."}
+              </div>
+            </div>
+          )}
           {plaid.data && !plaid.data.enabled && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
-              Bank connections are not switched on yet, so the link will not open for the
-              applicant. Send documents by upload in the meantime.
+              Plaid connections are not switched on yet. Use statement upload in the meantime;
+              the upload path satisfies the same bank gate once six current months extract.
             </span>
           )}
         </div>
@@ -437,12 +604,20 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
       {modal && (
         <Modal
-          title={modal === "bank" ? "Send bank connection request" : "Send credit authorization"}
+          title={
+            modal === "bank"
+              ? "Send Plaid connection request"
+              : modal === "upload"
+                ? "Request statement upload"
+                : "Send credit authorization"
+          }
           onClose={() => setModal(null)}
         >
           <p className="sub" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6 }}>
             {modal === "bank"
               ? "The applicant opens a Plaid connection and grants read-only access to the operating account. No credentials pass through Qualified Commercial."
+              : modal === "upload"
+                ? "The applicant opens the secure room and uploads the last six completed months of business bank statements to the linked bucket."
               : "The applicant authorizes a soft credit inquiry. It does not affect their score and returns a band rather than an exact figure."}
           </p>
 
@@ -476,14 +651,18 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <div>
               {modal === "bank"
                 ? "Delivery and completion are timestamped in the audit trail. The link can be reissued from this panel at any time."
+                : modal === "upload"
+                  ? "A checklist item is added to the client room. Uploaded files are mirrored into the bucket and ingested into the same financial pipeline."
                 : "The disclosure text shown to the applicant is served and stored by the system, so the record matches exactly what they saw."}
             </div>
           </div>
 
-          {send.isError && (
+          {modalIsError && (
             <div className="note">
               <div>
-                {send.error instanceof Error ? send.error.message : "That did not send."}
+                {modalError instanceof Error
+                  ? modalError.message
+                  : "That did not send."}
               </div>
             </div>
           )}
@@ -495,10 +674,19 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <button
               type="button"
               className="btn pri"
-              disabled={send.isPending}
-              onClick={() => send.mutate(modal)}
+              disabled={modalPending}
+              onClick={() => {
+                if (modal === "upload") requestUpload.mutate();
+                else if (modal === "bank" || modal === "credit") send.mutate(modal);
+              }}
             >
-              {send.isPending ? "Sending…" : modal === "bank" ? "Send bank link" : "Send authorization"}
+              {modalPending
+                ? "Sending…"
+                : modal === "bank"
+                  ? "Send Plaid link"
+                  : modal === "upload"
+                    ? "Send upload request"
+                    : "Send authorization"}
             </button>
           </div>
         </Modal>

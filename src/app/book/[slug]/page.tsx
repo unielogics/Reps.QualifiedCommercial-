@@ -1,7 +1,7 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -15,9 +15,20 @@ type Profile = {
   slots: Slot[];
 };
 
+function groupSlots(slots: Slot[]): Array<{ label: string; slots: Slot[] }> {
+  const days: Array<{ label: string; slots: Slot[] }> = [];
+  for (const slot of slots) {
+    const last = days[days.length - 1];
+    if (last?.label === slot.date_label) last.slots.push(slot);
+    else days.push({ label: slot.date_label, slots: [slot] });
+  }
+  return days;
+}
+
 export default function PublicBookPage() {
   const { slug } = useParams<{ slug: string }>();
   const [slot, setSlot] = useState("");
+  const [dayIndex, setDayIndex] = useState(0);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -40,9 +51,13 @@ export default function PublicBookPage() {
       }),
   });
   const p = profile.data;
+  const days = useMemo(() => groupSlots(p?.slots ?? []), [p?.slots]);
+  const activeDay = days[Math.min(dayIndex, Math.max(days.length - 1, 0))];
+  const selected = p?.slots.find((s) => s.starts_at === slot);
+
   return (
     <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 20, background: "var(--sunken)" }}>
-      <div className="card hi" style={{ width: "min(760px, 100%)" }}>
+      <div className="card hi" style={{ width: "min(980px, 100%)" }}>
         <div className="brand">
           {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset */}
           <img src="/qc-icon.svg" alt="Qualified Commercial" className="mark" style={{ background: "none", objectFit: "contain" }} />
@@ -58,18 +73,47 @@ export default function PublicBookPage() {
             <h1 style={{ fontFamily: "var(--fh)", fontSize: 28, margin: "22px 0 8px" }}>{p.title}</h1>
             <p className="lede">{p.intro}</p>
             <div className="panel mt">
-              <div className="panel-h">{p.duration_min} minute call</div>
-              <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <label className="lbl">Time</label>
-                <select className="field" value={slot} onChange={(e) => setSlot(e.target.value)}>
-                  <option value="">Choose a time</option>
-                  {p.slots.map((s) => (
-                    <option key={s.starts_at} value={s.starts_at}>
-                      {s.date_label} · {s.label}
-                    </option>
-                  ))}
-                </select>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+              <div className="panel-h">
+                {p.duration_min} minute call
+                <span style={{ flex: 1 }} />
+                <span className="sub">{p.timezone}</span>
+              </div>
+              <div className="panel-b" style={{ display: "grid", gap: 14 }}>
+                <div className="bookingCalendar">
+                  <div className="slotRail" aria-label="Available days">
+                    {days.map((day, index) => (
+                      <button
+                        key={day.label}
+                        type="button"
+                        className={index === dayIndex ? "on" : undefined}
+                        onClick={() => setDayIndex(index)}
+                      >
+                        <b>{day.label}</b>
+                        <span>{day.slots.length} time{day.slots.length === 1 ? "" : "s"}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="slotGrid" aria-label="Available times">
+                    {(activeDay?.slots ?? []).map((s) => (
+                      <button
+                        key={s.starts_at}
+                        type="button"
+                        className={slot === s.starts_at ? "on" : undefined}
+                        onClick={() => setSlot(s.starts_at)}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                    {p.slots.length === 0 && <span className="sub">No available times are open right now.</span>}
+                  </div>
+                  <div className="slotSummary">
+                    <span className="lbl">Selected time</span>
+                    <b>{selected ? `${selected.date_label} at ${selected.label}` : "Choose a time"}</b>
+                    <span className="sub">{p.timezone}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
                   <div>
                     <label className="lbl">Name</label>
                     <input className="field" value={fullName} onChange={(e) => setFullName(e.target.value)} />

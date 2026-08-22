@@ -28,7 +28,7 @@ export default function ActionHub() {
           title="Create or send"
           aria-label="Create or send"
           onClick={() => setOpen((v) => !v)}
-          style={{ width: 34, padding: 0, justifyContent: "center" }}
+          style={{ width: 44, padding: 0, justifyContent: "center" }}
         >
           <PlusIcon />
         </button>

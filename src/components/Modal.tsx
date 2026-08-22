@@ -67,22 +67,10 @@ export default function Modal({
           <span style={{ flex: 1 }} />
           <button
             type="button"
+            className="modalClose"
             onClick={onClose}
             aria-label="Close"
             title="Close"
-            style={{
-              border: "1px solid var(--line)",
-              background: "var(--surface)",
-              color: "var(--muted)",
-              borderRadius: 8,
-              width: 28,
-              height: 28,
-              display: "grid",
-              placeItems: "center",
-              cursor: "pointer",
-              padding: 0,
-              flexShrink: 0,
-            }}
           >
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
               <path d="M18 6L6 18M6 6l12 12" />
