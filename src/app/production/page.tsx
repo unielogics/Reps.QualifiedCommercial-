@@ -2,11 +2,10 @@
 
 // What the field team is bringing in. Super-admin only, enforced server-side.
 //
-// The headline number is deliberately NOT files opened. A rep can open twenty
-// files in an afternoon and none of them are worth anything until a client
-// actually sends something, so leading with the count would reward exactly the
-// wrong behaviour. "With documents" is the number that separates a visit from
-// a file.
+// The headline number is deliberately NOT applications opened. A rep can open
+// twenty applications in an afternoon and none of them are worth anything until
+// a client actually sends something, so leading with the count would reward
+// exactly the wrong behaviour.
 
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
@@ -14,36 +13,10 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 
-type FileRow = {
-  dealer_id: string;
-  name: string;
-  city: string | null;
-  state: string | null;
-  industry: string | null;
-  status: string | null;
-  decision: string | null;
-  score: number | null;
-  documents: number;
-  created_at: string;
-  last_activity: string | null;
-};
-
-type Rep = {
+type ProductionTotals = {
   funnel: Funnel;
-  rep_user_id: string | null;
-  rep_name: string;
-  rep_email: string | null;
-  files_opened: number;
-  active: number;
-  complete: number;
-  declined: number;
-  stalled: number;
   with_documents: number;
-  fundable: number;
-  avg_score: number | null;
-  last_activity: string | null;
   insights: Insights;
-  files: FileRow[];
 };
 
 type CategoryMetric = {
@@ -94,7 +67,7 @@ type Funnel = {
   contract_executed: number;
 };
 
-type Production = { since: string | null; totals: Rep; reps: Rep[] };
+type Production = { since: string | null; totals: ProductionTotals };
 
 const STAGES: Array<{ key: keyof Funnel; label: string }> = [
   { key: "opened", label: "Opened" },
@@ -143,15 +116,6 @@ function money(value: number | null): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(value);
-}
-
-function ago(iso: string | null): string {
-  if (!iso) return "—";
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days}d ago`;
-  return `${Math.floor(days / 30)}mo ago`;
 }
 
 function RatioBar({ label, value }: { label: string; value: number | null }) {
@@ -420,42 +384,6 @@ export default function ProductionPage() {
           </div>
         </div>
       )}
-
-      {d && d.reps.length === 0 && (
-        <div className="card mt">
-          <b>No field applications yet</b>
-          <p className="sub mt">
-            Once a rep opens their first application it appears here, along with whether the client
-            has sent anything.
-          </p>
-        </div>
-      )}
-
-      {d?.reps.map((r) => (
-        <div className="panel mt" key={r.rep_user_id ?? r.rep_name}>
-          <div className="panel-h" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <b>{r.rep_name}</b>
-            {r.rep_email && <span className="sub">{r.rep_email}</span>}
-            <span style={{ flex: 1 }} />
-            <span className="sub">last active {ago(r.last_activity)}</span>
-          </div>
-          <div className="panel-b">
-            <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-              <span className="cellchip c-acc">{r.funnel.opened} opened</span>
-              <span className="cellchip c-ok">{r.funnel.verified} verified</span>
-              <span className="cellchip c-mut">{r.funnel.bank_linked} bank evidence</span>
-              <span className="cellchip c-mut">{r.active} working</span>
-              <span className="cellchip c-acc">{ratio(r.insights.underwriting_ready_ratio)} underwriting ready</span>
-              <span className="cellchip c-ok">{r.insights.approved_or_fundable} approved/fundable</span>
-              {r.complete > 0 && <span className="cellchip c-ok">{r.complete} complete</span>}
-              {r.stalled > 0 && <span className="cellchip c-warn">{r.stalled} stalled</span>}
-              {r.declined > 0 && <span className="cellchip c-bad">{r.declined} declined</span>}
-              {r.avg_score !== null && <span className="sub">avg score {r.avg_score}</span>}
-              <span className="sub">avg requested {money(r.insights.amount_metrics.average_requested)}</span>
-            </div>
-          </div>
-        </div>
-      ))}
 
       {d?.since && (
         <p className="sub mt">

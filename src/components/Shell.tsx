@@ -61,6 +61,19 @@ function Brand() {
   );
 }
 
+function formatTopClock(value: Date) {
+  const date = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(value);
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(value);
+  return `${date} · ${time}`;
+}
+
 const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Portfolio", icon: "home" },
   { href: "/inbox", label: "Inbox", icon: "chat" },
@@ -69,7 +82,8 @@ const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [rail, setRail] = useState(true);
-  const { name, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
+  const [now, setNow] = useState<Date | null>(null);
+  const { name, email, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
   const { getToken } = useAuth();
 
   // One grouped query for every file, not the per-file endpoint in a loop: a
@@ -94,6 +108,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
+  }, []);
+
+  useEffect(() => {
+    setNow(new Date());
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const toggleRail = () =>
@@ -193,6 +213,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="foot">
           <SignedIn>
             <UserButton afterSignOutUrl="/sign-in" />
+            <div className="side-user">
+              <b>{name || "Field rep"}</b>
+              {email && <span>{email}</span>}
+            </div>
             <Link href="/account/security" className="footlink" title="Account and security">
               Security
             </Link>
@@ -204,8 +228,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="top">
           <b>{isTeam && !isRep ? "Field Desk · team view" : "Field Desk"}</b>
           <div className="sp" />
+          {now && <span className="topclock num">{formatTopClock(now)}</span>}
           <ActionHub />
-          {name && <span className="chip">{name}</span>}
         </div>
         <div className={pathname.startsWith("/applications/") ? "content content--wide" : "content"}>
           {/* Above the page, not inside it: the prompt has to be visible
