@@ -115,6 +115,7 @@ export default function BookingDrawer({
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["appointments", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["rep-appointments"] });
       void qc.invalidateQueries({ queryKey: ["inbox-threads"] });
       onClose();
     },

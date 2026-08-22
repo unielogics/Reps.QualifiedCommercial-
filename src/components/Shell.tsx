@@ -17,7 +17,7 @@ import MfaBanner from "./MfaBanner";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 
-type IconName = "home" | "plus" | "chart" | "chat";
+type IconName = "home" | "plus" | "chart" | "chat" | "calendar";
 
 // Same stroke-path idiom the audit app uses, so icons match weight for weight.
 const ICON_PATHS: Record<IconName, string> = {
@@ -25,6 +25,7 @@ const ICON_PATHS: Record<IconName, string> = {
   plus: "M12 5v14M5 12h14",
   chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   chat: "M21 12a8 8 0 01-8 8H4l2-3a8 8 0 1115-5z",
+  calendar: "M8 3v4M16 3v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z",
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -45,7 +46,7 @@ function Icon({ name }: { name: IconName }) {
 
 function Brand() {
   return (
-    <div className="brand">
+    <Link href="/" className="brand" aria-label="Go to Portfolio home">
       {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset */}
       <img
         src="/qc-icon.svg"
@@ -57,26 +58,29 @@ function Brand() {
         <b>Field Desk</b>
         <span>Qualified Commercial</span>
       </div>
-    </div>
+    </Link>
   );
 }
 
-function formatTopClock(value: Date) {
-  const date = new Intl.DateTimeFormat(undefined, {
+function formatTopDate(value: Date) {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
     month: "short",
     day: "numeric",
-    year: "numeric",
   }).format(value);
-  const time = new Intl.DateTimeFormat(undefined, {
+}
+
+function formatTopTime(value: Date) {
+  return new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit",
   }).format(value);
-  return `${date} · ${time}`;
 }
 
 const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Portfolio", icon: "home" },
   { href: "/inbox", label: "Inbox", icon: "chat" },
+  { href: "/calendar", label: "Calendar", icon: "calendar" },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -228,10 +232,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="top">
           <b>{isTeam && !isRep ? "Field Desk · team view" : "Field Desk"}</b>
           <div className="sp" />
-          {now && <span className="topclock num">{formatTopClock(now)}</span>}
+          {now && (
+            <Link href="/calendar" className="topclock" aria-label="Open calendar">
+              <span>{formatTopDate(now)}</span>
+              <b className="num">{formatTopTime(now)}</b>
+            </Link>
+          )}
           <ActionHub />
         </div>
-        <div className={pathname.startsWith("/applications/") ? "content content--wide" : "content"}>
+        <div className={pathname.startsWith("/applications/") || pathname.startsWith("/calendar") ? "content content--wide" : "content"}>
           {/* Above the page, not inside it: the prompt has to be visible
               wherever you land, not only on one screen you might not open. */}
           <MfaBanner />
