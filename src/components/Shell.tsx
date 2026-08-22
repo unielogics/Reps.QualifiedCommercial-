@@ -240,7 +240,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
           <ActionHub />
         </div>
-        <div className={pathname.startsWith("/applications/") || pathname.startsWith("/calendar") ? "content content--wide" : "content"}>
+        <div className="content content--wide">
           {/* Above the page, not inside it: the prompt has to be visible
               wherever you land, not only on one screen you might not open. */}
           <MfaBanner />
