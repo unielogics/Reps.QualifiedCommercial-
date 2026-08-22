@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -71,7 +71,14 @@ function stageChip(r: Row) {
   return <span className="cellchip c-mut">Intake</span>;
 }
 
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    ? Boolean(target.closest("a,button,input,select,textarea,label,[role='button'],[role='link']"))
+    : false;
+}
+
 export default function Portfolio() {
+  const router = useRouter();
   const { getToken } = useAuth();
   const search = useSearchParams();
   const { isRep, isTeam } = useMe();
@@ -191,8 +198,24 @@ export default function Portfolio() {
             <tbody>
               {shown.map((r) => {
                 const unreadCount = unread.data?.per_file?.[r.id] ?? 0;
+                const href = `/applications/${r.id}`;
                 return (
-                  <tr key={r.id}>
+                  <tr
+                    key={r.id}
+                    data-go
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`Open ${r.name}`}
+                    onClick={(event) => {
+                      if (!isInteractiveTarget(event.target)) router.push(href);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      if (isInteractiveTarget(event.target)) return;
+                      event.preventDefault();
+                      router.push(href);
+                    }}
+                  >
                     <td>
                       <b>{r.name}</b>
                       {r.case_ref && (
@@ -226,7 +249,7 @@ export default function Portfolio() {
                     <td className="r num">{r.verified ? money(r.funding_goal) : "—"}</td>
                     <td className="sub">{nextAction(r)}</td>
                     <td className="r">
-                      <Link className="linky" href={`/applications/${r.id}`}>
+                      <Link className="linky" href={href}>
                         Open →
                       </Link>
                     </td>
