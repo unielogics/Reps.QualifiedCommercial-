@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 
 export default function Drawer({
   title,
   onClose,
   children,
-  width = 860,
+  width = 960,
 }: {
   title: string;
   onClose: () => void;
@@ -28,39 +28,28 @@ export default function Drawer({
 
   return (
     <div
+      className="modalOverlay"
       role="presentation"
       onClick={onClose}
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 60,
-        background: "rgba(15,23,32,.38)",
-        display: "flex",
-        justifyContent: "flex-end",
-      }}
+        "--modal-w": `${width}px`,
+      } as CSSProperties}
     >
       <section
+        className="modalDialog"
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        style={{
-          width: `min(${width}px, 100vw)`,
-          height: "100vh",
-          overflowY: "auto",
-          background: "var(--surface)",
-          borderLeft: "1px solid var(--line)",
-          boxShadow: "var(--sh2)",
-        }}
       >
-        <div className="panel-h" style={{ position: "sticky", top: 0, zIndex: 1, background: "var(--surface)" }}>
-          <b style={{ fontFamily: "var(--fh)", fontSize: 15 }}>{title}</b>
+        <div className="modalHead">
+          <b>{title}</b>
           <span style={{ flex: 1 }} />
           <button type="button" className="btn sm" onClick={onClose} aria-label="Close">
             Close
           </button>
         </div>
-        <div style={{ padding: 16 }}>{children}</div>
+        <div className="modalBody">{children}</div>
       </section>
     </div>
   );

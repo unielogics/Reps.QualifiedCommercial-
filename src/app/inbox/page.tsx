@@ -4,9 +4,13 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import BookingDrawer from "@/components/BookingDrawer";
+import ContactShareDrawer from "@/components/ContactShareDrawer";
+import InboxComposeModal from "@/components/InboxComposeModal";
 
 type Thread = {
   id: string;
+  dealer_id: string | null;
   subject: string;
   channel: string;
   source: string;
@@ -44,6 +48,9 @@ export default function InboxPage() {
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [compose, setCompose] = useState(false);
+  const [booking, setBooking] = useState(false);
+  const [share, setShare] = useState(false);
   const threads = useQuery({
     queryKey: ["inbox-threads"],
     queryFn: async () =>
@@ -75,12 +82,33 @@ export default function InboxPage() {
     },
   });
   const rows = threads.data ?? [];
+  const seed = selected
+    ? {
+        dealer_id: selected.dealer_id,
+        contact_name: selected.contact_name,
+        contact_email: selected.contact_email,
+        contact_phone: selected.contact_phone,
+        company: selected.company,
+      }
+    : null;
 
   return (
     <>
       <div className="hd">
         <h2>Inbox</h2>
         <p className="lede">Email and SMS replies from people you booked or shared your contact card with.</p>
+      </div>
+
+      <div className="row mt" style={{ justifyContent: "flex-end" }}>
+        <button type="button" className="btn pri" onClick={() => setCompose(true)}>
+          New
+        </button>
+        <button type="button" className="btn" onClick={() => setBooking(true)}>
+          Book appointment
+        </button>
+        <button type="button" className="btn" onClick={() => setShare(true)}>
+          Send business card
+        </button>
       </div>
 
       <div className="cg mt" style={{ alignItems: "stretch" }}>
@@ -122,6 +150,16 @@ export default function InboxPage() {
               {selected ? selected.subject : "Conversation"}
               <span style={{ flex: 1 }} />
               {selected && <span className="cellchip c-acc">{selected.channel}</span>}
+              {selected && (
+                <>
+                  <button type="button" className="btn sm" onClick={() => setBooking(true)}>
+                    Book
+                  </button>
+                  <button type="button" className="btn sm" onClick={() => setShare(true)}>
+                    Card
+                  </button>
+                </>
+              )}
             </div>
             <div className="panel-b">
               {!selected && <span className="sub">Choose a thread.</span>}
@@ -166,6 +204,35 @@ export default function InboxPage() {
           </div>
         </div>
       </div>
+
+      {compose && (
+        <InboxComposeModal
+          seed={seed}
+          onClose={() => setCompose(false)}
+          onSent={(threadId) => {
+            if (threadId) setSelectedId(threadId);
+          }}
+        />
+      )}
+      {booking && (
+        <BookingDrawer
+          initialDealerId={seed?.dealer_id ?? null}
+          initialName={seed?.contact_name ?? null}
+          initialEmail={seed?.contact_email ?? null}
+          initialPhone={seed?.contact_phone ?? null}
+          onClose={() => setBooking(false)}
+        />
+      )}
+      {share && (
+        <ContactShareDrawer
+          initialDealerId={seed?.dealer_id ?? null}
+          initialName={seed?.contact_name ?? null}
+          initialCompany={seed?.company ?? null}
+          initialEmail={seed?.contact_email ?? null}
+          initialPhone={seed?.contact_phone ?? null}
+          onClose={() => setShare(false)}
+        />
+      )}
     </>
   );
 }

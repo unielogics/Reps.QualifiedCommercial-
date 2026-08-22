@@ -23,7 +23,7 @@ body {
   font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
 }
-h1, h2, h3 { font-family: var(--fh); font-weight: 650; letter-spacing: -0.022em; margin: 0; }
+h1, h2, h3 { font-family: var(--fh); font-weight: 650; letter-spacing: 0; margin: 0; }
 h2 { font-size: 23px; }
 /* Page lede: the .sub paragraph directly under a page h2. */
 h2 + .sub { margin: 4px 0 0; max-width: 760px; }
@@ -47,7 +47,7 @@ a { color: var(--accent); }
 .side { background: var(--surface); border-right: 1px solid var(--line); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px 12px; }
 .brand .mark { width: 35px; height: 35px; border-radius: 10px; background: linear-gradient(150deg, var(--accent), var(--petrol)); display: grid; place-items: center; color: #fff; font-family: var(--fh); font-weight: 700; font-size: 13px; flex-shrink: 0; }
-.brand b { font-family: var(--fh); font-size: 14.5px; letter-spacing: -0.02em; display: block; line-height: 1.15; }
+.brand b { font-family: var(--fh); font-size: 14.5px; letter-spacing: 0; display: block; line-height: 1.15; }
 .brand span { font-size: 10px; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; }
 .nav { padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; flex: 1; }
 .nav .grp { font-size: 9.5px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--faint); padding: 14px 10px 5px; font-weight: 700; }
@@ -88,7 +88,7 @@ a { color: var(--accent); }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--sh1); padding: 17px; }
 .card.hi { box-shadow: var(--sh2); }
 .lbl { font-size: 10.5px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
-.big { font-family: var(--fh); font-size: 29px; letter-spacing: -0.03em; line-height: 1.05; margin-top: 5px; font-weight: 650; }
+.big { font-family: var(--fh); font-size: 29px; letter-spacing: 0; line-height: 1.05; margin-top: 5px; font-weight: 650; }
 .gapchip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 750; margin-top: 9px; }
 .g-ok { background: var(--ok-tint); color: var(--ok); }
 .g-warn { background: var(--warn-tint); color: var(--warn); }
@@ -101,7 +101,7 @@ a { color: var(--accent); }
 .scorecard { display: flex; gap: 24px; align-items: center; }
 .gauge { position: relative; flex-shrink: 0; width: 148px; height: 148px; }
 .gauge .val { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
-.gauge .val b { font-family: var(--fh); font-size: 38px; letter-spacing: -0.03em; display: block; line-height: 1; font-weight: 680; }
+.gauge .val b { font-family: var(--fh); font-size: 38px; letter-spacing: 0; display: block; line-height: 1; font-weight: 680; }
 .gauge .val span { font-size: 10.5px; color: var(--muted); letter-spacing: 0.09em; text-transform: uppercase; }
 .barrow { display: flex; align-items: center; gap: 10px; margin: 6.5px 0; }
 .barrow .bn { width: 132px; font-size: 12.5px; color: var(--ink2); }
@@ -173,9 +173,32 @@ a { color: var(--accent); }
 .popmenu .mi:hover { background: var(--sunken2); }
 .popmenu .mi:disabled { opacity: 0.55; cursor: default; }
 .popmenu .mi small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 1px; white-space: normal; }
-.field { border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; font-size: 13px; font-family: inherit; color: var(--ink); background: var(--surface); outline: none; min-width: 0; }
+.field { border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; font-size: 13px; font-family: inherit; color: var(--ink); background: var(--surface); outline: none; min-width: 0; width: 100%; }
 .field:focus { border-color: var(--accent-400); }
 .field.grow { flex: 1; min-width: 180px; }
+
+/* ---------- full modal workflows ---------- */
+.modalOverlay { position: fixed; inset: 0; z-index: 60; background: rgba(15, 23, 32, 0.46); display: grid; place-items: center; padding: 24px; }
+.modalDialog { width: min(var(--modal-w, 960px), calc(100vw - 48px)); max-height: calc(100vh - 48px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--sh2); overflow: hidden; display: flex; flex-direction: column; }
+.modalHead { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.modalHead b { font-family: var(--fh); font-size: 15px; letter-spacing: 0; }
+.modalBody { padding: 16px; overflow-y: auto; min-height: 0; }
+.wizardModalGrid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
+.wizardRail { display: flex; flex-direction: column; gap: 12px; }
+.appform { display: grid; grid-template-columns: minmax(0, 1.28fr) minmax(280px, 0.72fr); gap: 16px; align-items: start; }
+.appform-page { margin-top: 14px; grid-template-columns: repeat(12, 1fr); }
+.appform-page .appform-main { grid-column: span 7; }
+.appform-page .appform-side { grid-column: span 5; }
+.appform-modal .panel + .panel { margin-top: 14px; }
+@media (max-width: 1100px) {
+  .wizardModalGrid, .appform { grid-template-columns: 1fr; }
+  .appform-page .appform-main, .appform-page .appform-side { grid-column: span 12; }
+}
+@media (max-width: 720px) {
+  .modalOverlay { padding: 0; align-items: stretch; }
+  .modalDialog { width: 100vw; max-height: 100vh; min-height: 100vh; border-radius: 0; border-left: 0; border-right: 0; }
+  .modalBody { padding: 12px; }
+}
 
 /* ---------- tables ---------- */
 .tblwrap { overflow-x: auto; }
@@ -214,10 +237,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 @media (max-width: 1100px) {
   .s3, .s4, .s5, .s6, .s7, .s8, .s9 { grid-column: span 12; }
 }
-/* KPI band: auto-fit stat tiles — small caps label, 26px num, delta chip. */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--sh1); padding: 12px 14px; min-width: 0; }
-.kpi .knum { font-family: var(--fh); font-size: 26px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; margin-top: 4px; white-space: nowrap; }
+/* KPI band: each stat owns its rows so labels, numbers, and helper copy never collide. */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--sh1); padding: 13px 14px; min-width: 0; min-height: 76px; display: grid; grid-template-rows: auto auto 1fr; align-content: start; }
+.kpi .lbl { display: block; min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+.kpi .knum { display: block; font-family: var(--fh); font-size: 26px; font-weight: 650; letter-spacing: 0; line-height: 1.05; margin-top: 6px; white-space: nowrap; }
+.kpi .sub { display: block; margin-top: 4px; line-height: 1.35; overflow-wrap: anywhere; }
 .kpi .kdelta { margin-top: 7px; }
 /* Panel: ONE flat container — header row (title left, actions right, hairline
    under) + padded body. Replaces card-in-card nesting across the cockpit. */
@@ -228,7 +253,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 /* Documents hub: hero dropzone */
 .dropzone { border: 1.5px dashed var(--line2); border-radius: var(--r); background: var(--surface); padding: clamp(24px, 4vw, 46px) 20px; text-align: center; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease; }
 .dropzone:hover, .dropzone.drag { border-color: var(--accent-400); background: var(--accent-100); }
-.dropzone b { font-family: var(--fh); font-size: 17px; letter-spacing: -0.02em; }
+.dropzone b { font-family: var(--fh); font-size: 17px; letter-spacing: 0; }
 
 /* ---------- scenario studio (prototype .scen / .scout) ---------- */
 .scen input[type="range"] { accent-color: var(--accent); width: 100%; margin: 4px 0 0; }
@@ -239,7 +264,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .scout { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .scout > div { background: var(--sunken2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
 .scout .lbl { font-size: 9.8px; }
-.scout b { font-family: var(--fh); font-size: 17px; letter-spacing: -0.02em; display: block; margin-top: 2px; }
+.scout b { font-family: var(--fh); font-size: 17px; letter-spacing: 0; display: block; margin-top: 2px; }
 @media (max-width: 900px) { .scout { grid-template-columns: repeat(2, 1fr); } }
 
 /* Print (Stream 5 lender package): drop the app chrome so the report owns the page. */

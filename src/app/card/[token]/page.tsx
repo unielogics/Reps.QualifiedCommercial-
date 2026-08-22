@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { ProgramPdfAttachment } from "@/lib/repWorkflows";
 
 type Card = {
   recipient_name: string;
@@ -13,6 +14,7 @@ type Card = {
   body: string;
   booking_url: string;
   application_url: string;
+  program_pdfs: ProgramPdfAttachment[];
 };
 
 export default function ContactCardPage() {
@@ -44,6 +46,18 @@ export default function ContactCardPage() {
               <a className="btn" href={card.application_url}>Open application</a>
               {card.rep_email && <a className="btn" href={`mailto:${card.rep_email}`}>Email</a>}
             </div>
+            {(card.program_pdfs ?? []).length > 0 && (
+              <div className="panel mt">
+                <div className="panel-h">Program PDFs</div>
+                <div className="panel-b" style={{ display: "grid", gap: 8 }}>
+                  {(card.program_pdfs ?? []).map((pdf) => (
+                    <a key={pdf.key} className="linky" href={pdf.download_url} target="_blank" rel="noreferrer">
+                      {pdf.title}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

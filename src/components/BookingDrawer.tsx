@@ -26,18 +26,24 @@ const KINDS = [
 export default function BookingDrawer({
   onClose,
   initialDealerId,
+  initialName,
+  initialEmail,
+  initialPhone,
 }: {
   onClose: () => void;
   initialDealerId?: string | null;
+  initialName?: string | null;
+  initialEmail?: string | null;
+  initialPhone?: string | null;
 }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [dealerId, setDealerId] = useState(initialDealerId ?? "");
   const [kind, setKind] = useState<(typeof KINDS)[number]["key"]>("callback");
   const [startsAt, setStartsAt] = useState("");
-  const [inviteeName, setInviteeName] = useState("");
-  const [inviteeEmail, setInviteeEmail] = useState("");
-  const [inviteePhone, setInviteePhone] = useState("");
+  const [inviteeName, setInviteeName] = useState(initialName ?? "");
+  const [inviteeEmail, setInviteeEmail] = useState(initialEmail ?? "");
+  const [inviteePhone, setInviteePhone] = useState(initialPhone ?? "");
   const [notes, setNotes] = useState("");
 
   const files = useQuery({
@@ -51,14 +57,13 @@ export default function BookingDrawer({
   const availability = useQuery({
     queryKey: ["booking-availability", dealerId],
     queryFn: async () =>
-      api<Availability>(`/dealer-os/booking/availability?dealer_id=${dealerId}`, {
+      api<Availability>(dealerId ? `/dealer-os/booking/availability?dealer_id=${dealerId}` : "/dealer-os/booking/availability", {
         authToken: (await getToken()) ?? undefined,
       }),
-    enabled: Boolean(dealerId),
   });
   const book = useMutation({
     mutationFn: async () =>
-      api(`/dealer-os/dealers/${dealerId}/appointments`, {
+      api(dealerId ? `/dealer-os/dealers/${dealerId}/appointments` : "/dealer-os/appointments", {
         method: "POST",
         body: JSON.stringify({
           kind,
@@ -76,7 +81,7 @@ export default function BookingDrawer({
     },
   });
 
-  const canBook = Boolean(dealerId && startsAt && inviteeName.trim() && (inviteeEmail.trim() || inviteePhone.trim()));
+  const canBook = Boolean(startsAt && inviteeName.trim() && (inviteeEmail.trim() || inviteePhone.trim()));
 
   return (
     <Drawer title="Book appointment" width={720} onClose={onClose}>
@@ -86,7 +91,7 @@ export default function BookingDrawer({
           <div>
             <label className="lbl">File</label>
             <select className="field" value={dealerId} onChange={(e) => setDealerId(e.target.value)}>
-              <option value="">Choose a portfolio file</option>
+              <option value="">No file yet</option>
               {(files.data ?? []).map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}{f.case_ref ? ` · ${f.case_ref}` : ""}
@@ -123,7 +128,7 @@ export default function BookingDrawer({
 
           <div>
             <label className="lbl">Available time</label>
-            <select className="field" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} disabled={!dealerId || availability.isLoading}>
+            <select className="field" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} disabled={availability.isLoading}>
               <option value="">{availability.isLoading ? "Loading times..." : "Choose a time"}</option>
               {(availability.data?.slots ?? []).map((slot) => (
                 <option key={slot.starts_at} value={slot.starts_at}>

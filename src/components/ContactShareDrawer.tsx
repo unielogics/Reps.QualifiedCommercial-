@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { ProgramPdfAttachment } from "@/lib/repWorkflows";
 import Drawer from "./Drawer";
 
 type FileRow = {
@@ -17,18 +18,28 @@ type FileRow = {
 export default function ContactShareDrawer({
   onClose,
   initialDealerId,
+  initialName,
+  initialCompany,
+  initialEmail,
+  initialPhone,
 }: {
   onClose: () => void;
   initialDealerId?: string | null;
+  initialName?: string | null;
+  initialCompany?: string | null;
+  initialEmail?: string | null;
+  initialPhone?: string | null;
 }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [dealerId, setDealerId] = useState(initialDealerId ?? "");
-  const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [channel, setChannel] = useState<"email" | "sms" | "email_sms">("email");
+  const [name, setName] = useState(initialName ?? "");
+  const [company, setCompany] = useState(initialCompany ?? "");
+  const [email, setEmail] = useState(initialEmail ?? "");
+  const [phone, setPhone] = useState(initialPhone ?? "");
+  const [sendEmail, setSendEmail] = useState(true);
+  const [sendSms, setSendSms] = useState(false);
+  const [programPdfKeys, setProgramPdfKeys] = useState<string[]>([]);
   const [transactional, setTransactional] = useState(false);
   const [marketing, setMarketing] = useState(false);
   const [notes, setNotes] = useState("");
@@ -41,7 +52,19 @@ export default function ContactShareDrawer({
     () => (files.data ?? []).find((f) => f.id === dealerId) ?? null,
     [files.data, dealerId],
   );
-  const wantsSms = channel === "sms" || channel === "email_sms";
+  const pdfs = useQuery({
+    queryKey: ["program-pdfs"],
+    queryFn: async () =>
+      api<ProgramPdfAttachment[]>("/dealer-os/contact-shares/program-pdfs", {
+        authToken: (await getToken()) ?? undefined,
+      }),
+  });
+  const channel = sendEmail && sendSms ? "email_sms" : sendSms ? "sms" : "email";
+  const wantsSms = sendSms;
+  const togglePdf = (key: string) =>
+    setProgramPdfKeys((prev) =>
+      prev.includes(key) ? prev.filter((value) => value !== key) : [...prev, key],
+    );
   const share = useMutation({
     mutationFn: async () =>
       api("/dealer-os/contact-shares", {
@@ -56,6 +79,7 @@ export default function ContactShareDrawer({
           transactional_sms_consent: transactional,
           marketing_sms_consent: marketing,
           consent_method: "rep_attested",
+          program_pdf_keys: programPdfKeys,
           notes: notes.trim() || null,
         }),
         authToken: (await getToken()) ?? undefined,
@@ -65,10 +89,15 @@ export default function ContactShareDrawer({
       onClose();
     },
   });
-  const canSend = Boolean(name.trim() && (email.trim() || phone.trim()) && (!wantsSms || transactional || marketing));
+  const canSend = Boolean(
+    name.trim() &&
+      ((sendEmail && email.trim()) || (sendSms && phone.trim())) &&
+      (sendEmail || sendSms) &&
+      (!wantsSms || transactional || marketing),
+  );
 
   return (
-    <Drawer title="Share contact information" width={720} onClose={onClose}>
+    <Drawer title="Share contact information" width={780} onClose={onClose}>
       <div className="panel">
         <div className="panel-h">Recipient</div>
         <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -105,10 +134,43 @@ export default function ContactShareDrawer({
 
           <div>
             <label className="lbl">Send by</label>
-            <div className="seg">
-              <button type="button" className={channel === "email" ? "on" : undefined} onClick={() => setChannel("email")}>Email</button>
-              <button type="button" className={channel === "sms" ? "on" : undefined} onClick={() => setChannel("sms")}>SMS</button>
-              <button type="button" className={channel === "email_sms" ? "on" : undefined} onClick={() => setChannel("email_sms")}>Email + SMS</button>
+            <div className="row" style={{ gap: 8 }}>
+              <label className={`consent${sendEmail ? " on" : ""}`} style={{ margin: 0, flex: 1, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} />
+                <span className="ctext">
+                  <span className="ctitle">Email</span>
+                  Send the card, company intro, links, and selected PDFs.
+                </span>
+              </label>
+              <label className={`consent${sendSms ? " on" : ""}`} style={{ margin: 0, flex: 1, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <input type="checkbox" checked={sendSms} onChange={(e) => setSendSms(e.target.checked)} />
+                <span className="ctext">
+                  <span className="ctitle">SMS</span>
+                  Send a short contact-card link.
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label className="lbl">Program PDFs</label>
+            <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+              {pdfs.isLoading && <span className="sub">Loading program PDFs...</span>}
+              {(pdfs.data ?? []).map((pdf) => (
+                <label key={pdf.key} className={`consent${programPdfKeys.includes(pdf.key) ? " on" : ""}`} style={{ margin: 0, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <input
+                    type="checkbox"
+                    checked={programPdfKeys.includes(pdf.key)}
+                    onChange={() => togglePdf(pdf.key)}
+                    disabled={!sendEmail}
+                  />
+                  <span className="ctext">
+                    <span className="ctitle">{pdf.title}</span>
+                    {pdf.description}
+                  </span>
+                </label>
+              ))}
+              {!sendEmail && <span className="sub">PDFs are email attachments and card-page downloads, not SMS attachments.</span>}
             </div>
           </div>
 

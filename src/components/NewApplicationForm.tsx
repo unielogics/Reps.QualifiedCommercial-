@@ -113,11 +113,13 @@ type Disclosure = {
 export default function NewApplicationForm({
   onCreated,
   onCancel,
+  variant = "page",
 }: {
   /** Where to go once the file exists. Defaults to opening the new case. */
   onCreated?: (id: string) => void;
   /** Rendered as a Cancel button when present, for the modal. */
   onCancel?: () => void;
+  variant?: "page" | "modal";
 }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -219,14 +221,14 @@ export default function NewApplicationForm({
   return (
     <>
       <form
-        className="cg mt"
+        className={`appform appform-${variant}`}
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
           if (canSubmit) create.mutate();
         }}
       >
-        <div className="s7">
+        <div className="appform-main">
           <div className="panel">
             <div className="panel-h">The business</div>
             <div className="panel-b">
@@ -450,7 +452,7 @@ export default function NewApplicationForm({
           </div>
         </div>
 
-        <div className="s5">
+        <div className="appform-side">
           <div className="panel">
             <div className="panel-h">What they are after</div>
             <div className="panel-b">

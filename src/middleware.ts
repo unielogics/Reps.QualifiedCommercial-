@@ -1,9 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Deny by default. The only unauthenticated page is sign-in; every client-facing
-// token room lives on audit.qualifiedcommercial.com, not here, because this app
-// is for staff only.
-const isPublic = createRouteMatcher(["/sign-in(.*)"]);
+// Deny by default. Staff screens stay behind Clerk; tokenized booking and
+// contact-card pages are public because recipients arrive from email/SMS links.
+const isPublic = createRouteMatcher(["/sign-in(.*)", "/book(.*)", "/card(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isPublic(req)) return;

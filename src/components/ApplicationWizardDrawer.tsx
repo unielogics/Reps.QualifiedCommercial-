@@ -15,9 +15,9 @@ const STEPS = [
 export default function ApplicationWizardDrawer({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   return (
-    <Drawer title="Open application" width={1120} onClose={onClose}>
-      <div className="cg" style={{ alignItems: "start" }}>
-        <div className="s4">
+    <Drawer title="Open application" width={1360} onClose={onClose}>
+      <div className="wizardModalGrid">
+        <div className="wizardRail">
           <div className="panel">
             <div className="panel-h">Guided application</div>
             <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -49,12 +49,13 @@ export default function ApplicationWizardDrawer({ onClose }: { onClose: () => vo
             </div>
           </div>
           <div className="note">
-            Step 1 creates the file. The drawer then sends you straight to Step 2 on that file,
+            Step 1 creates the file. The workflow then sends you straight to Step 2 on that file,
             where the bank and credit requests can be sent while the owner is still with you.
           </div>
         </div>
-        <div className="s8">
+        <div>
           <NewApplicationForm
+            variant="modal"
             onCancel={onClose}
             onCreated={(id) => {
               onClose();
