@@ -178,6 +178,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
     // Production is the super admin's view of what the reps are bringing in.
     ...(isSuperAdmin ? [{ href: "/production", label: "Production", icon: "chart" as IconName }] : []),
   ];
+  const isActiveNavItem = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
     <div className={rail ? "app rail" : "app"}>
@@ -195,8 +197,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <nav className="nav">
           {nav.map((item) => {
-            const on =
-              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            const on = isActiveNavItem(item.href);
             return (
               <Link key={item.href} href={item.href} className={on ? "on" : undefined}>
                 <Icon name={item.icon} />
@@ -240,6 +241,25 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
           <ActionHub />
         </div>
+        <nav className="mobileTabs" aria-label="Field Desk sections">
+          {nav.map((item) => {
+            const on = isActiveNavItem(item.href);
+            return (
+              <Link key={item.href} href={item.href} className={on ? "on" : undefined}>
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                {item.href === "/" && unreadTotal > 0 && (
+                  <span
+                    className="navbadge"
+                    title={`${unreadTotal} unread message${unreadTotal === 1 ? "" : "s"}`}
+                  >
+                    {unreadTotal > 99 ? "99+" : unreadTotal}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
         <div className="content content--wide">
           {/* Above the page, not inside it: the prompt has to be visible
               wherever you land, not only on one screen you might not open. */}

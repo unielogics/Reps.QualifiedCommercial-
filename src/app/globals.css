@@ -71,6 +71,7 @@ a { color: var(--accent); }
 .topclock span { color: var(--muted); font-size: 13px; font-weight: 650; }
 .topclock b { font-family: var(--fh); font-size: 24px; line-height: 1; letter-spacing: 0; font-weight: 680; }
 .topclock:hover b, .topclock:hover span { color: var(--accent); }
+.mobileTabs { display: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 99px; font-size: 11.5px; font-weight: 650; border: 1px solid var(--line); color: var(--ink2); text-decoration: none; }
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
 .seg { display: inline-flex; background: var(--sunken); border-radius: 10px; padding: 3px; gap: 2px; }
@@ -419,8 +420,84 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .repAgenda { position: static; }
 }
 @media (max-width: 760px) {
+  .app, .app.rail {
+    display: block;
+    min-height: 100vh;
+  }
+  .side {
+    display: none;
+  }
+  .top {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .top > b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
   .topclock span { display: none; }
   .topclock b { font-size: 20px; }
+  .mobileTabs {
+    position: sticky;
+    top: 57px;
+    z-index: 19;
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    scrollbar-width: none;
+  }
+  .mobileTabs::-webkit-scrollbar {
+    display: none;
+  }
+  .mobileTabs a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+    padding: 0 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink2);
+    text-decoration: none;
+    font-size: 12.5px;
+    font-weight: 650;
+    box-shadow: var(--sh1);
+  }
+  .mobileTabs a.on {
+    border-color: var(--accent-200);
+    background: var(--accent-100);
+    color: var(--accent);
+  }
+  .mobileTabs svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+  .app.rail .mobileTabs .navbadge,
+  .mobileTabs .navbadge {
+    position: static;
+    margin-left: 0;
+    min-width: 19px;
+    height: 19px;
+    line-height: 19px;
+    font-size: 11px;
+    padding: 0 5px;
+  }
+  .content, .content--wide {
+    max-width: none;
+    --pad-y: 14px;
+    --pad-x: 12px;
+    padding-bottom: 76px;
+  }
   .repCalHead > div { padding: 8px 4px; text-align: center; }
   .repCalDay { min-height: 92px; padding: 6px; }
   .repCalEvent { font-size: 10px; min-height: 20px; }
