@@ -100,6 +100,27 @@ export default function Conversation({
     enabled: !isAI,
   });
 
+  useEffect(() => {
+    if (isAI || !messages.isSuccess) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await api(`/dealer-os/dealers/${dealerId}/messages/seen`, {
+          method: "POST",
+          authToken: (await getToken()) ?? undefined,
+        });
+        if (!cancelled) {
+          void qc.invalidateQueries({ queryKey: ["unread-summary"] });
+        }
+      } catch {
+        /* A seen marker is an affordance; failing it should not block reading. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dealerId, getToken, isAI, messages.isSuccess, qc, tab]);
+
   const aiThread = useQuery({
     queryKey: ["ai-thread", dealerId],
     queryFn: async () =>
@@ -138,6 +159,8 @@ export default function Conversation({
         queryKey: isAI ? ["ai-thread", dealerId] : ["messages", dealerId, tab],
       });
       void qc.invalidateQueries({ queryKey: ["unread", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["unread-summary"] });
+      void qc.invalidateQueries({ queryKey: ["inbox-threads"] });
     },
   });
 

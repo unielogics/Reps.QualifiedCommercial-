@@ -38,6 +38,7 @@ type Row = {
 };
 
 type Filter = "all" | "awaiting" | "verified" | "contract";
+type UnreadSummary = { total: number; per_file: Record<string, number> };
 
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
@@ -83,6 +84,16 @@ export default function Portfolio() {
       api<Row[]>("/dealer-os/dealers", { authToken: (await getToken()) ?? undefined }),
     enabled: isRep || isTeam,
   });
+  const unread = useQuery({
+    queryKey: ["unread-summary"],
+    queryFn: async () =>
+      api<UnreadSummary>("/dealer-os/unread-summary", {
+        authToken: (await getToken()) ?? undefined,
+      }),
+    enabled: isRep || isTeam,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
 
   const rows = useMemo(() => q.data ?? [], [q.data]);
 
@@ -121,7 +132,7 @@ export default function Portfolio() {
         <div className="kpi">
           <span className="lbl">Open applications</span>
           <b className="knum num">{stats.open}</b>
-          <span className="sub">{stats.awaiting} awaiting verification</span>
+          <span className="sub">Awaiting verification</span>
         </div>
         <div className="kpi">
           <span className="lbl">Fully verified</span>
@@ -168,6 +179,7 @@ export default function Portfolio() {
                 <th>Applicant</th>
                 <th>Where</th>
                 <th>Stage</th>
+                <th>Messages</th>
                 <th>Bank</th>
                 <th>Credit</th>
                 <th className="r">Requested</th>
@@ -177,48 +189,60 @@ export default function Portfolio() {
               </tr>
             </thead>
             <tbody>
-              {shown.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    <b>{r.name}</b>
-                    {r.case_ref && (
-                      <span className="sub num" style={{ display: "block" }}>
-                        {r.case_ref}
+              {shown.map((r) => {
+                const unreadCount = unread.data?.per_file?.[r.id] ?? 0;
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      <b>{r.name}</b>
+                      {r.case_ref && (
+                        <span className="sub num" style={{ display: "block" }}>
+                          {r.case_ref}
+                        </span>
+                      )}
+                    </td>
+                    <td className="sub">{[r.city, r.state].filter(Boolean).join(", ") || "—"}</td>
+                    <td>{stageChip(r)}</td>
+                    <td>
+                      {unreadCount > 0 ? (
+                        <span className="cellchip c-acc">
+                          {unreadCount} message{unreadCount === 1 ? "" : "s"}
+                        </span>
+                      ) : (
+                        <span className="sub">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`cellchip ${r.bank_linked ? "c-ok" : "c-warn"}`}>
+                        {r.bank_linked ? "Linked" : "Awaiting"}
                       </span>
-                    )}
-                  </td>
-                  <td className="sub">{[r.city, r.state].filter(Boolean).join(", ") || "—"}</td>
-                  <td>{stageChip(r)}</td>
-                  <td>
-                    <span className={`cellchip ${r.bank_linked ? "c-ok" : "c-warn"}`}>
-                      {r.bank_linked ? "Linked" : "Awaiting"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`cellchip ${r.credit_returned ? "c-ok" : "c-warn"}`}>
-                      {r.credit_returned ? "Returned" : "Awaiting"}
-                    </span>
-                  </td>
-                  <td className="r num">{money(r.funding_goal)}</td>
-                  <td className="r num">{r.verified ? money(r.funding_goal) : "—"}</td>
-                  <td className="sub">{nextAction(r)}</td>
-                  <td className="r">
-                    <Link className="linky" href={`/applications/${r.id}`}>
-                      Open →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <span className={`cellchip ${r.credit_returned ? "c-ok" : "c-warn"}`}>
+                        {r.credit_returned ? "Returned" : "Awaiting"}
+                      </span>
+                    </td>
+                    <td className="r num">{money(r.funding_goal)}</td>
+                    <td className="r num">{r.verified ? money(r.funding_goal) : "—"}</td>
+                    <td className="sub">{nextAction(r)}</td>
+                    <td className="r">
+                      <Link className="linky" href={`/applications/${r.id}`}>
+                        Open →
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
               {q.isLoading && (
                 <tr>
-                  <td colSpan={9} className="sub">
+                  <td colSpan={10} className="sub">
                     Loading…
                   </td>
                 </tr>
               )}
               {!q.isLoading && shown.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="sub">
+                  <td colSpan={10} className="sub">
                     {rows.length === 0
                       ? "No applications yet. Open one while you are standing in the business."
                       : "Nothing in this state right now."}

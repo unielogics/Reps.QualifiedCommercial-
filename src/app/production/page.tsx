@@ -14,8 +14,6 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 
-const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
-
 type FileRow = {
   dealer_id: string;
   name: string;
@@ -54,6 +52,15 @@ type CategoryMetric = {
   approved_or_fundable: number;
 };
 
+type LocationMetric = {
+  location: string;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  opened: number;
+  approved_or_fundable: number;
+};
+
 type AmountMetric = {
   average_requested: number | null;
   average_approved: number | null;
@@ -71,6 +78,10 @@ type Insights = {
   amount_metrics: AmountMetric;
   top_new_app_industries: CategoryMetric[];
   top_approved_industries: CategoryMetric[];
+  top_new_app_towns: LocationMetric[];
+  top_approved_towns: LocationMetric[];
+  top_new_app_zip_codes: LocationMetric[];
+  top_approved_zip_codes: LocationMetric[];
 };
 
 type Funnel = {
@@ -107,7 +118,7 @@ function reading(f: Funnel): string {
   }));
   const worst = pairs.reduce((a, b) => (b.lost > a.lost ? b : a), pairs[0]);
   if (!worst || worst.lost <= 0) return "No drop between stages in this window.";
-  return `The largest drop is between ${worst.from.toLowerCase()} and ${worst.to.toLowerCase()}: ${worst.lost} file${worst.lost === 1 ? "" : "s"}.`;
+  return `The largest drop is between ${worst.from.toLowerCase()} and ${worst.to.toLowerCase()}: ${worst.lost} application${worst.lost === 1 ? "" : "s"}.`;
 }
 
 const WINDOWS = [
@@ -141,14 +152,6 @@ function ago(iso: string | null): string {
   if (days === 1) return "yesterday";
   if (days < 30) return `${days}d ago`;
   return `${Math.floor(days / 30)}mo ago`;
-}
-
-function statusTone(s: string | null): string {
-  if (s === "complete") return "c-ok";
-  if (s === "declined") return "c-bad";
-  if (s === "stalled") return "c-warn";
-  if (!s) return "c-mut";
-  return "c-acc";
 }
 
 function RatioBar({ label, value }: { label: string; value: number | null }) {
@@ -198,11 +201,44 @@ function IndustryTable({ rows }: { rows: CategoryMetric[] }) {
   );
 }
 
+function LocationTable({ rows }: { rows: LocationMetric[] }) {
+  return (
+    <div className="tblwrap">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Location</th>
+            <th className="r">New apps</th>
+            <th className="r">Approved / fundable</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.location}-${row.zip ?? ""}`}>
+              <td>
+                <b>{row.location}</b>
+              </td>
+              <td className="r num">{row.opened}</td>
+              <td className="r num">{row.approved_or_fundable}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={3} className="sub">
+                No location trend yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function ProductionPage() {
   const { getToken } = useAuth();
   const { isSuperAdmin, isResolving } = useMe();
   const [days, setDays] = useState(90);
-  const [open, setOpen] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: ["production", days],
@@ -231,7 +267,7 @@ export default function ProductionPage() {
       <div className="hd">
         <h2>Production</h2>
         <p className="lede">
-          Field output measured at the verification line, not at the point a file was opened.
+          Field output measured at the verification line, not at the point an application was opened.
         </p>
       </div>
 
@@ -258,7 +294,7 @@ export default function ProductionPage() {
           <div className="kpi">
             <span className="lbl">Applications opened</span>
             <b className="knum num">{t.funnel.opened}</b>
-            <span className="sub">New files in this window</span>
+            <span className="sub">New applications in this window</span>
           </div>
           <div className="kpi">
             <span className="lbl">Bank evidence</span>
@@ -344,7 +380,7 @@ export default function ProductionPage() {
                 <div className="kpi">
                   <span className="lbl">Average requested</span>
                   <b className="knum num">{money(t.insights.amount_metrics.average_requested)}</b>
-                  <span className="sub">All files with a funding goal</span>
+                  <span className="sub">Applications with a funding goal</span>
                 </div>
                 <div className="kpi">
                   <span className="lbl">Average approved</span>
@@ -366,116 +402,64 @@ export default function ProductionPage() {
             <div className="panel-h">Approved / fundable categories</div>
             <IndustryTable rows={t.insights.top_approved_industries} />
           </div>
+          <div className="panel s6">
+            <div className="panel-h">Trending towns</div>
+            <LocationTable rows={t.insights.top_new_app_towns} />
+          </div>
+          <div className="panel s6">
+            <div className="panel-h">Trending ZIP codes</div>
+            <LocationTable rows={t.insights.top_new_app_zip_codes} />
+          </div>
+          <div className="panel s6">
+            <div className="panel-h">Approved / fundable towns</div>
+            <LocationTable rows={t.insights.top_approved_towns} />
+          </div>
+          <div className="panel s6">
+            <div className="panel-h">Approved / fundable ZIP codes</div>
+            <LocationTable rows={t.insights.top_approved_zip_codes} />
+          </div>
         </div>
       )}
 
       {d && d.reps.length === 0 && (
         <div className="card mt">
-          <b>No field files yet</b>
+          <b>No field applications yet</b>
           <p className="sub mt">
-            Once a rep opens their first file it appears here, along with whether the client
+            Once a rep opens their first application it appears here, along with whether the client
             has sent anything.
           </p>
         </div>
       )}
 
-      {d?.reps.map((r) => {
-        const isOpen = open === (r.rep_user_id ?? r.rep_name);
-        const key = r.rep_user_id ?? r.rep_name;
-        return (
-          <div className="panel mt" key={key}>
-            <div className="panel-h" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <b>{r.rep_name}</b>
-              {r.rep_email && <span className="sub">{r.rep_email}</span>}
-              <span style={{ flex: 1 }} />
-              <span className="sub">last active {ago(r.last_activity)}</span>
-              <button
-                type="button"
-                className="linky"
-                onClick={() => setOpen(isOpen ? null : key)}
-              >
-                {isOpen ? "Hide files" : `${r.files_opened} file${r.files_opened === 1 ? "" : "s"} →`}
-              </button>
-            </div>
-            <div className="panel-b">
-              <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-                <span className="cellchip c-acc">{r.funnel.opened} opened</span>
-                <span className="cellchip c-ok">{r.funnel.verified} verified</span>
-                <span className="cellchip c-mut">{r.funnel.bank_linked} bank linked</span>
-                <span className="cellchip c-mut">{r.active} working</span>
-                <span className="cellchip c-acc">{ratio(r.insights.underwriting_ready_ratio)} underwriting ready</span>
-                <span className="cellchip c-ok">{r.insights.approved_or_fundable} approved/fundable</span>
-                {r.complete > 0 && <span className="cellchip c-ok">{r.complete} complete</span>}
-                {r.stalled > 0 && <span className="cellchip c-warn">{r.stalled} stalled</span>}
-                {r.declined > 0 && <span className="cellchip c-bad">{r.declined} declined</span>}
-                {r.avg_score !== null && (
-                  <span className="sub">avg score {r.avg_score}</span>
-                )}
-                <span className="sub">avg requested {money(r.insights.amount_metrics.average_requested)}</span>
-              </div>
-
-              {isOpen && (
-                <div className="tblwrap mt">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Business</th>
-                        <th>Where</th>
-                        <th>Status</th>
-                        <th className="r">Docs</th>
-                        <th className="r">Score</th>
-                        <th className="r">Opened</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.files.map((f) => (
-                        <tr key={f.dealer_id}>
-                          <td>
-                            <b>{f.name}</b>
-                          </td>
-                          <td className="sub">
-                            {[f.city, f.state].filter(Boolean).join(", ") || "—"}
-                          </td>
-                          <td>
-                            <span className={`cellchip ${statusTone(f.status)}`}>
-                              {f.status ?? "no pipeline"}
-                            </span>
-                          </td>
-                          <td className="r">
-                            {f.documents === 0 ? (
-                              <span className="cellchip c-warn">none</span>
-                            ) : (
-                              f.documents
-                            )}
-                          </td>
-                          <td className="r">{f.score ?? "—"}</td>
-                          <td className="r sub">{ago(f.created_at)}</td>
-                          <td className="r">
-                            <a
-                              className="linky"
-                              href={`${AUDIT_URL}/dealers/${f.dealer_id}`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Open →
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+      {d?.reps.map((r) => (
+        <div className="panel mt" key={r.rep_user_id ?? r.rep_name}>
+          <div className="panel-h" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <b>{r.rep_name}</b>
+            {r.rep_email && <span className="sub">{r.rep_email}</span>}
+            <span style={{ flex: 1 }} />
+            <span className="sub">last active {ago(r.last_activity)}</span>
+          </div>
+          <div className="panel-b">
+            <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+              <span className="cellchip c-acc">{r.funnel.opened} opened</span>
+              <span className="cellchip c-ok">{r.funnel.verified} verified</span>
+              <span className="cellchip c-mut">{r.funnel.bank_linked} bank evidence</span>
+              <span className="cellchip c-mut">{r.active} working</span>
+              <span className="cellchip c-acc">{ratio(r.insights.underwriting_ready_ratio)} underwriting ready</span>
+              <span className="cellchip c-ok">{r.insights.approved_or_fundable} approved/fundable</span>
+              {r.complete > 0 && <span className="cellchip c-ok">{r.complete} complete</span>}
+              {r.stalled > 0 && <span className="cellchip c-warn">{r.stalled} stalled</span>}
+              {r.declined > 0 && <span className="cellchip c-bad">{r.declined} declined</span>}
+              {r.avg_score !== null && <span className="sub">avg score {r.avg_score}</span>}
+              <span className="sub">avg requested {money(r.insights.amount_metrics.average_requested)}</span>
             </div>
           </div>
-        );
-      })}
+        </div>
+      ))}
 
       {d?.since && (
         <p className="sub mt">
-          Counting files opened since {new Date(d.since).toLocaleDateString()}. Files opened
-          before the pipeline existed show as &ldquo;no pipeline&rdquo; and still count.
+          Counting applications opened since {new Date(d.since).toLocaleDateString()}.
         </p>
       )}
     </>
