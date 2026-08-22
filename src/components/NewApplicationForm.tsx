@@ -208,7 +208,7 @@ export default function NewApplicationForm({
       // front of the owner and the next thing they do is send the two
       // authorizations, which is step 2 of the file they just made.
       if (onCreated) onCreated(created.id);
-      else router.push(`/applications/${created.id}`);
+      else router.push(`/applications/${created.id}?step=2`);
     },
     onError: (e: unknown) => {
       const msg = e instanceof Error ? e.message : "Could not open the file.";

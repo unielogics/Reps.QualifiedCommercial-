@@ -12,6 +12,7 @@ import { SignedIn, UserButton, useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
+import ActionHub from "./ActionHub";
 import MfaBanner from "./MfaBanner";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
@@ -62,7 +63,7 @@ function Brand() {
 
 const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Portfolio", icon: "home" },
-  { href: "/new", label: "Open application", icon: "plus" },
+  { href: "/inbox", label: "Inbox", icon: "chat" },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -105,7 +106,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       return !r;
     });
 
-  if (pathname.startsWith("/sign-in")) return <>{children}</>;
+  if (pathname.startsWith("/sign-in") || pathname.startsWith("/card/") || pathname.startsWith("/book/")) return <>{children}</>;
 
   // Role still resolving: never guess. Showing the rep console to someone who
   // turns out to have no access is worse than a moment of empty chrome.
@@ -205,6 +206,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="top">
           <b>{isTeam && !isRep ? "Field Desk · team view" : "Field Desk"}</b>
           <div className="sp" />
+          <ActionHub />
           {name && <span className="chip">{name}</span>}
         </div>
         <div className={pathname.startsWith("/applications/") ? "content content--wide" : "content"}>

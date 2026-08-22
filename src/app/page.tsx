@@ -11,15 +11,14 @@
 // The filter is the same four states the funnel counts, so the number a rep
 // sees here and the number on Production are the same number.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
-import Modal from "@/components/Modal";
-import NewApplicationForm from "@/components/NewApplicationForm";
+import ApplicationWizardDrawer from "@/components/ApplicationWizardDrawer";
 
 type Row = {
   id: string;
@@ -73,7 +72,7 @@ function stageChip(r: Row) {
 
 export default function Portfolio() {
   const { getToken } = useAuth();
-  const router = useRouter();
+  const search = useSearchParams();
   const { isRep, isTeam } = useMe();
   const [filter, setFilter] = useState<Filter>("all");
   const [creating, setCreating] = useState(false);
@@ -86,6 +85,10 @@ export default function Portfolio() {
   });
 
   const rows = useMemo(() => q.data ?? [], [q.data]);
+
+  useEffect(() => {
+    if (search.get("new") === "1") setCreating(true);
+  }, [search]);
 
   const stats = useMemo(() => {
     const verified = rows.filter((r) => r.verified);
@@ -168,6 +171,7 @@ export default function Portfolio() {
                 <th>Bank</th>
                 <th>Credit</th>
                 <th className="r">Requested</th>
+                <th className="r">Capacity</th>
                 <th>Next action</th>
                 <th />
               </tr>
@@ -196,6 +200,7 @@ export default function Portfolio() {
                     </span>
                   </td>
                   <td className="r num">{money(r.funding_goal)}</td>
+                  <td className="r num">{r.verified ? money(r.funding_goal) : "—"}</td>
                   <td className="sub">{nextAction(r)}</td>
                   <td className="r">
                     <Link className="linky" href={`/applications/${r.id}`}>
@@ -206,14 +211,14 @@ export default function Portfolio() {
               ))}
               {q.isLoading && (
                 <tr>
-                  <td colSpan={8} className="sub">
+                  <td colSpan={9} className="sub">
                     Loading…
                   </td>
                 </tr>
               )}
               {!q.isLoading && shown.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="sub">
+                  <td colSpan={9} className="sub">
                     {rows.length === 0
                       ? "No applications yet. Open one while you are standing in the business."
                       : "Nothing in this state right now."}
@@ -225,17 +230,7 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {creating && (
-        <Modal title="Open a new application" width={980} onClose={() => setCreating(false)}>
-          <NewApplicationForm
-            onCancel={() => setCreating(false)}
-            onCreated={(id) => {
-              setCreating(false);
-              router.push(`/applications/${id}`);
-            }}
-          />
-        </Modal>
-      )}
+      {creating && <ApplicationWizardDrawer onClose={() => setCreating(false)} />}
     </>
   );
 }

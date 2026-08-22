@@ -16,6 +16,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCase } from "@/lib/useCase";
 import StepRail, { GATED_FROM } from "@/components/StepRail";
 import Conversation from "@/components/Conversation";
+import Meetings from "@/components/Meetings";
 import { useMe } from "@/lib/useMe";
 import Step1Intake from "./Step1Intake";
 import Step2Verification from "./Step2Verification";
@@ -123,6 +124,9 @@ export default function ApplicationPage() {
             authorization is the conversation, so cutting it off would slow the
             very thing the gate measures. */}
         <Conversation dealerId={id} meId={meId} />
+        <div className="mt">
+          <Meetings dealerId={id} />
+        </div>
       </div>
     </div>
   );

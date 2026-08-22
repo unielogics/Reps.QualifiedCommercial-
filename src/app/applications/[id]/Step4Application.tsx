@@ -11,8 +11,9 @@
 // guarantor's home address, a date of birth. Those are the rep's to collect,
 // and they carry into the contract package at step 5.
 
+import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 
@@ -31,6 +32,16 @@ type Account = {
   mask: string | null;
 };
 
+type ApplicationProfile = {
+  landlord_mortgagee: string | null;
+  guarantor_home_address: string | null;
+  guarantor_dob: string | null;
+  selected_program: string | null;
+  term_requested_months: number | null;
+  collateral_description: string | null;
+  use_of_proceeds_text: string | null;
+};
+
 function Verified({ source }: { source: string }) {
   return <span className="cellchip c-pet">{source}</span>;
 }
@@ -43,7 +54,9 @@ function band(score: number | null | undefined): string {
 
 export default function Step4Application({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
+  const qc = useQueryClient();
   const { dealer } = useCase(dealerId);
+  const [draft, setDraft] = useState<Record<string, string>>({});
 
   const owners = useQuery({
     queryKey: ["owners", dealerId],
@@ -61,6 +74,29 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
       }),
   });
 
+  const profile = useQuery({
+    queryKey: ["application-profile", dealerId],
+    queryFn: async () =>
+      api<ApplicationProfile | null>(`/dealer-os/dealers/${dealerId}/application-profile`, {
+        authToken: (await getToken()) ?? undefined,
+      }),
+  });
+
+  useEffect(() => setDraft({}), [dealerId, profile.data]);
+
+  const patch = useMutation({
+    mutationFn: async (body: Record<string, unknown>) =>
+      api<ApplicationProfile>(`/dealer-os/dealers/${dealerId}/application-profile`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["application-profile", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+    },
+  });
+
   const owner = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
   const acct = accounts.data?.[0];
 
@@ -72,6 +108,16 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
 
   const verifiedCount = [dealer?.name, dealer?.ein, acct?.institution_name, owner?.full_name,
     owner?.credit_score].filter(Boolean).length;
+
+  const val = (key: keyof ApplicationProfile) =>
+    draft[key] ?? String((profile.data?.[key] ?? "") as string | number);
+  const set = (key: keyof ApplicationProfile, value: string) =>
+    setDraft((p) => ({ ...p, [key]: value }));
+  const commit = (key: keyof ApplicationProfile, transform?: (v: string) => unknown) => {
+    if (draft[key] === undefined) return;
+    const next = transform ? transform(draft[key]) : draft[key].trim() || null;
+    patch.mutate({ [key]: next });
+  };
 
   return (
     <>
@@ -113,7 +159,14 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             </div>
             <div>
               <label className="lbl">Landlord or mortgagee</label>
-              <input className="field" style={{ width: "100%" }} placeholder="Required for the equipment program" />
+              <input
+                className="field"
+                style={{ width: "100%" }}
+                placeholder="Required for the equipment program"
+                value={val("landlord_mortgagee")}
+                onChange={(e) => set("landlord_mortgagee", e.target.value)}
+                onBlur={() => commit("landlord_mortgagee")}
+              />
             </div>
           </div>
         </div>
@@ -133,17 +186,35 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             </div>
             <div>
               <label className="lbl">Home address</label>
-              <input className="field" style={{ width: "100%" }} placeholder="Street, city, state, ZIP" />
+              <input
+                className="field"
+                style={{ width: "100%" }}
+                placeholder="Street, city, state, ZIP"
+                value={val("guarantor_home_address")}
+                onChange={(e) => set("guarantor_home_address", e.target.value)}
+                onBlur={() => commit("guarantor_home_address")}
+              />
             </div>
             <div>
               <label className="lbl">Date of birth</label>
-              <input className="field" style={{ width: "100%" }} type="date" />
+              <input
+                className="field"
+                style={{ width: "100%" }}
+                type="date"
+                value={val("guarantor_dob").slice(0, 10)}
+                onChange={(e) => set("guarantor_dob", e.target.value)}
+                onBlur={() => commit("guarantor_dob", (v) => v || null)}
+              />
             </div>
           </div>
           <span className="sub" style={{ display: "block", marginTop: 10 }}>
-            These are held on the case only when saved. Persisting the application package is
-            the next piece of this step.
+            These save back to the case and carry into the contract package at step 5.
           </span>
+          {patch.isError && (
+            <div className="note">
+              {patch.error instanceof Error ? patch.error.message : "That field did not save."}
+            </div>
+          )}
         </div>
       </div>
 
@@ -171,11 +242,53 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             </div>
             <div>
               <label className="lbl">Term requested</label>
-              <input className="field" style={{ width: "100%" }} placeholder="Months" inputMode="numeric" />
+              <input
+                className="field"
+                style={{ width: "100%" }}
+                placeholder="Months"
+                inputMode="numeric"
+                value={val("term_requested_months")}
+                onChange={(e) => set("term_requested_months", e.target.value)}
+                onBlur={() =>
+                  commit("term_requested_months", (v) => {
+                    const n = Number(v.replace(/\D/g, ""));
+                    return n > 0 ? n : null;
+                  })
+                }
+              />
             </div>
             <div>
               <label className="lbl">Use of proceeds</label>
-              <input className="field" style={{ width: "100%" }} placeholder="What the money buys" />
+              <input
+                className="field"
+                style={{ width: "100%" }}
+                placeholder="What the money buys"
+                value={val("use_of_proceeds_text")}
+                onChange={(e) => set("use_of_proceeds_text", e.target.value)}
+                onBlur={() => commit("use_of_proceeds_text")}
+              />
+            </div>
+            <div>
+              <label className="lbl">Program</label>
+              <input
+                className="field"
+                style={{ width: "100%" }}
+                placeholder="Working capital, equipment, SBA referral..."
+                value={val("selected_program")}
+                onChange={(e) => set("selected_program", e.target.value)}
+                onBlur={() => commit("selected_program")}
+              />
+            </div>
+            <div>
+              <label className="lbl">Collateral description</label>
+              <input
+                className="field"
+                style={{ width: "100%" }}
+                placeholder="Equipment, receivables, real estate, or none"
+                value={val("collateral_description")}
+                onChange={(e) => set("collateral_description", e.target.value)}
+                onBlur={() => commit("collateral_description")}
+              />
             </div>
           </div>
         </div>

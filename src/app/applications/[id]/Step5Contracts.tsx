@@ -22,6 +22,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import UnderwritingSlots from "@/components/UnderwritingSlots";
 
 type CaseDoc = {
   id: string;
@@ -343,6 +344,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
           </div>
         </div>
       </div>
+      <UnderwritingSlots dealerId={dealerId} />
     </>
   );
 }
