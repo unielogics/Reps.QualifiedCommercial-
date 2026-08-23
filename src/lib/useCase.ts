@@ -29,6 +29,8 @@ export type Verification = {
   credit_enabled: boolean;
   ownership_total: number;
   ownership_complete: boolean;
+  owner_contact_complete: boolean;
+  missing_credit_contact_owner_ids: string[];
   required_credit_owner_count: number;
   completed_credit_owner_count: number;
   pending_credit_owner_ids: string[];
@@ -92,6 +94,8 @@ const NO_VERIFICATION: Verification = {
   credit_enabled: true,
   ownership_total: 0,
   ownership_complete: false,
+  owner_contact_complete: false,
+  missing_credit_contact_owner_ids: [],
   required_credit_owner_count: 0,
   completed_credit_owner_count: 0,
   pending_credit_owner_ids: [],

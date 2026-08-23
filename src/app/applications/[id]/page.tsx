@@ -41,7 +41,12 @@ export default function ApplicationPage() {
   // Clamp rather than trust: a hand-typed ?step=9 should land on the sequence,
   // and ?step=4 on a locked file should land on the step that is actually next.
   const step = Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : 1;
-  const effective = step >= GATED_FROM && !unlocked ? 2 : step;
+  const intakeReady = Boolean(
+    verification.ownership_complete
+      && verification.owner_contact_complete
+      && verification.required_credit_owner_count > 0,
+  );
+  const effective = step >= 2 && !intakeReady ? 1 : step >= GATED_FROM && !unlocked ? 2 : step;
 
   const go = useCallback(
     (n: number) => router.push(`/applications/${id}?step=${n}`, { scroll: false }),
@@ -66,6 +71,7 @@ export default function ApplicationPage() {
         <StepRail
           step={effective}
           unlocked={unlocked}
+          intakeReady={intakeReady}
           gateLabel={unlocked ? "Unlocked by verification" : "Locked until verification returns"}
           onGo={go}
         />

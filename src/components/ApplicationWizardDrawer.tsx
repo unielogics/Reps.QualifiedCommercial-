@@ -49,8 +49,8 @@ export default function ApplicationWizardDrawer({ onClose }: { onClose: () => vo
             </div>
           </div>
           <div className="note">
-            Step 1 creates the file. The workflow then sends you straight to Step 2 on that file,
-            where the bank and credit requests can be sent while the owner is still with you.
+            Step 1 creates the file and collects the complete ownership schedule. Step 2 unlocks
+            after ownership totals 100% and every 20%+ owner has personal contact information.
           </div>
         </div>
         <div>
@@ -59,7 +59,7 @@ export default function ApplicationWizardDrawer({ onClose }: { onClose: () => vo
             onCancel={onClose}
             onCreated={(id) => {
               onClose();
-              router.push(`/applications/${id}?step=2`);
+              router.push(`/applications/${id}?step=1`);
             }}
           />
         </div>

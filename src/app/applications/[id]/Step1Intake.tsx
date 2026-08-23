@@ -12,6 +12,7 @@
 // phone in a shop will not find a button at the bottom of a form.
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -63,6 +64,17 @@ type Owner = {
 };
 
 const EMPTY_OWNER = { first_name: "", last_name: "", ownership_pct: "", email: "", phone: "" };
+type OwnerDraft = typeof EMPTY_OWNER & { key: string; state: "unsaved" | "saving" | "invalid" };
+
+function validEmail(value: string | null | undefined): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value ?? "").trim());
+}
+
+function validPhone(value: string | null | undefined): boolean {
+  const raw = (value ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith("1")) || (raw.startsWith("+") && digits.length >= 8 && digits.length <= 15);
+}
 
 type Consent = {
   consent_kind: string;
@@ -84,11 +96,12 @@ function chip(complete: boolean) {
 
 export default function Step1Intake({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
   const { dealer } = useCase(dealerId);
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const [showNewOwner, setShowNewOwner] = useState(false);
-  const [newOwner, setNewOwner] = useState(EMPTY_OWNER);
+  const [newOwners, setNewOwners] = useState<OwnerDraft[]>([]);
+  const [ownerSaveState, setOwnerSaveState] = useState<Record<string, "saving" | "saved" | "invalid">>({});
 
   // Reset the local draft whenever the server view changes, so a value saved
   // elsewhere does not sit behind a stale keystroke.
@@ -144,15 +157,15 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   };
 
   const createOwner = useMutation({
-    mutationFn: async () => {
-      const pct = newOwner.ownership_pct.trim() === "" ? null : Number(newOwner.ownership_pct);
-      return api(`/dealer-os/dealers/${dealerId}/owners`, {
+    mutationFn: async (draft: OwnerDraft) => {
+      const pct = draft.ownership_pct.trim() === "" ? null : Number(draft.ownership_pct);
+      return api<Owner>(`/dealer-os/dealers/${dealerId}/owners`, {
         method: "POST",
         body: JSON.stringify({
-          first_name: newOwner.first_name.trim(),
-          last_name: newOwner.last_name.trim(),
-          email: newOwner.email.trim() || null,
-          phone: newOwner.phone.trim() || null,
+          first_name: draft.first_name.trim(),
+          last_name: draft.last_name.trim(),
+          email: draft.email.trim() || null,
+          phone: draft.phone.trim() || null,
           ownership_pct: pct,
           is_primary: (owners.data?.length ?? 0) === 0,
           is_guarantor: true,
@@ -160,10 +173,13 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         authToken: (await getToken()) ?? undefined,
       });
     },
-    onSuccess: () => {
-      setNewOwner(EMPTY_OWNER);
-      setShowNewOwner(false);
+    onSuccess: (created, draft) => {
+      setNewOwners((rows) => rows.filter((row) => row.key !== draft.key));
+      qc.setQueryData<Owner[]>(["owners", dealerId], (rows = []) => [...rows, created]);
       refreshOwners();
+    },
+    onError: (_error, draft) => {
+      setNewOwners((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "invalid" } : row));
     },
   });
 
@@ -174,7 +190,12 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         body: JSON.stringify(body),
         authToken: (await getToken()) ?? undefined,
       }),
-    onSuccess: refreshOwners,
+    onMutate: ({ id }) => setOwnerSaveState((state) => ({ ...state, [id]: "saving" })),
+    onSuccess: (_row, variables) => {
+      setOwnerSaveState((state) => ({ ...state, [variables.id]: "saved" }));
+      refreshOwners();
+    },
+    onError: (_error, variables) => setOwnerSaveState((state) => ({ ...state, [variables.id]: "invalid" })),
   });
 
   const deleteOwner = useMutation({
@@ -190,15 +211,53 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   const ownershipTotal = Math.round(ownerRows.reduce((sum, owner) => sum + Number(owner.ownership_pct ?? 0), 0) * 100) / 100;
   const ownershipComplete = ownerRows.length > 0 && Math.abs(ownershipTotal - 100) < 0.005;
   const missingRequiredEmail = ownerRows.some(
-    (owner) => Number(owner.ownership_pct ?? 0) >= 20 && !owner.email,
+    (owner) => Number(owner.ownership_pct ?? 0) >= 20 && !validEmail(owner.email),
   );
+  const missingRequiredPhone = ownerRows.some(
+    (owner) => Number(owner.ownership_pct ?? 0) >= 20 && !validPhone(owner.phone),
+  );
+  const normalizedEmails = ownerRows.map((owner) => owner.email?.trim().toLowerCase()).filter(Boolean) as string[];
+  const hasDuplicateEmail = new Set(normalizedEmails).size !== normalizedEmails.length;
   const smsGrant = (consent.data ?? []).find(
     (c) => c.consent_kind === "transactional" && c.granted && !c.revoked_at,
   );
 
   const entityComplete = Boolean(dealer?.name && dealer?.ein && dealer?.entity_type);
-  const contactComplete = ownershipComplete && !missingRequiredEmail;
+  const rowsSaved = newOwners.length === 0 && !Object.values(ownerSaveState).includes("saving") && !Object.values(ownerSaveState).includes("invalid");
+  const contactComplete = ownershipComplete && !missingRequiredEmail && !missingRequiredPhone && !hasDuplicateEmail && rowsSaved;
   const facilityComplete = Boolean(dealer?.funding_goal && dealer?.funding_purpose);
+
+  const addOwnerRow = () => {
+    if (ownerRows.length + newOwners.length >= 5) return;
+    setNewOwners((rows) => [
+      ...rows,
+      { ...EMPTY_OWNER, key: crypto.randomUUID(), state: "unsaved" },
+    ]);
+  };
+
+  const updateNewOwner = (key: string, field: keyof typeof EMPTY_OWNER, value: string) => {
+    setNewOwners((rows) => rows.map((row) => row.key === key ? { ...row, [field]: value, state: "unsaved" } : row));
+  };
+
+  const autosaveNewOwner = (draft: OwnerDraft) => {
+    const pct = Number(draft.ownership_pct);
+    const required = Number.isFinite(pct) && pct >= 20;
+    const valid = Boolean(
+      draft.first_name.trim()
+      && draft.last_name.trim()
+      && draft.ownership_pct.trim()
+      && Number.isFinite(pct)
+      && pct >= 0
+      && pct <= 100
+      && (!required || (validEmail(draft.email) && validPhone(draft.phone))),
+    );
+    if (!valid) {
+      setNewOwners((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "invalid" } : row));
+      return;
+    }
+    setNewOwners((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "saving" } : row));
+    createOwner.mutate({ ...draft, state: "saving" });
+  };
 
   const grid: React.CSSProperties = {
     display: "grid",
@@ -322,41 +381,54 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             <span className={`cellchip ${ownershipComplete ? "c-ok" : "c-warn"}`}>
               {ownershipComplete ? "100% complete" : "Draft"}
             </span>
-            <button
-              type="button"
-              className="btn"
-              disabled={ownerRows.length >= 5}
-              onClick={() => setShowNewOwner(true)}
-            >
+            <button type="button" className="btn" disabled={ownerRows.length + newOwners.length >= 5} onClick={addOwnerRow}>
               + Add owner
             </button>
           </div>
 
           {owners.isLoading && <span className="sub">Loading ownership…</span>}
-          {!owners.isLoading && ownerRows.length === 0 && !showNewOwner && (
+          {!owners.isLoading && ownerRows.length === 0 && newOwners.length === 0 && (
             <p className="sub">Add every owner before sending credit authorizations in Step 2.</p>
           )}
 
-          <div style={{ display: "grid", gap: 12 }}>
-            {ownerRows.map((owner, index) => {
+          <div className="tblwrap">
+            <table className="tbl" style={{ minWidth: 980 }}>
+              <thead>
+                <tr>
+                  <th>First name</th>
+                  <th>Last name</th>
+                  <th style={{ width: 120 }}>Ownership %</th>
+                  <th>Personal email</th>
+                  <th>Personal phone</th>
+                  <th>iSoftPull</th>
+                  <th>Save</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+            {ownerRows.map((owner) => {
               const required = Number(owner.ownership_pct ?? 0) >= 20;
               const locked = Boolean(owner.invite_sent_at || owner.credit_pulled_at);
               const save = (body: Record<string, unknown>) => patchOwner.mutate({ id: owner.id, body });
+              const saveState = ownerSaveState[owner.id] ?? "saved";
               return (
-                <section
-                  key={owner.id}
-                  style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 14 }}
-                >
-                  <div className="row" style={{ marginBottom: 12 }}>
-                    <b>Owner {index + 1}</b>
-                    {owner.is_primary && <span className="cellchip">Primary contact</span>}
-                    <span className={`cellchip ${required ? "c-warn" : ""}`}>
-                      {required ? "Credit required" : "Below 20%"}
+                <tr key={owner.id}>
+                  <td><input aria-label={`${owner.full_name} first name`} className="field" style={{ minWidth: 130 }} defaultValue={owner.first_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.first_name) save({ first_name: v }); }} /></td>
+                  <td><input aria-label={`${owner.full_name} last name`} className="field" style={{ minWidth: 130 }} defaultValue={owner.last_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.last_name) save({ last_name: v }); }} /></td>
+                  <td><input aria-label={`${owner.full_name} ownership percentage`} className="field num" style={{ width: 100 }} inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(e) => { const raw = e.target.value.trim(); const value = raw === "" ? null : Number(raw); if (value !== owner.ownership_pct) save({ ownership_pct: value }); }} /></td>
+                  <td><input aria-label={`${owner.full_name} personal email`} className="field" style={{ minWidth: 190 }} type="email" defaultValue={owner.email ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.email ?? "")) save({ email: v || null }); }} /></td>
+                  <td><input aria-label={`${owner.full_name} personal phone`} className="field" style={{ minWidth: 150 }} type="tel" defaultValue={owner.phone ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.phone ?? "")) save({ phone: v || null }); }} /></td>
+                  <td>
+                    <span className={`cellchip ${required ? "c-warn" : "c-mut"}`}>
+                      {required ? "Required" : "Not required"}
                     </span>
-                    <span style={{ flex: 1 }} />
+                    {required && (!validEmail(owner.email) || !validPhone(owner.phone)) && <span className="sub" style={{ display: "block", color: "var(--warn)", marginTop: 4 }}>Valid email + phone needed</span>}
+                  </td>
+                  <td><span className={`cellchip ${saveState === "invalid" ? "c-warn" : saveState === "saved" ? "c-ok" : "c-mut"}`}>{saveState === "saving" ? "Saving…" : saveState === "invalid" ? "Fix row" : "Saved"}</span></td>
+                  <td className="r">
                     <button
                       type="button"
-                      className="btn"
+                      className="btn sm"
                       title={locked ? "Credit activity preserves this owner for audit" : "Remove owner"}
                       disabled={locked || deleteOwner.isPending}
                       onClick={() => {
@@ -367,75 +439,38 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                     >
                       Remove
                     </button>
-                  </div>
-                  <div style={grid}>
-                    <div>
-                      <label className="lbl">First name</label>
-                      <input className="field" style={{ width: "100%" }} defaultValue={owner.first_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.first_name) save({ first_name: v }); }} />
-                    </div>
-                    <div>
-                      <label className="lbl">Last name</label>
-                      <input className="field" style={{ width: "100%" }} defaultValue={owner.last_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.last_name) save({ last_name: v }); }} />
-                    </div>
-                    <div>
-                      <label className="lbl">Ownership %</label>
-                      <input className="field num" style={{ width: "100%" }} inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(e) => { const raw = e.target.value.trim(); const value = raw === "" ? null : Number(raw); if (value !== owner.ownership_pct) save({ ownership_pct: value }); }} />
-                    </div>
-                    <div>
-                      <label className="lbl">Email {required ? "· required" : ""}</label>
-                      <input className="field" style={{ width: "100%" }} type="email" defaultValue={owner.email ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.email ?? "")) save({ email: v || null }); }} />
-                    </div>
-                    <div>
-                      <label className="lbl">Phone · optional</label>
-                      <input className="field" style={{ width: "100%" }} type="tel" defaultValue={owner.phone ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.phone ?? "")) save({ phone: v || null }); }} />
-                    </div>
-                  </div>
-                  {required && !owner.email && (
-                    <span className="sub" style={{ color: "var(--warn)", display: "block", marginTop: 8 }}>
-                      Add this owner&apos;s email before Step 2 can send their private authorization.
-                    </span>
-                  )}
-                </section>
+                  </td>
+                </tr>
               );
             })}
 
-            {showNewOwner && ownerRows.length < 5 && (
-              <section style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 14 }}>
-                <div className="row" style={{ marginBottom: 12 }}>
-                  <b>New owner</b><span style={{ flex: 1 }} />
-                  <button type="button" className="btn" onClick={() => { setShowNewOwner(false); setNewOwner(EMPTY_OWNER); }}>Cancel</button>
-                </div>
-                <div style={grid}>
-                  {([
-                    ["first_name", "First name"],
-                    ["last_name", "Last name"],
-                    ["ownership_pct", "Ownership %"],
-                    ["email", "Email"],
-                    ["phone", "Phone · optional"],
-                  ] as const).map(([key, label]) => (
-                    <div key={key}>
-                      <label className="lbl">{label}</label>
+            {newOwners.map((draft) => {
+              const pct = Number(draft.ownership_pct);
+              const required = draft.ownership_pct.trim() !== "" && Number.isFinite(pct) && pct >= 20;
+              return (
+                <tr key={draft.key}>
+                  {(["first_name", "last_name", "ownership_pct", "email", "phone"] as const).map((field) => (
+                    <td key={field}>
                       <input
-                        className={`field${key === "ownership_pct" ? " num" : ""}`}
-                        style={{ width: "100%" }}
-                        type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
-                        inputMode={key === "ownership_pct" ? "decimal" : undefined}
-                        value={newOwner[key]}
-                        onChange={(e) => setNewOwner((current) => ({ ...current, [key]: e.target.value }))}
+                        aria-label={`New owner ${field.replace("_", " ")}`}
+                        className={`field${field === "ownership_pct" ? " num" : ""}`}
+                        style={{ minWidth: field === "email" ? 190 : field === "phone" ? 150 : 120, width: field === "ownership_pct" ? 100 : undefined }}
+                        type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
+                        inputMode={field === "ownership_pct" ? "decimal" : undefined}
+                        value={draft[field]}
+                        onChange={(event) => updateNewOwner(draft.key, field, event.target.value)}
+                        onBlur={() => autosaveNewOwner(draft)}
                       />
-                    </div>
+                    </td>
                   ))}
-                </div>
-                <button
-                  type="button"
-                  className="btn pri mt"
-                  disabled={!newOwner.first_name.trim() || !newOwner.last_name.trim() || createOwner.isPending}
-                  onClick={() => createOwner.mutate()}
-                >
-                  Add owner
-                </button>
-              </section>
-            )}
+                  <td><span className={`cellchip ${required ? "c-warn" : "c-mut"}`}>{required ? "Required" : "Not required"}</span></td>
+                  <td><span className={`cellchip ${draft.state === "saving" ? "c-mut" : draft.state === "invalid" ? "c-warn" : ""}`}>{draft.state === "saving" ? "Saving…" : draft.state === "invalid" ? "Complete row" : "Unsaved"}</span></td>
+                  <td className="r"><button type="button" className="btn sm" onClick={() => setNewOwners((rows) => rows.filter((row) => row.key !== draft.key))}>Remove</button></td>
+                </tr>
+              );
+            })}
+              </tbody>
+            </table>
           </div>
 
           {(createOwner.isError || patchOwner.isError || deleteOwner.isError) && (
@@ -447,6 +482,24 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
               </div>
             </div>
           )}
+
+          <div className="row mt" style={{ alignItems: "center" }}>
+            <span className="sub">
+              {!rowsSaved
+                ? "Save or remove every draft owner row."
+                : !ownershipComplete
+                  ? "Ownership must total exactly 100.00%."
+                  : hasDuplicateEmail
+                    ? "Each owner must use a different personal email."
+                  : missingRequiredEmail || missingRequiredPhone
+                    ? "Every 20%+ owner needs a personal email and phone."
+                    : "Ownership is ready. Step 2 will create one iSoftPull box per 20%+ owner."}
+            </span>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn pri" disabled={!contactComplete} onClick={() => router.push(`/applications/${dealerId}?step=2`)}>
+              Continue to Step 2
+            </button>
+          </div>
 
           {smsGrant ? (
             <div className="note">

@@ -32,11 +32,13 @@ export const GATED_FROM = 3;
 export default function StepRail({
   step,
   unlocked,
+  intakeReady,
   gateLabel,
   onGo,
 }: {
   step: number;
   unlocked: boolean;
+  intakeReady: boolean;
   gateLabel: string;
   onGo: (n: number) => void;
 }) {
@@ -49,7 +51,7 @@ export default function StepRail({
       </div>
       <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {STEPS.map((s) => {
-          const locked = s.n >= GATED_FROM && !unlocked;
+          const locked = (s.n === 2 && !intakeReady) || (s.n >= GATED_FROM && !unlocked);
           const cur = s.n === step;
           const done = s.n < step && !locked;
           return (
@@ -97,7 +99,7 @@ export default function StepRail({
                 className={`rung${cur ? " cur" : ""}${done ? " done" : ""}`}
                 disabled={locked}
                 onClick={() => !locked && onGo(s.n)}
-                title={locked ? gateLabel : undefined}
+                title={s.n === 2 && !intakeReady ? "Complete the ownership schedule in Step 1" : locked ? gateLabel : undefined}
                 style={{
                   textAlign: "left",
                   font: "inherit",

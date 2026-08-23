@@ -48,6 +48,7 @@ type Owner = {
   invite_opened_at: string | null;
   credit_required: boolean;
   credit_complete: boolean;
+  credit_contact_complete: boolean;
 };
 
 type CreditInviteResult = {
@@ -83,6 +84,17 @@ function when(iso: string | null | undefined): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function maskEmail(value: string | null): string {
+  if (!value || !value.includes("@")) return "Email missing";
+  const [name, domain] = value.split("@");
+  return `${name.slice(0, 2)}${"•".repeat(Math.max(2, Math.min(6, name.length - 2)))}@${domain}`;
+}
+
+function maskPhone(value: string | null): string {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : "Phone missing";
 }
 
 function statusTone(s: string): string {
@@ -198,7 +210,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       }
       return api<CreditInviteResult>(
         `/dealer-os/dealers/${dealerId}/owners/${request.ownerId}/credit-invite`,
-        { method: "POST", body: JSON.stringify({ channel: "email" }), authToken: token },
+        { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email" }), authToken: token },
       );
     },
     onSuccess: (r, request) => {
@@ -221,7 +233,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         `/dealer-os/dealers/${dealerId}/owners/credit-invites`,
         {
           method: "POST",
-          body: JSON.stringify({ channel: "email" }),
+          body: JSON.stringify({ channel: alsoText ? "sms" : "email" }),
           authToken: (await getToken()) ?? undefined,
         },
       ),
@@ -592,14 +604,14 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <button
               type="button"
               className="btn pri"
-              disabled={!verification.ownership_complete || requiredOwners.some((owner) => !owner.email) || !requiredOwners.length || !verification.credit_enabled || sendAllCredit.isPending}
+              disabled={!verification.ownership_complete || !verification.owner_contact_complete || !requiredOwners.length || !verification.credit_enabled || sendAllCredit.isPending}
               onClick={() => sendAllCredit.mutate()}
             >
               Send all pending authorizations
             </button>
           </div>
           <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
-            {ownerRows.map((owner) => {
+            {requiredOwners.map((owner) => {
               const state = owner.credit_complete
                 ? `Completed ${when(owner.credit_pulled_at)}`
                 : owner.invite_opened_at
@@ -613,16 +625,17 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                   <div>
                     <b>{owner.full_name}</b>
                     <span className="sub" style={{ display: "block", marginTop: 3 }}>
-                      {Number(owner.ownership_pct ?? 0).toFixed(2)}% · {owner.email || "Email missing"}
+                      {Number(owner.ownership_pct ?? 0).toFixed(2)}% owner
+                    </span>
+                    <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                      {maskEmail(owner.email)} · {maskPhone(owner.phone)}
                     </span>
                   </div>
                   <span style={{ flex: 1 }} />
-                  <span className={`cellchip ${owner.credit_complete ? "c-ok" : owner.credit_required ? "c-warn" : "c-mut"}`}>
-                    {owner.credit_required ? "Credit required" : "Informational"}
-                  </span>
-                  <span className="sub">{owner.credit_required ? state : "Does not block file"}</span>
-                  {owner.credit_required && !owner.credit_complete && (
-                    <button type="button" className="btn" disabled={!verification.ownership_complete || !owner.email || send.isPending} onClick={() => { setCreditOwnerId(owner.id); setModal("credit"); }}>
+                  <span className={`cellchip ${owner.credit_complete ? "c-ok" : "c-warn"}`}>iSoftPull required</span>
+                  <span className="sub">{state}</span>
+                  {!owner.credit_complete && (
+                    <button type="button" className="btn" disabled={!verification.ownership_complete || !owner.credit_contact_complete || send.isPending} onClick={() => { setCreditOwnerId(owner.id); setModal("credit"); }}>
                       {owner.invite_sent_at ? "Resend" : "Send"}
                     </button>
                   )}
@@ -636,9 +649,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               );
             })}
           </div>
-          {!ownerRows.length && (
+          {!requiredOwners.length && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
-              Add the ownership schedule in Step 1 before sending any authorization.
+              No 20%+ owners are ready for credit. Complete the ownership schedule in Step 1.
             </span>
           )}
           {sendAllCredit.isError && <div className="note"><div>{sendAllCredit.error instanceof Error ? sendAllCredit.error.message : "The authorizations could not be sent."}</div></div>}
@@ -728,20 +741,16 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           </div>
           <div className="kv">
             <span>Mobile</span>
-            <b className="num">{modal === "credit" ? creditOwner?.phone || "optional / not provided" : dealer?.phone || "none on file"}</b>
+            <b className="num">{modal === "credit" ? creditOwner?.phone || "required in Step 1" : dealer?.phone || "none on file"}</b>
           </div>
 
-          {modal !== "credit" && (
-            <>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, cursor: "pointer" }}>
-                <input type="checkbox" checked={alsoText} onChange={(e) => setAlsoText(e.target.checked)} />
-                <span className="sub">Text them as well</span>
-              </label>
-              <span className="sub" style={{ display: "block", marginTop: 4 }}>
-                The email goes either way. A text only goes if this number has opted in.
-              </span>
-            </>
-          )}
+          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, cursor: "pointer" }}>
+            <input type="checkbox" checked={alsoText} onChange={(e) => setAlsoText(e.target.checked)} />
+            <span className="sub">Also text the secure link when this number has consented</span>
+          </label>
+          <span className="sub" style={{ display: "block", marginTop: 4 }}>
+            The email is always sent. SMS is added only when the exact personal number has active transactional consent.
+          </span>
 
           <div className="note">
             <div>
