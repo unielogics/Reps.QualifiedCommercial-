@@ -25,22 +25,37 @@ import Modal from "@/components/Modal";
 type PlaidItem = {
   id: string;
   institution_name: string | null;
+  accounts_label: string | null;
   status: string;
-  last_synced_at: string | null;
+  error: string | null;
+  last_pulled_at: string | null;
+  is_primary_operating: boolean;
+  statement_months: string[];
 };
 type PlaidState = { enabled: boolean; environment: string; items: PlaidItem[] };
 
 type Owner = {
   id: string;
-  full_name: string | null;
+  full_name: string;
   email: string | null;
   phone: string | null;
+  ownership_pct: number | null;
   is_primary: boolean;
   credit_score: number | null;
   credit_tier: string | null;
   credit_pulled_at: string | null;
   invite_sent_at: string | null;
   invite_opened_at: string | null;
+  credit_required: boolean;
+  credit_complete: boolean;
+};
+
+type CreditInviteResult = {
+  owner_id?: string;
+  owner_name?: string;
+  path?: string | null;
+  detail?: string | null;
+  delivered?: boolean;
 };
 
 type DeliveryRow = {
@@ -114,10 +129,12 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const { dealer, verification } = useCase(dealerId);
   const uploadInput = useRef<HTMLInputElement | null>(null);
   const [modal, setModal] = useState<null | "bank" | "upload" | "credit">(null);
+  const [creditOwnerId, setCreditOwnerId] = useState<string | null>(null);
   const [alsoText, setAlsoText] = useState(false);
   const [sent, setSent] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [creditLinks, setCreditLinks] = useState<Record<string, string>>({});
 
   // Rotation, not retrieval: the stored code is a hash and can never be shown
   // again, so "show me the code" always means "mint a new one". The old code
@@ -164,33 +181,72 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       }),
   });
 
-  const owner = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
-  const item = plaid.data?.items.find((i) => i.status === "active") ?? plaid.data?.items[0];
+  const ownerRows = owners.data ?? [];
+  const requiredOwners = ownerRows.filter((owner) => owner.credit_required);
+  const creditOwner = ownerRows.find((owner) => owner.id === creditOwnerId) ?? null;
+  const activeBanks = (plaid.data?.items ?? []).filter((item) => item.status !== "removed");
 
   const send = useMutation({
-    mutationFn: async (kind: "bank" | "credit") => {
+    mutationFn: async (request: { kind: "bank" } | { kind: "credit"; ownerId: string }) => {
       const token = (await getToken()) ?? undefined;
       const channel = alsoText ? "sms" : "email";
-      if (kind === "bank") {
+      if (request.kind === "bank") {
         return api<{ detail: string | null; emailed: boolean; texted: boolean }>(
           `/dealer-os/dealers/${dealerId}/bank-connect-invite`,
           { method: "POST", body: JSON.stringify({ channel }), authToken: token },
         );
       }
-      if (!owner) throw new Error("No principal on the file to authorize a credit inquiry.");
-      return api<{ detail?: string | null }>(
-        `/dealer-os/dealers/${dealerId}/owners/${owner.id}/credit-invite`,
-        { method: "POST", body: JSON.stringify({ channel }), authToken: token },
+      return api<CreditInviteResult>(
+        `/dealer-os/dealers/${dealerId}/owners/${request.ownerId}/credit-invite`,
+        { method: "POST", body: JSON.stringify({ channel: "email" }), authToken: token },
       );
     },
-    onSuccess: (r) => {
+    onSuccess: (r, request) => {
       setModal(null);
       setSent((r as { detail?: string | null })?.detail ?? "Sent.");
+      if (request.kind === "credit" && (r as CreditInviteResult).path) {
+        setCreditLinks((current) => ({ ...current, [request.ownerId]: (r as CreditInviteResult).path! }));
+      }
       const code = (r as { passcode?: string | null })?.passcode;
       if (code) setAccessCode(code);
       void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
       void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
       void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
+    },
+  });
+
+  const sendAllCredit = useMutation({
+    mutationFn: async () =>
+      api<{ items: CreditInviteResult[] }>(
+        `/dealer-os/dealers/${dealerId}/owners/credit-invites`,
+        {
+          method: "POST",
+          body: JSON.stringify({ channel: "email" }),
+          authToken: (await getToken()) ?? undefined,
+        },
+      ),
+    onSuccess: (result) => {
+      const links: Record<string, string> = {};
+      result.items.forEach((item) => {
+        if (item.owner_id && item.path) links[item.owner_id] = item.path;
+      });
+      setCreditLinks((current) => ({ ...current, ...links }));
+      setSent(`${result.items.filter((item) => item.delivered).length} authorization email(s) sent.`);
+      void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
+    },
+  });
+
+  const setPrimaryBank = useMutation({
+    mutationFn: async (itemId: string) =>
+      api(`/dealer-os/dealers/${dealerId}/plaid/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_primary_operating: true }),
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["plaid", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
     },
   });
 
@@ -354,8 +410,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         <div className="panel-b">
           <div style={kv}>
             <div>
-              <span className="lbl">Plaid institution</span>
-              <b style={{ display: "block" }}>{item?.institution_name ?? "—"}</b>
+              <span className="lbl">Connected institutions</span>
+              <b className="num" style={{ display: "block" }}>{activeBanks.length}</b>
             </div>
             <div>
               <span className="lbl">Evidence source</span>
@@ -372,9 +428,38 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </b>
             </div>
           </div>
+          {activeBanks.length > 0 && (
+            <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
+              {activeBanks.map((bank) => (
+                <div
+                  key={bank.id}
+                  className="row"
+                  style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 12, alignItems: "center" }}
+                >
+                  <div>
+                    <b>{bank.institution_name || "Connected institution"}</b>
+                    <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                      {bank.accounts_label || "Account labels syncing"} · {bank.statement_months.length} statement month{bank.statement_months.length === 1 ? "" : "s"}
+                    </span>
+                    {bank.error && <span className="sub" style={{ color: "var(--bad)", display: "block" }}>{bank.error}</span>}
+                  </div>
+                  <span style={{ flex: 1 }} />
+                  <span className={`cellchip ${bank.status === "active" ? "c-ok" : "c-warn"}`}>{bank.status}</span>
+                  {bank.is_primary_operating ? (
+                    <span className="cellchip c-acc">Main operating bank</span>
+                  ) : (
+                    <button type="button" className="btn" disabled={setPrimaryBank.isPending} onClick={() => setPrimaryBank.mutate(bank.id)}>
+                      Set as main
+                    </button>
+                  )}
+                  <span className="sub">{when(bank.last_pulled_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="row mt">
             <button type="button" className="btn pri" onClick={() => setModal("bank")}>
-              Connect with Plaid
+              {activeBanks.length ? "Connect another bank" : "Send bank connection request"}
             </button>
             <button type="button" className="btn" onClick={() => setModal("upload")}>
               Request statement upload
@@ -383,12 +468,10 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               type="button"
               className="btn"
               disabled={send.isPending}
-              onClick={() => send.mutate("bank")}
+              onClick={() => send.mutate({ kind: "bank" })}
             >
               Resend Plaid
             </button>
-            <span style={{ flex: 1 }} />
-            <span className="sub">{when(item?.last_synced_at)}</span>
           </div>
           <div
             className={`dropzone mt${dragging ? " drag" : ""}`}
@@ -496,54 +579,69 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           </span>
         </div>
         <div className="panel-b">
-          <div style={kv}>
+          <div className="row" style={{ alignItems: "center" }}>
             <div>
-              <span className="lbl">Bureau</span>
-              <b style={{ display: "block" }}>{owner?.credit_pulled_at ? "Experian" : "—"}</b>
+              <b className="num">
+                {verification.completed_credit_owner_count} of {verification.required_credit_owner_count} required owners completed
+              </b>
+              <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                Ownership: {verification.ownership_total.toFixed(2)}% {verification.ownership_complete ? "allocated" : "· complete Step 1 before sending"}
+              </span>
             </div>
-            <div>
-              <span className="lbl">Score band</span>
-              <b className="num" style={{ display: "block" }}>{band(owner?.credit_score ?? null)}</b>
-            </div>
-            <div>
-              <span className="lbl">Inquiry type</span>
-              <b style={{ display: "block" }}>Soft</b>
-            </div>
-          </div>
-          <div className="row mt">
+            <span style={{ flex: 1 }} />
             <button
               type="button"
               className="btn pri"
-              disabled={!owner || !verification.credit_enabled}
-              onClick={() => setModal("credit")}
+              disabled={!verification.ownership_complete || requiredOwners.some((owner) => !owner.email) || !requiredOwners.length || !verification.credit_enabled || sendAllCredit.isPending}
+              onClick={() => sendAllCredit.mutate()}
             >
-              Send credit authorization
+              Send all pending authorizations
             </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={!owner || !verification.credit_enabled || send.isPending}
-              onClick={() => send.mutate("credit")}
-            >
-              Resend
-            </button>
-            <span style={{ flex: 1 }} />
-            <span className="sub">
-              {owner?.credit_pulled_at
-                ? `Returned ${when(owner.credit_pulled_at)}`
-                : owner?.invite_opened_at
-                  ? `Opened ${when(owner.invite_opened_at)}, not completed`
-                  : owner?.invite_sent_at
-                    ? `Sent ${when(owner.invite_sent_at)} · unopened`
-                    : "Not sent"}
-            </span>
           </div>
-          {!owner && (
+          <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
+            {ownerRows.map((owner) => {
+              const state = owner.credit_complete
+                ? `Completed ${when(owner.credit_pulled_at)}`
+                : owner.invite_opened_at
+                  ? `Opened ${when(owner.invite_opened_at)}`
+                  : owner.invite_sent_at
+                    ? `Sent ${when(owner.invite_sent_at)}`
+                    : "Not sent";
+              const path = creditLinks[owner.id];
+              return (
+                <div key={owner.id} className="row" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 12, alignItems: "center" }}>
+                  <div>
+                    <b>{owner.full_name}</b>
+                    <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                      {Number(owner.ownership_pct ?? 0).toFixed(2)}% · {owner.email || "Email missing"}
+                    </span>
+                  </div>
+                  <span style={{ flex: 1 }} />
+                  <span className={`cellchip ${owner.credit_complete ? "c-ok" : owner.credit_required ? "c-warn" : "c-mut"}`}>
+                    {owner.credit_required ? "Credit required" : "Informational"}
+                  </span>
+                  <span className="sub">{owner.credit_required ? state : "Does not block file"}</span>
+                  {owner.credit_required && !owner.credit_complete && (
+                    <button type="button" className="btn" disabled={!verification.ownership_complete || !owner.email || send.isPending} onClick={() => { setCreditOwnerId(owner.id); setModal("credit"); }}>
+                      {owner.invite_sent_at ? "Resend" : "Send"}
+                    </button>
+                  )}
+                  {path && (
+                    <button type="button" className="btn" onClick={() => void navigator.clipboard.writeText(`https://audit.qualifiedcommercial.com${path}`)}>
+                      Copy secure link
+                    </button>
+                  )}
+                  {owner.credit_complete && <b className="num">{band(owner.credit_score)}</b>}
+                </div>
+              );
+            })}
+          </div>
+          {!ownerRows.length && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
-              A credit inquiry is authorized by a named person, so add the principal in step 1
-              first.
+              Add the ownership schedule in Step 1 before sending any authorization.
             </span>
           )}
+          {sendAllCredit.isError && <div className="note"><div>{sendAllCredit.error instanceof Error ? sendAllCredit.error.message : "The authorizations could not be sent."}</div></div>}
           {!verification.credit_enabled && (
             <div className="note">
               <div>
@@ -626,26 +724,24 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           </span>
           <div className="kv">
             <span>Email</span>
-            <b>{owner?.email || dealer?.email || "none on file"}</b>
+            <b>{modal === "credit" ? creditOwner?.email || "none on file" : dealer?.email || "none on file"}</b>
           </div>
           <div className="kv">
             <span>Mobile</span>
-            <b className="num">{owner?.phone || dealer?.phone || "none on file"}</b>
+            <b className="num">{modal === "credit" ? creditOwner?.phone || "optional / not provided" : dealer?.phone || "none on file"}</b>
           </div>
 
-          <label
-            style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, cursor: "pointer" }}
-          >
-            <input
-              type="checkbox"
-              checked={alsoText}
-              onChange={(e) => setAlsoText(e.target.checked)}
-            />
-            <span className="sub">Text them as well</span>
-          </label>
-          <span className="sub" style={{ display: "block", marginTop: 4 }}>
-            The email goes either way. A text only goes if this number has opted in.
-          </span>
+          {modal !== "credit" && (
+            <>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, cursor: "pointer" }}>
+                <input type="checkbox" checked={alsoText} onChange={(e) => setAlsoText(e.target.checked)} />
+                <span className="sub">Text them as well</span>
+              </label>
+              <span className="sub" style={{ display: "block", marginTop: 4 }}>
+                The email goes either way. A text only goes if this number has opted in.
+              </span>
+            </>
+          )}
 
           <div className="note">
             <div>
@@ -677,7 +773,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               disabled={modalPending}
               onClick={() => {
                 if (modal === "upload") requestUpload.mutate();
-                else if (modal === "bank" || modal === "credit") send.mutate(modal);
+                else if (modal === "bank") send.mutate({ kind: "bank" });
+                else if (modal === "credit" && creditOwner) send.mutate({ kind: "credit", ownerId: creditOwner.id });
               }}
             >
               {modalPending

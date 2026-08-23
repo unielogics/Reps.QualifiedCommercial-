@@ -49,14 +49,20 @@ const PURPOSES: Array<[string, string]> = [
 
 type Owner = {
   id: string;
-  full_name: string | null;
-  first_name: string | null;
-  last_name: string | null;
+  full_name: string;
+  first_name: string;
+  last_name: string;
   email: string | null;
   phone: string | null;
   ownership_pct: number | null;
   is_primary: boolean;
+  invite_sent_at: string | null;
+  credit_pulled_at: string | null;
+  credit_required: boolean;
+  credit_complete: boolean;
 };
+
+const EMPTY_OWNER = { first_name: "", last_name: "", ownership_pct: "", email: "", phone: "" };
 
 type Consent = {
   consent_kind: string;
@@ -81,6 +87,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   const qc = useQueryClient();
   const { dealer } = useCase(dealerId);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [showNewOwner, setShowNewOwner] = useState(false);
+  const [newOwner, setNewOwner] = useState(EMPTY_OWNER);
 
   // Reset the local draft whenever the server view changes, so a value saved
   // elsewhere does not sit behind a stale keystroke.
@@ -130,51 +138,66 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     patch.mutate({ [k]: transform ? transform(raw) : raw.trim() || null });
   };
 
-  // The principal is created on first save rather than requiring a separate
-  // "add owner" step. A rep standing in a shop has the name and the mobile in
-  // front of them; making them press Add first is a step that gets skipped and
-  // then step 2 cannot send anything.
-  const saveOwner = useMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
-      const token = (await getToken()) ?? undefined;
-      const existing = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
-      if (existing) {
-        return api(`/dealer-os/dealers/${dealerId}/owners/${existing.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-          authToken: token,
-        });
-      }
-      const first = String(body.first_name ?? "").trim();
-      const last = String(body.last_name ?? "").trim();
-      if (!first && !last)
-        throw new Error("A principal needs a name before contact details are saved.");
+  const refreshOwners = () => {
+    void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
+    void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+  };
+
+  const createOwner = useMutation({
+    mutationFn: async () => {
+      const pct = newOwner.ownership_pct.trim() === "" ? null : Number(newOwner.ownership_pct);
       return api(`/dealer-os/dealers/${dealerId}/owners`, {
         method: "POST",
         body: JSON.stringify({
-          first_name: first || last,
-          last_name: last || first,
-          email: body.email ?? null,
-          phone: body.phone ?? null,
-          is_primary: true,
+          first_name: newOwner.first_name.trim(),
+          last_name: newOwner.last_name.trim(),
+          email: newOwner.email.trim() || null,
+          phone: newOwner.phone.trim() || null,
+          ownership_pct: pct,
+          is_primary: (owners.data?.length ?? 0) === 0,
           is_guarantor: true,
         }),
-        authToken: token,
+        authToken: (await getToken()) ?? undefined,
       });
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
-      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+      setNewOwner(EMPTY_OWNER);
+      setShowNewOwner(false);
+      refreshOwners();
     },
   });
 
-  const owner = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
+  const patchOwner = useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api(`/dealer-os/dealers/${dealerId}/owners/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: refreshOwners,
+  });
+
+  const deleteOwner = useMutation({
+    mutationFn: async (id: string) =>
+      api(`/dealer-os/dealers/${dealerId}/owners/${id}`, {
+        method: "DELETE",
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: refreshOwners,
+  });
+
+  const ownerRows = owners.data ?? [];
+  const ownershipTotal = Math.round(ownerRows.reduce((sum, owner) => sum + Number(owner.ownership_pct ?? 0), 0) * 100) / 100;
+  const ownershipComplete = ownerRows.length > 0 && Math.abs(ownershipTotal - 100) < 0.005;
+  const missingRequiredEmail = ownerRows.some(
+    (owner) => Number(owner.ownership_pct ?? 0) >= 20 && !owner.email,
+  );
   const smsGrant = (consent.data ?? []).find(
     (c) => c.consent_kind === "transactional" && c.granted && !c.revoked_at,
   );
 
   const entityComplete = Boolean(dealer?.name && dealer?.ein && dealer?.entity_type);
-  const contactComplete = Boolean(owner?.full_name && (owner?.email || owner?.phone));
+  const contactComplete = ownershipComplete && !missingRequiredEmail;
   const facilityComplete = Boolean(dealer?.funding_goal && dealer?.funding_purpose);
 
   const grid: React.CSSProperties = {
@@ -279,108 +302,148 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
 
       <div className="panel">
         <div className="panel-h">
-          Principal and contact
+          Business ownership
           <span style={{ flex: 1 }} />
           {chip(contactComplete)}
         </div>
         <div className="panel-b">
-          {owners.isLoading && <span className="sub">Loading…</span>}
-          {!owners.isLoading && !owner && (
-            <p className="sub" style={{ margin: "0 0 12px" }}>
-              No principal recorded yet. The credit authorization is sent to a named person, so
-              this is needed before step 2 can send anything. Fill it in here and it is created
-              on save.
-            </p>
-          )}
-          {!owners.isLoading && (
-            <div style={grid}>
-              {/* First and last are separate on purpose: the loan application
-                  and the credit bureau both want them split, and splitting a
-                  typed full name by guessing where the surname starts gets
-                  two-word surnames wrong. */}
-              <div>
-                <label className="lbl">First name</label>
-                <input
-                  className="field"
-                  style={{ width: "100%" }}
-                  autoComplete="given-name"
-                  defaultValue={owner?.first_name ?? ""}
-                  key={`fn-${owner?.id ?? "new"}`}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v && v !== (owner?.first_name ?? "")) saveOwner.mutate({ first_name: v });
-                  }}
-                />
-              </div>
-              <div>
-                <label className="lbl">Last name</label>
-                <input
-                  className="field"
-                  style={{ width: "100%" }}
-                  autoComplete="family-name"
-                  defaultValue={owner?.last_name ?? ""}
-                  key={`ln-${owner?.id ?? "new"}`}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v && v !== (owner?.last_name ?? "")) saveOwner.mutate({ last_name: v });
-                  }}
-                />
-              </div>
-              <div>
-                <label className="lbl">Ownership</label>
-                <input
-                  className="field num"
-                  style={{ width: "100%" }}
-                  placeholder="100"
-                  defaultValue={owner?.ownership_pct ?? ""}
-                  key={`o-${owner?.id ?? "new"}`}
-                  onBlur={(e) => {
-                    const n = Number(e.target.value.replace(/[^0-9.]/g, ""));
-                    if (e.target.value.trim() && n !== owner?.ownership_pct)
-                      saveOwner.mutate({ ownership_pct: n });
-                  }}
-                />
-              </div>
-              <div>
-                <label className="lbl">Mobile</label>
-                <input
-                  className="field"
-                  style={{ width: "100%" }}
-                  type="tel"
-                  inputMode="tel"
-                  placeholder="(000) 000-0000"
-                  defaultValue={owner?.phone ?? ""}
-                  key={`p-${owner?.id ?? "new"}`}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v !== (owner?.phone ?? "")) saveOwner.mutate({ phone: v || null });
-                  }}
-                />
-              </div>
-              <div>
-                <label className="lbl">Email</label>
-                <input
-                  className="field"
-                  style={{ width: "100%" }}
-                  type="email"
-                  inputMode="email"
-                  placeholder="name@business.com"
-                  defaultValue={owner?.email ?? ""}
-                  key={`e-${owner?.id ?? "new"}`}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v !== (owner?.email ?? "")) saveOwner.mutate({ email: v || null });
-                  }}
-                />
-              </div>
+          <div className="row" style={{ alignItems: "center", marginBottom: 14 }}>
+            <div>
+              <b className="num">{ownershipTotal.toFixed(2)}% allocated</b>
+              <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                {ownershipTotal < 100
+                  ? `${(100 - ownershipTotal).toFixed(2)}% remaining`
+                  : ownershipTotal > 100
+                    ? `${(ownershipTotal - 100).toFixed(2)}% overallocated`
+                    : "Ownership is fully allocated"}
+              </span>
             </div>
+            <span style={{ flex: 1 }} />
+            <span className={`cellchip ${ownershipComplete ? "c-ok" : "c-warn"}`}>
+              {ownershipComplete ? "100% complete" : "Draft"}
+            </span>
+            <button
+              type="button"
+              className="btn"
+              disabled={ownerRows.length >= 5}
+              onClick={() => setShowNewOwner(true)}
+            >
+              + Add owner
+            </button>
+          </div>
+
+          {owners.isLoading && <span className="sub">Loading ownership…</span>}
+          {!owners.isLoading && ownerRows.length === 0 && !showNewOwner && (
+            <p className="sub">Add every owner before sending credit authorizations in Step 2.</p>
           )}
-          {saveOwner.isError && (
+
+          <div style={{ display: "grid", gap: 12 }}>
+            {ownerRows.map((owner, index) => {
+              const required = Number(owner.ownership_pct ?? 0) >= 20;
+              const locked = Boolean(owner.invite_sent_at || owner.credit_pulled_at);
+              const save = (body: Record<string, unknown>) => patchOwner.mutate({ id: owner.id, body });
+              return (
+                <section
+                  key={owner.id}
+                  style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 14 }}
+                >
+                  <div className="row" style={{ marginBottom: 12 }}>
+                    <b>Owner {index + 1}</b>
+                    {owner.is_primary && <span className="cellchip">Primary contact</span>}
+                    <span className={`cellchip ${required ? "c-warn" : ""}`}>
+                      {required ? "Credit required" : "Below 20%"}
+                    </span>
+                    <span style={{ flex: 1 }} />
+                    <button
+                      type="button"
+                      className="btn"
+                      title={locked ? "Credit activity preserves this owner for audit" : "Remove owner"}
+                      disabled={locked || deleteOwner.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Remove ${owner.full_name} from this ownership schedule?`)) {
+                          deleteOwner.mutate(owner.id);
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div style={grid}>
+                    <div>
+                      <label className="lbl">First name</label>
+                      <input className="field" style={{ width: "100%" }} defaultValue={owner.first_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.first_name) save({ first_name: v }); }} />
+                    </div>
+                    <div>
+                      <label className="lbl">Last name</label>
+                      <input className="field" style={{ width: "100%" }} defaultValue={owner.last_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.last_name) save({ last_name: v }); }} />
+                    </div>
+                    <div>
+                      <label className="lbl">Ownership %</label>
+                      <input className="field num" style={{ width: "100%" }} inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(e) => { const raw = e.target.value.trim(); const value = raw === "" ? null : Number(raw); if (value !== owner.ownership_pct) save({ ownership_pct: value }); }} />
+                    </div>
+                    <div>
+                      <label className="lbl">Email {required ? "· required" : ""}</label>
+                      <input className="field" style={{ width: "100%" }} type="email" defaultValue={owner.email ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.email ?? "")) save({ email: v || null }); }} />
+                    </div>
+                    <div>
+                      <label className="lbl">Phone · optional</label>
+                      <input className="field" style={{ width: "100%" }} type="tel" defaultValue={owner.phone ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.phone ?? "")) save({ phone: v || null }); }} />
+                    </div>
+                  </div>
+                  {required && !owner.email && (
+                    <span className="sub" style={{ color: "var(--warn)", display: "block", marginTop: 8 }}>
+                      Add this owner&apos;s email before Step 2 can send their private authorization.
+                    </span>
+                  )}
+                </section>
+              );
+            })}
+
+            {showNewOwner && ownerRows.length < 5 && (
+              <section style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 14 }}>
+                <div className="row" style={{ marginBottom: 12 }}>
+                  <b>New owner</b><span style={{ flex: 1 }} />
+                  <button type="button" className="btn" onClick={() => { setShowNewOwner(false); setNewOwner(EMPTY_OWNER); }}>Cancel</button>
+                </div>
+                <div style={grid}>
+                  {([
+                    ["first_name", "First name"],
+                    ["last_name", "Last name"],
+                    ["ownership_pct", "Ownership %"],
+                    ["email", "Email"],
+                    ["phone", "Phone · optional"],
+                  ] as const).map(([key, label]) => (
+                    <div key={key}>
+                      <label className="lbl">{label}</label>
+                      <input
+                        className={`field${key === "ownership_pct" ? " num" : ""}`}
+                        style={{ width: "100%" }}
+                        type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
+                        inputMode={key === "ownership_pct" ? "decimal" : undefined}
+                        value={newOwner[key]}
+                        onChange={(e) => setNewOwner((current) => ({ ...current, [key]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="btn pri mt"
+                  disabled={!newOwner.first_name.trim() || !newOwner.last_name.trim() || createOwner.isPending}
+                  onClick={() => createOwner.mutate()}
+                >
+                  Add owner
+                </button>
+              </section>
+            )}
+          </div>
+
+          {(createOwner.isError || patchOwner.isError || deleteOwner.isError) && (
             <div className="note">
               <div>
-                {saveOwner.error instanceof Error
-                  ? saveOwner.error.message
-                  : "The principal did not save."}
+                {(createOwner.error ?? patchOwner.error ?? deleteOwner.error) instanceof Error
+                  ? (createOwner.error ?? patchOwner.error ?? deleteOwner.error)?.message
+                  : "The ownership schedule did not save."}
               </div>
             </div>
           )}

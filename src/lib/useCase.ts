@@ -27,6 +27,11 @@ export type Verification = {
   reason: string;
   stage: string;
   credit_enabled: boolean;
+  ownership_total: number;
+  ownership_complete: boolean;
+  required_credit_owner_count: number;
+  completed_credit_owner_count: number;
+  pending_credit_owner_ids: string[];
 };
 
 export type Program = {
@@ -85,6 +90,11 @@ const NO_VERIFICATION: Verification = {
   reason: "Awaiting both authorizations",
   stage: "intake",
   credit_enabled: true,
+  ownership_total: 0,
+  ownership_complete: false,
+  required_credit_owner_count: 0,
+  completed_credit_owner_count: 0,
+  pending_credit_owner_ids: [],
 };
 
 export function useCase(id: string) {
