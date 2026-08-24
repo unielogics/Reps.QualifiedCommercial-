@@ -13,9 +13,12 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import StepActions from "@/components/StepActions";
+import { applicationProfileReady, type ApplicationProfileData } from "@/lib/applicationReadiness";
 
 type Owner = {
   id: string;
@@ -32,15 +35,7 @@ type Account = {
   mask: string | null;
 };
 
-type ApplicationProfile = {
-  landlord_mortgagee: string | null;
-  guarantor_home_address: string | null;
-  guarantor_dob: string | null;
-  selected_program: string | null;
-  term_requested_months: number | null;
-  collateral_description: string | null;
-  use_of_proceeds_text: string | null;
-};
+type ApplicationProfile = ApplicationProfileData;
 
 function Verified({ source }: { source: string }) {
   return <span className="cellchip c-pet">{source}</span>;
@@ -54,8 +49,9 @@ function band(score: number | null | undefined): string {
 
 export default function Step4Application({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
-  const { dealer } = useCase(dealerId);
+  const { dealer, decision } = useCase(dealerId);
   const [draft, setDraft] = useState<Record<string, string>>({});
 
   const owners = useQuery({
@@ -118,6 +114,34 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
     const next = transform ? transform(draft[key]) : draft[key].trim() || null;
     patch.mutate({ [key]: next });
   };
+  const liveProfile: ApplicationProfile = {
+    landlord_mortgagee: val("landlord_mortgagee") || null,
+    guarantor_home_address: val("guarantor_home_address") || null,
+    guarantor_dob: val("guarantor_dob") || null,
+    selected_program: val("selected_program") || null,
+    term_requested_months: Number(val("term_requested_months")) || null,
+    collateral_description: val("collateral_description") || null,
+    use_of_proceeds_text: val("use_of_proceeds_text") || null,
+  };
+  const verifiedComplete = Boolean(
+    (dealer?.legal_name || dealer?.name)
+      && dealer?.ein
+      && acct
+      && owner?.full_name
+      && owner?.credit_score
+      && dealer?.funding_goal
+      && dealer?.funding_purpose,
+  );
+  const profileComplete = applicationProfileReady(liveProfile, dealer?.funding_purpose);
+  const stepReady = verifiedComplete && profileComplete && Boolean(decision?.ready_for_forms) && !patch.isPending;
+  const equipmentProgram = dealer?.funding_purpose === "equipment"
+    || val("selected_program").toLowerCase().includes("equipment");
+
+  const saveAndContinue = async () => {
+    if (!stepReady) return;
+    await patch.mutateAsync(liveProfile);
+    router.push(`/applications/${dealerId}?step=5`);
+  };
 
   return (
     <>
@@ -136,22 +160,22 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div className={`panel${verifiedComplete ? "" : " panel-invalid"}`}>
         <div className="panel-h">Business and banking</div>
         <div className="panel-b">
           <div style={grid}>
             <div>
               <label className="lbl">Legal entity name <Verified source="Verified" /></label>
-              <input className="field" style={{ width: "100%" }} value={dealer?.legal_name || dealer?.name || ""} readOnly />
+              <input className={`field${dealer?.legal_name || dealer?.name ? "" : " field-invalid"}`} style={{ width: "100%" }} value={dealer?.legal_name || dealer?.name || ""} readOnly />
             </div>
             <div>
               <label className="lbl">EIN <Verified source="Verified" /></label>
-              <input className="field" style={{ width: "100%" }} value={dealer?.ein ?? ""} readOnly />
+              <input className={`field${dealer?.ein ? "" : " field-invalid"}`} style={{ width: "100%" }} value={dealer?.ein ?? ""} readOnly />
             </div>
             <div>
               <label className="lbl">Operating account <Verified source="Bank" /></label>
               <input
-                className="field"
+                className={`field${acct ? "" : " field-invalid"}`}
                 style={{ width: "100%" }}
                 value={acct ? `${acct.institution_name ?? ""} ${acct.mask ? "····" + acct.mask : ""}`.trim() : ""}
                 readOnly
@@ -160,7 +184,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Landlord or mortgagee</label>
               <input
-                className="field"
+                className={`field${equipmentProgram ? " required-field" : ""}`}
+                required={equipmentProgram}
                 style={{ width: "100%" }}
                 placeholder="Required for the equipment program"
                 value={val("landlord_mortgagee")}
@@ -172,22 +197,23 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div className={`panel${owner?.full_name && owner?.credit_score && val("guarantor_home_address").trim() && val("guarantor_dob").trim() ? "" : " panel-invalid"}`}>
         <div className="panel-h">Guarantor</div>
         <div className="panel-b">
           <div style={grid}>
             <div>
               <label className="lbl">Name <Verified source="Verified" /></label>
-              <input className="field" style={{ width: "100%" }} value={owner?.full_name ?? ""} readOnly />
+              <input className={`field${owner?.full_name ? "" : " field-invalid"}`} style={{ width: "100%" }} value={owner?.full_name ?? ""} readOnly />
             </div>
             <div>
               <label className="lbl">Credit band <Verified source="Soft inquiry" /></label>
-              <input className="field" style={{ width: "100%" }} value={band(owner?.credit_score)} readOnly />
+              <input className={`field${owner?.credit_score ? "" : " field-invalid"}`} style={{ width: "100%" }} value={band(owner?.credit_score)} readOnly />
             </div>
             <div>
               <label className="lbl">Home address</label>
               <input
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 placeholder="Street, city, state, ZIP"
                 value={val("guarantor_home_address")}
@@ -198,7 +224,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Date of birth</label>
               <input
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 type="date"
                 value={val("guarantor_dob").slice(0, 10)}
@@ -218,14 +245,14 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div className={`panel${profileComplete && dealer?.funding_goal && dealer?.funding_purpose ? "" : " panel-invalid"}`}>
         <div className="panel-h">Facility terms requested</div>
         <div className="panel-b">
           <div style={grid}>
             <div>
               <label className="lbl">Amount <Verified source="From step 1" /></label>
               <input
-                className="field num"
+                className={`field num${dealer?.funding_goal ? "" : " field-invalid"}`}
                 style={{ width: "100%" }}
                 value={dealer?.funding_goal ? "$" + Math.round(dealer.funding_goal).toLocaleString() : ""}
                 readOnly
@@ -234,7 +261,7 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Purpose <Verified source="From step 1" /></label>
               <input
-                className="field"
+                className={`field${dealer?.funding_purpose ? "" : " field-invalid"}`}
                 style={{ width: "100%" }}
                 value={(dealer?.funding_purpose ?? "").replace(/_/g, " ")}
                 readOnly
@@ -243,7 +270,11 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Term requested</label>
               <input
-                className="field"
+                className="field required-field"
+                required
+                type="number"
+                min="1"
+                max="360"
                 style={{ width: "100%" }}
                 placeholder="Months"
                 inputMode="numeric"
@@ -260,7 +291,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Use of proceeds</label>
               <input
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 placeholder="What the money buys"
                 value={val("use_of_proceeds_text")}
@@ -271,7 +303,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Program</label>
               <input
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 placeholder="Working capital, equipment, SBA referral..."
                 value={val("selected_program")}
@@ -282,7 +315,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Collateral description</label>
               <input
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 placeholder="Equipment, receivables, real estate, or none"
                 value={val("collateral_description")}
@@ -293,6 +327,22 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
           </div>
         </div>
       </div>
+
+      <StepActions
+        ready={stepReady}
+        message={
+          !verifiedComplete
+            ? "A red verified field is still missing. Return to the earlier step that supplies it."
+            : !profileComplete
+              ? "Complete every red lender-application field before generating contracts."
+              : !decision?.ready_for_forms
+                ? "The application is complete, but contracts remain locked until underwriting clears the file."
+                : "The application fields are complete and ready for the contract package."
+        }
+        buttonLabel="Continue to Step 5"
+        onContinue={() => void saveAndContinue()}
+        pending={patch.isPending}
+      />
     </>
   );
 }

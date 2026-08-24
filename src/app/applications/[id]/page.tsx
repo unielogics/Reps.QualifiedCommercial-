@@ -13,7 +13,11 @@
 
 import { useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { useQuery } from "@tanstack/react-query";
 import { useCase } from "@/lib/useCase";
+import { api } from "@/lib/api";
+import { applicationProfileReady, type ApplicationProfileData } from "@/lib/applicationReadiness";
 import StepRail, { GATED_FROM } from "@/components/StepRail";
 import Conversation from "@/components/Conversation";
 import Meetings from "@/components/Meetings";
@@ -34,19 +38,42 @@ export default function ApplicationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const search = useSearchParams();
+  const { getToken } = useAuth();
   const { id: meId } = useMe();
   const { dealer, decision, verification, unlocked, isLoading, notFound } = useCase(id);
 
   const raw = Number(search.get("step") || "1");
+  const profile = useQuery({
+    queryKey: ["application-profile", id],
+    enabled: unlocked,
+    queryFn: async () => api<ApplicationProfileData | null>(`/dealer-os/dealers/${id}/application-profile`, {
+      authToken: (await getToken()) ?? undefined,
+    }),
+  });
   // Clamp rather than trust: a hand-typed ?step=9 should land on the sequence,
   // and ?step=4 on a locked file should land on the step that is actually next.
   const step = Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : 1;
   const intakeReady = Boolean(
-    verification.ownership_complete
+    dealer?.name
+      && dealer?.ein
+      && dealer?.entity_type
+      && dealer?.funding_goal
+      && dealer?.funding_purpose
+      && verification.ownership_complete
       && verification.owner_contact_complete
       && verification.required_credit_owner_count > 0,
   );
-  const effective = step >= 2 && !intakeReady ? 1 : step >= GATED_FROM && !unlocked ? 2 : step;
+  const formsReady = Boolean(
+    decision?.ready_for_forms
+      && applicationProfileReady(profile.data, dealer?.funding_purpose),
+  );
+  const effective = step >= 2 && !intakeReady
+    ? 1
+    : step >= GATED_FROM && !unlocked
+      ? 2
+      : step === 5 && !formsReady
+        ? 4
+        : step;
 
   const go = useCallback(
     (n: number) => router.push(`/applications/${id}?step=${n}`, { scroll: false }),
@@ -72,6 +99,7 @@ export default function ApplicationPage() {
           step={effective}
           unlocked={unlocked}
           intakeReady={intakeReady}
+          formsReady={formsReady}
           gateLabel={unlocked ? "Unlocked by verification" : "Locked until verification returns"}
           onGo={go}
         />

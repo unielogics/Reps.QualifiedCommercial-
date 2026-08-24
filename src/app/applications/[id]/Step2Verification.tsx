@@ -15,12 +15,14 @@
 // tell them apart chases the wrong way.
 
 import { useRef, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiUpload } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflows";
 import Modal from "@/components/Modal";
+import StepActions from "@/components/StepActions";
 
 type PlaidItem = {
   id: string;
@@ -137,6 +139,7 @@ function IconTile({ tone, children }: { tone: "ok" | "warn"; children: React.Rea
 
 export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
   const { dealer, verification } = useCase(dealerId);
   const uploadInput = useRef<HTMLInputElement | null>(null);
@@ -402,7 +405,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div className={`panel${verification.bank_linked ? "" : " panel-invalid"}`}>
         <div className="panel-h">
           <IconTile tone={verification.bank_linked ? "ok" : "warn"}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -577,7 +580,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div className={`panel${verification.credit_returned ? "" : " panel-invalid"}`}>
         <div className="panel-h">
           <IconTile tone={verification.credit_returned ? "ok" : "warn"}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -621,7 +624,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                     : "Not sent";
               const path = creditLinks[owner.id];
               return (
-                <div key={owner.id} className="row" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 12, alignItems: "center" }}>
+                <div key={owner.id} className={`row requirement-row${owner.credit_complete ? "" : " invalid"}`} style={{ alignItems: "center" }}>
                   <div>
                     <b>{owner.full_name}</b>
                     <span className="sub" style={{ display: "block", marginTop: 3 }}>
@@ -712,6 +715,19 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           <div>{sent}</div>
         </div>
       )}
+
+      <StepActions
+        ready={verification.unlocked}
+        message={
+          !verification.bank_linked
+            ? "Bank evidence is still required. Connect a bank or upload six complete statement months."
+            : !verification.credit_returned
+              ? `${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`
+              : "Verification is complete. Continue to the financial profile."
+        }
+        buttonLabel="Continue to Step 3"
+        onContinue={() => router.push(`/applications/${dealerId}?step=3`)}
+      />
 
       {modal && (
         <Modal

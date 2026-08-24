@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import UseOfProceeds from "./UseOfProceeds";
+import StepActions from "@/components/StepActions";
 
 const ENTITY_TYPES = [
   "Limited liability company",
@@ -65,6 +66,7 @@ type Owner = {
 
 const EMPTY_OWNER = { first_name: "", last_name: "", ownership_pct: "", email: "", phone: "" };
 type OwnerDraft = typeof EMPTY_OWNER & { key: string; state: "unsaved" | "saving" | "invalid" };
+type OwnerField = keyof typeof EMPTY_OWNER;
 
 function validEmail(value: string | null | undefined): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((value ?? "").trim());
@@ -101,6 +103,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   const { dealer } = useCase(dealerId);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [newOwners, setNewOwners] = useState<OwnerDraft[]>([]);
+  const [ownerEdits, setOwnerEdits] = useState<Record<string, Partial<Record<OwnerField, string>>>>({});
   const [ownerSaveState, setOwnerSaveState] = useState<Record<string, "saving" | "saved" | "invalid">>({});
 
   // Reset the local draft whenever the server view changes, so a value saved
@@ -185,14 +188,25 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
 
   const patchOwner = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) =>
-      api(`/dealer-os/dealers/${dealerId}/owners/${id}`, {
+      api<Owner>(`/dealer-os/dealers/${dealerId}/owners/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
         authToken: (await getToken()) ?? undefined,
       }),
     onMutate: ({ id }) => setOwnerSaveState((state) => ({ ...state, [id]: "saving" })),
-    onSuccess: (_row, variables) => {
+    onSuccess: (savedOwner, variables) => {
+      qc.setQueryData<Owner[]>(["owners", dealerId], (rows = []) =>
+        rows.map((row) => row.id === savedOwner.id ? savedOwner : row),
+      );
       setOwnerSaveState((state) => ({ ...state, [variables.id]: "saved" }));
+      setOwnerEdits((edits) => {
+        const next = { ...edits };
+        const row = { ...(next[variables.id] ?? {}) };
+        Object.keys(variables.body).forEach((key) => delete row[key as OwnerField]);
+        if (Object.keys(row).length) next[variables.id] = row;
+        else delete next[variables.id];
+        return next;
+      });
       refreshOwners();
     },
     onError: (_error, variables) => setOwnerSaveState((state) => ({ ...state, [variables.id]: "invalid" })),
@@ -208,24 +222,44 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   });
 
   const ownerRows = owners.data ?? [];
-  const ownershipTotal = Math.round(ownerRows.reduce((sum, owner) => sum + Number(owner.ownership_pct ?? 0), 0) * 100) / 100;
+  const ownerValue = (owner: Owner, field: OwnerField): string => {
+    const edited = ownerEdits[owner.id]?.[field];
+    if (edited !== undefined) return edited;
+    const value = owner[field as keyof Owner];
+    return value === null || value === undefined ? "" : String(value);
+  };
+  const effectiveOwnership = (owner: Owner) => Number(ownerValue(owner, "ownership_pct") || 0);
+  const ownershipTotal = Math.round(ownerRows.reduce((sum, owner) => sum + effectiveOwnership(owner), 0) * 100) / 100;
   const ownershipComplete = ownerRows.length > 0 && Math.abs(ownershipTotal - 100) < 0.005;
   const missingRequiredEmail = ownerRows.some(
-    (owner) => Number(owner.ownership_pct ?? 0) >= 20 && !validEmail(owner.email),
+    (owner) => effectiveOwnership(owner) >= 20 && !validEmail(ownerValue(owner, "email")),
   );
   const missingRequiredPhone = ownerRows.some(
-    (owner) => Number(owner.ownership_pct ?? 0) >= 20 && !validPhone(owner.phone),
+    (owner) => effectiveOwnership(owner) >= 20 && !validPhone(ownerValue(owner, "phone")),
   );
-  const normalizedEmails = ownerRows.map((owner) => owner.email?.trim().toLowerCase()).filter(Boolean) as string[];
+  const normalizedEmails = ownerRows.map((owner) => ownerValue(owner, "email").trim().toLowerCase()).filter(Boolean) as string[];
   const hasDuplicateEmail = new Set(normalizedEmails).size !== normalizedEmails.length;
   const smsGrant = (consent.data ?? []).find(
     (c) => c.consent_kind === "transactional" && c.granted && !c.revoked_at,
   );
 
-  const entityComplete = Boolean(dealer?.name && dealer?.ein && dealer?.entity_type);
-  const rowsSaved = newOwners.length === 0 && !Object.values(ownerSaveState).includes("saving") && !Object.values(ownerSaveState).includes("invalid");
+  const entityComplete = Boolean(val("name").trim() && val("ein").trim() && val("entity_type").trim());
+  const rowsSaved = newOwners.length === 0 && Object.keys(ownerEdits).length === 0 && !Object.values(ownerSaveState).includes("saving") && !Object.values(ownerSaveState).includes("invalid");
   const contactComplete = ownershipComplete && !missingRequiredEmail && !missingRequiredPhone && !hasDuplicateEmail && rowsSaved;
-  const facilityComplete = Boolean(dealer?.funding_goal && dealer?.funding_purpose);
+  const facilityComplete = Number(val("funding_goal").replace(/[^0-9.]/g, "")) > 0 && Boolean(val("funding_purpose").trim());
+  const stepReady = entityComplete && contactComplete && facilityComplete && !patch.isPending;
+
+  const saveAndContinue = async () => {
+    if (!stepReady) return;
+    await patch.mutateAsync({
+      name: val("name").trim(),
+      ein: val("ein").trim(),
+      entity_type: val("entity_type").trim(),
+      funding_goal: Number(val("funding_goal").replace(/[^0-9.]/g, "")),
+      funding_purpose: val("funding_purpose").trim(),
+    });
+    router.push(`/applications/${dealerId}?step=2`);
+  };
 
   const addOwnerRow = () => {
     if (ownerRows.length + newOwners.length >= 5) return;
@@ -237,6 +271,33 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
 
   const updateNewOwner = (key: string, field: keyof typeof EMPTY_OWNER, value: string) => {
     setNewOwners((rows) => rows.map((row) => row.key === key ? { ...row, [field]: value, state: "unsaved" } : row));
+  };
+
+  const updateOwner = (ownerId: string, field: OwnerField, value: string) => {
+    setOwnerEdits((edits) => ({
+      ...edits,
+      [ownerId]: { ...(edits[ownerId] ?? {}), [field]: value },
+    }));
+    setOwnerSaveState((state) => ({ ...state, [ownerId]: "invalid" }));
+  };
+
+  const commitOwner = (owner: Owner, field: OwnerField) => {
+    const raw = ownerValue(owner, field).trim();
+    const pct = field === "ownership_pct" ? Number(raw) : effectiveOwnership(owner);
+    const requiredContact = Number.isFinite(pct) && pct >= 20;
+    const valid = field === "first_name" || field === "last_name"
+      ? Boolean(raw)
+      : field === "ownership_pct"
+        ? Boolean(raw) && Number.isFinite(pct) && pct >= 0 && pct <= 100
+        : field === "email"
+          ? !requiredContact || validEmail(raw)
+          : !requiredContact || validPhone(raw);
+    if (!valid) {
+      setOwnerSaveState((state) => ({ ...state, [owner.id]: "invalid" }));
+      return;
+    }
+    const bodyValue = field === "ownership_pct" ? Number(raw) : raw || null;
+    patchOwner.mutate({ id: owner.id, body: { [field]: bodyValue } });
   };
 
   const autosaveNewOwner = (draft: OwnerDraft) => {
@@ -267,7 +328,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
 
   return (
     <>
-      <div className="panel">
+      <div className={`panel${entityComplete ? "" : " panel-invalid"}`}>
         <div className="panel-h">
           Applicant entity
           <span style={{ flex: 1 }} />
@@ -278,7 +339,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Legal entity name</label>
               <input
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 value={val("name")}
                 onChange={(e) => set("name", e.target.value)}
@@ -288,7 +350,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Entity type</label>
               <select
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 value={val("entity_type")}
                 onChange={(e) => {
@@ -307,7 +370,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">EIN</label>
               <input
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 placeholder="00-0000000"
                 value={val("ein")}
@@ -359,7 +423,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div className={`panel${contactComplete ? "" : " panel-invalid"}`}>
         <div className="panel-h">
           Business ownership
           <span style={{ flex: 1 }} />
@@ -407,22 +471,22 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
               </thead>
               <tbody>
             {ownerRows.map((owner) => {
-              const required = Number(owner.ownership_pct ?? 0) >= 20;
+              const required = effectiveOwnership(owner) >= 20;
               const locked = Boolean(owner.invite_sent_at || owner.credit_pulled_at);
-              const save = (body: Record<string, unknown>) => patchOwner.mutate({ id: owner.id, body });
               const saveState = ownerSaveState[owner.id] ?? "saved";
+              const duplicateEmail = Boolean(ownerValue(owner, "email")) && normalizedEmails.filter((email) => email === ownerValue(owner, "email").trim().toLowerCase()).length > 1;
               return (
                 <tr key={owner.id}>
-                  <td><input aria-label={`${owner.full_name} first name`} className="field" style={{ minWidth: 130 }} defaultValue={owner.first_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.first_name) save({ first_name: v }); }} /></td>
-                  <td><input aria-label={`${owner.full_name} last name`} className="field" style={{ minWidth: 130 }} defaultValue={owner.last_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== owner.last_name) save({ last_name: v }); }} /></td>
-                  <td><input aria-label={`${owner.full_name} ownership percentage`} className="field num" style={{ width: 100 }} inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(e) => { const raw = e.target.value.trim(); const value = raw === "" ? null : Number(raw); if (value !== owner.ownership_pct) save({ ownership_pct: value }); }} /></td>
-                  <td><input aria-label={`${owner.full_name} personal email`} className="field" style={{ minWidth: 190 }} type="email" defaultValue={owner.email ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.email ?? "")) save({ email: v || null }); }} /></td>
-                  <td><input aria-label={`${owner.full_name} personal phone`} className="field" style={{ minWidth: 150 }} type="tel" defaultValue={owner.phone ?? ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (owner.phone ?? "")) save({ phone: v || null }); }} /></td>
+                  <td><input aria-label={`${owner.full_name} first name`} className="field required-field" required style={{ minWidth: 130 }} value={ownerValue(owner, "first_name")} onChange={(e) => updateOwner(owner.id, "first_name", e.target.value)} onBlur={() => commitOwner(owner, "first_name")} /></td>
+                  <td><input aria-label={`${owner.full_name} last name`} className="field required-field" required style={{ minWidth: 130 }} value={ownerValue(owner, "last_name")} onChange={(e) => updateOwner(owner.id, "last_name", e.target.value)} onBlur={() => commitOwner(owner, "last_name")} /></td>
+                  <td><input aria-label={`${owner.full_name} ownership percentage`} className="field required-field num" required min="0" max="100" type="number" step="0.01" style={{ width: 100 }} inputMode="decimal" value={ownerValue(owner, "ownership_pct")} onChange={(e) => updateOwner(owner.id, "ownership_pct", e.target.value)} onBlur={() => commitOwner(owner, "ownership_pct")} /></td>
+                  <td><input aria-label={`${owner.full_name} personal email`} className={`field${required ? " required-field" : ""}${duplicateEmail ? " field-invalid" : ""}`} required={required} style={{ minWidth: 190 }} type="email" value={ownerValue(owner, "email")} onChange={(e) => updateOwner(owner.id, "email", e.target.value)} onBlur={() => commitOwner(owner, "email")} /></td>
+                  <td><input aria-label={`${owner.full_name} personal phone`} className={`field${required ? " required-field" : ""}`} required={required} style={{ minWidth: 150 }} type="tel" value={ownerValue(owner, "phone")} onChange={(e) => { e.currentTarget.setCustomValidity(required && e.target.value && !validPhone(e.target.value) ? "Enter a valid personal phone" : ""); updateOwner(owner.id, "phone", e.target.value); }} onBlur={(e) => { e.currentTarget.setCustomValidity(required && !validPhone(e.currentTarget.value) ? "Enter a valid personal phone" : ""); commitOwner(owner, "phone"); }} /></td>
                   <td>
                     <span className={`cellchip ${required ? "c-warn" : "c-mut"}`}>
                       {required ? "Required" : "Not required"}
                     </span>
-                    {required && (!validEmail(owner.email) || !validPhone(owner.phone)) && <span className="sub" style={{ display: "block", color: "var(--warn)", marginTop: 4 }}>Valid email + phone needed</span>}
+                    {required && (!validEmail(ownerValue(owner, "email")) || !validPhone(ownerValue(owner, "phone"))) && <span className="validation-hint">Valid email + phone needed</span>}
                   </td>
                   <td><span className={`cellchip ${saveState === "invalid" ? "c-warn" : saveState === "saved" ? "c-ok" : "c-mut"}`}>{saveState === "saving" ? "Saving…" : saveState === "invalid" ? "Fix row" : "Saved"}</span></td>
                   <td className="r">
@@ -453,13 +517,23 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                     <td key={field}>
                       <input
                         aria-label={`New owner ${field.replace("_", " ")}`}
-                        className={`field${field === "ownership_pct" ? " num" : ""}`}
+                        className={`field required-field${field === "ownership_pct" ? " num" : ""}`}
+                        required={field === "first_name" || field === "last_name" || field === "ownership_pct" || required}
+                        min={field === "ownership_pct" ? "0" : undefined}
+                        max={field === "ownership_pct" ? "100" : undefined}
+                        step={field === "ownership_pct" ? "0.01" : undefined}
                         style={{ minWidth: field === "email" ? 190 : field === "phone" ? 150 : 120, width: field === "ownership_pct" ? 100 : undefined }}
-                        type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
+                        type={field === "email" ? "email" : field === "phone" ? "tel" : field === "ownership_pct" ? "number" : "text"}
                         inputMode={field === "ownership_pct" ? "decimal" : undefined}
                         value={draft[field]}
-                        onChange={(event) => updateNewOwner(draft.key, field, event.target.value)}
-                        onBlur={() => autosaveNewOwner(draft)}
+                        onChange={(event) => {
+                          if (field === "phone") event.currentTarget.setCustomValidity(required && event.target.value && !validPhone(event.target.value) ? "Enter a valid personal phone" : "");
+                          updateNewOwner(draft.key, field, event.target.value);
+                        }}
+                        onBlur={(event) => {
+                          if (field === "phone") event.currentTarget.setCustomValidity(required && !validPhone(event.currentTarget.value) ? "Enter a valid personal phone" : "");
+                          autosaveNewOwner(draft);
+                        }}
                       />
                     </td>
                   ))}
@@ -482,24 +556,6 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
               </div>
             </div>
           )}
-
-          <div className="row mt" style={{ alignItems: "center" }}>
-            <span className="sub">
-              {!rowsSaved
-                ? "Save or remove every draft owner row."
-                : !ownershipComplete
-                  ? "Ownership must total exactly 100.00%."
-                  : hasDuplicateEmail
-                    ? "Each owner must use a different personal email."
-                  : missingRequiredEmail || missingRequiredPhone
-                    ? "Every 20%+ owner needs a personal email and phone."
-                    : "Ownership is ready. Step 2 will create one iSoftPull box per 20%+ owner."}
-            </span>
-            <span style={{ flex: 1 }} />
-            <button type="button" className="btn pri" disabled={!contactComplete} onClick={() => router.push(`/applications/${dealerId}?step=2`)}>
-              Continue to Step 2
-            </button>
-          </div>
 
           {smsGrant ? (
             <div className="note">
@@ -531,7 +587,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div className={`panel${facilityComplete ? "" : " panel-invalid"}`}>
         <div className="panel-h">
           Facility request
           <span style={{ flex: 1 }} />
@@ -542,7 +598,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Amount requested</label>
               <input
-                className="field num"
+                className={`field required-field num${Number(val("funding_goal").replace(/[^0-9.]/g, "")) > 0 ? "" : " field-invalid"}`}
+                required
                 style={{ width: "100%" }}
                 inputMode="numeric"
                 placeholder="250,000"
@@ -559,7 +616,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">Purpose</label>
               <select
-                className="field"
+                className="field required-field"
+                required
                 style={{ width: "100%" }}
                 value={val("funding_purpose")}
                 onChange={(e) => {
@@ -596,6 +654,28 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
           <div>That did not save. Check the value and try again.</div>
         </div>
       )}
+
+      <StepActions
+        ready={stepReady}
+        message={
+          !entityComplete
+            ? "Complete the red applicant entity fields."
+            : !contactComplete
+              ? !rowsSaved
+                ? "Save or remove every incomplete owner row."
+                : !ownershipComplete
+                  ? "Ownership must total exactly 100.00%."
+                  : hasDuplicateEmail
+                    ? "Each owner must use a different personal email."
+                    : "Every 20%+ owner needs a valid personal email and phone."
+              : !facilityComplete
+                ? "Complete the red amount and funding-purpose fields."
+                : "Step 1 is complete. Continue to create the required owner authorizations."
+        }
+        buttonLabel="Continue to Step 2"
+        onContinue={() => void saveAndContinue()}
+        pending={patch.isPending || patchOwner.isPending || createOwner.isPending}
+      />
     </>
   );
 }

@@ -188,6 +188,29 @@ a { color: var(--accent); }
 .field { border: 1px solid var(--line); border-radius: 9px; min-height: 44px; padding: 9px 11px; font-size: 13px; font-family: inherit; color: var(--ink); background: var(--surface); outline: none; min-width: 0; width: 100%; }
 .field:focus { border-color: var(--accent-400); }
 .field.grow { flex: 1; min-width: 180px; }
+.field.required-field:invalid, .field.field-invalid {
+  border-color: var(--danger);
+  background: var(--danger-tint);
+  box-shadow: 0 0 0 1px rgba(180, 35, 24, 0.08);
+}
+.field.required-field:invalid:focus, .field.field-invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.13);
+}
+.field[readonly].field-invalid { color: var(--danger); }
+.panel.panel-invalid { border-color: rgba(180, 35, 24, 0.48); }
+.panel.panel-invalid > .panel-h { color: var(--danger); border-bottom-color: rgba(180, 35, 24, 0.22); }
+.validation-hint { display: block; margin-top: 5px; color: var(--danger); font-size: 11.5px; line-height: 1.35; }
+.step-actions {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 2px; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); box-shadow: var(--sh1);
+}
+.step-actions.invalid { border-color: rgba(180, 35, 24, 0.35); }
+.step-actions .step-message { color: var(--muted); font-size: 12px; line-height: 1.45; flex: 1; min-width: 220px; }
+.step-actions.invalid .step-message { color: var(--danger); }
+.requirement-row { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.requirement-row.invalid { border-color: rgba(180, 35, 24, 0.48); background: var(--danger-tint); }
 
 /* ---------- full modal workflows ---------- */
 .modalOverlay {

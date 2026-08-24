@@ -15,9 +15,11 @@
 // until the numbers are real.
 
 import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import StepActions from "@/components/StepActions";
 
 type Period = {
   period: string;
@@ -154,6 +156,7 @@ function Meter({
 
 export default function Step3Profile({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const { decision } = useCase(dealerId);
 
   const periods = useQuery({
@@ -424,6 +427,13 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
           </div>
         </div>
       </div>
+
+      <StepActions
+        ready
+        message="The verified financial profile is ready for the lender-application fields."
+        buttonLabel="Continue to Step 4"
+        onContinue={() => router.push(`/applications/${dealerId}?step=4`)}
+      />
     </>
   );
 }
