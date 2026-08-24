@@ -102,7 +102,7 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
     gap: 12,
   };
 
-  const verifiedCount = [dealer?.name, dealer?.ein, acct?.institution_name, owner?.full_name,
+  const verifiedCount = [dealer?.name, acct?.institution_name, owner?.full_name,
     owner?.credit_score].filter(Boolean).length;
 
   const val = (key: keyof ApplicationProfile) =>
@@ -125,7 +125,6 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
   };
   const verifiedComplete = Boolean(
     (dealer?.legal_name || dealer?.name)
-      && dealer?.ein
       && acct
       && owner?.full_name
       && owner?.credit_score
@@ -169,8 +168,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
               <input className={`field${dealer?.legal_name || dealer?.name ? "" : " field-invalid"}`} style={{ width: "100%" }} value={dealer?.legal_name || dealer?.name || ""} readOnly />
             </div>
             <div>
-              <label className="lbl">EIN <Verified source="Verified" /></label>
-              <input className={`field${dealer?.ein ? "" : " field-invalid"}`} style={{ width: "100%" }} value={dealer?.ein ?? ""} readOnly />
+              <label className="lbl">EIN <span className="sub">Optional</span></label>
+              <input className="field" style={{ width: "100%" }} value={dealer?.ein ?? ""} readOnly />
             </div>
             <div>
               <label className="lbl">Operating account <Verified source="Bank" /></label>

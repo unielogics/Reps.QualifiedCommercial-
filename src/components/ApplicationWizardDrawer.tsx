@@ -12,10 +12,10 @@ const STEPS = [
   ["5", "Contracts and execution", "Generate forms, send signature, collect review times."],
 ];
 
-export default function ApplicationWizardDrawer({ onClose }: { onClose: () => void }) {
+export default function ApplicationWizardDrawer({ onClose, onMinimize, minimized = false }: { onClose: () => void; onMinimize?: () => void; minimized?: boolean }) {
   const router = useRouter();
   return (
-    <Drawer title="Open application" width={1360} onClose={onClose}>
+    <Drawer title="Open application" width={1360} onClose={onClose} onMinimize={onMinimize} minimized={minimized}>
       <div className="wizardModalGrid">
         <div className="wizardRail">
           <div className="panel">

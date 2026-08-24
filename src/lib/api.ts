@@ -1,7 +1,7 @@
 // Same backend contract as QCDashboard: bearer Clerk token against
 // NEXT_PUBLIC_API_URL/api/v1. Dealer OS endpoints live under /dealer-os/*.
 
-export const apiBase = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1`;
+export const apiBase = `${process.env.NEXT_PUBLIC_API_URL ?? "https://api.qualifiedcommercial.com"}/api/v1`;
 
 export class ApiError extends Error {
   status: number;

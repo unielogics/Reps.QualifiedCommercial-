@@ -18,7 +18,11 @@ function PlusIcon() {
 export default function ActionHub() {
   const [open, setOpen] = useState(false);
   const [drawer, setDrawer] = useState<DrawerKey>(null);
-  const closeDrawer = () => setDrawer(null);
+  const [applicationMinimized, setApplicationMinimized] = useState(false);
+  const closeDrawer = () => {
+    setDrawer(null);
+    setApplicationMinimized(false);
+  };
   return (
     <>
       <div className="popwrap">
@@ -34,7 +38,7 @@ export default function ActionHub() {
         </button>
         {open && (
           <div className="popmenu">
-            <button type="button" className="mi" onClick={() => { setOpen(false); setDrawer("application"); }}>
+            <button type="button" className="mi" onClick={() => { setOpen(false); setApplicationMinimized(false); setDrawer("application"); }}>
               Open application
               <small>Start the guided five-step file flow.</small>
             </button>
@@ -49,9 +53,21 @@ export default function ActionHub() {
           </div>
         )}
       </div>
-      {drawer === "application" && <ApplicationWizardDrawer onClose={closeDrawer} />}
+      {drawer === "application" && (
+        <ApplicationWizardDrawer
+          onClose={closeDrawer}
+          onMinimize={() => setApplicationMinimized(true)}
+          minimized={applicationMinimized}
+        />
+      )}
       {drawer === "booking" && <BookingDrawer onClose={closeDrawer} />}
       {drawer === "share" && <ContactShareDrawer onClose={closeDrawer} />}
+      {drawer === "application" && applicationMinimized && (
+        <div className="draftDockTab">
+          <button type="button" onClick={() => setApplicationMinimized(false)}>New application</button>
+          <button type="button" aria-label="Close new application" title="Close" onClick={closeDrawer}>×</button>
+        </div>
+      )}
     </>
   );
 }

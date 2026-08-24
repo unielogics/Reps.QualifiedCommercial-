@@ -213,7 +213,8 @@ export default function UseOfProceeds({
         </button>
       </div>
       <textarea
-        className="field"
+        className={`field required-field${note.trim() ? "" : " field-invalid"}`}
+        required
         style={{ width: "100%", marginTop: 6 }}
         rows={3}
         placeholder="A sentence a lender can read. Draft it from the table, then edit."

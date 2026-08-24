@@ -27,6 +27,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import BusinessAddressFields from "./BusinessAddressFields";
 
 // The shared vocabulary — same slugs the backend uses to pick document
 // checklists and gate industry-specific programs.
@@ -51,12 +52,9 @@ const PURPOSES: Array<{ slug: string; label: string }> = [
   { slug: "other", label: "Not sure yet" },
 ];
 
-const STATES = "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC".split(
-  " ",
-);
-
 type Form = {
   name: string;
+  entity_type: string;
   phone: string;
   email: string;
   industry: string;
@@ -67,6 +65,7 @@ type Form = {
   funding_goal: string;
   funding_purpose: string;
   notes: string;
+  use_of_proceeds_note: string;
   smsTransactional: boolean;
   smsMarketing: boolean;
   acceptedLegal: boolean;
@@ -76,6 +75,7 @@ type Form = {
 
 const EMPTY: Form = {
   name: "",
+  entity_type: "",
   phone: "",
   email: "",
   industry: "other",
@@ -86,6 +86,7 @@ const EMPTY: Form = {
   funding_goal: "",
   funding_purpose: "",
   notes: "",
+  use_of_proceeds_note: "",
   smsTransactional: false,
   smsMarketing: false,
   acceptedLegal: false,
@@ -158,13 +159,25 @@ export default function NewApplicationForm({
 
   const wantsSms = f.smsTransactional || f.smsMarketing;
   const consentIncomplete = wantsSms && (!f.acceptedLegal || !phoneUsable);
-  const canSubmit = f.name.trim().length > 0 && reachable && !consentIncomplete;
+  const requested = Number(f.funding_goal.replace(/[^0-9.]/g, ""));
+  const canSubmit = Boolean(
+    f.name.trim()
+      && f.entity_type.trim()
+      && requested > 0
+      && f.funding_purpose
+      && f.use_of_proceeds_note.trim()
+      && !consentIncomplete,
+  );
 
   const create = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         name: f.name.trim(),
+        entity_type: f.entity_type,
         industry: f.industry,
+        funding_goal: requested,
+        funding_purpose: f.funding_purpose,
+        use_of_proceeds_note: f.use_of_proceeds_note.trim(),
       };
       // Only send what was filled in. Empty strings would overwrite good
       // defaults with blanks and trip the server's pattern validators.
@@ -176,15 +189,11 @@ export default function NewApplicationForm({
         ["state", "state"],
         ["zip", "zip"],
         ["notes", "notes"],
-        ["funding_purpose", "funding_purpose"],
       ];
       for (const [key, field] of optional) {
         const v = String(f[key] ?? "").trim();
         if (v) body[field] = v;
       }
-      const goal = Number(f.funding_goal.replace(/[^0-9.]/g, ""));
-      if (goal > 0) body.funding_goal = goal;
-
       // Only sent when something was actually agreed to. The server writes the
       // disclosure text from its own copy, so none is sent from here.
       if (f.phone.trim() && (f.smsTransactional || f.smsMarketing)) {
@@ -233,7 +242,7 @@ export default function NewApplicationForm({
             <div className="panel-b">
               <label className="lbl">Business name *</label>
               <input
-                className="field"
+                className={`field required-field${f.name.trim() ? "" : " field-invalid"}`}
                 value={f.name}
                 onChange={(e) => set("name", e.target.value)}
                 autoComplete="organization"
@@ -257,6 +266,21 @@ export default function NewApplicationForm({
                 This decides which documents we ask for and which programs the file can
                 reach, so it is worth getting right here.
               </span>
+
+              <label className="lbl mt">Entity type *</label>
+              <select
+                className={`field required-field${f.entity_type ? "" : " field-invalid"}`}
+                required
+                value={f.entity_type}
+                onChange={(e) => set("entity_type", e.target.value)}
+              >
+                <option value="">—</option>
+                <option value="Limited liability company">Limited liability company</option>
+                <option value="S corporation">S corporation</option>
+                <option value="C corporation">C corporation</option>
+                <option value="Partnership">Partnership</option>
+                <option value="Sole proprietorship">Sole proprietorship</option>
+              </select>
 
               <div className="row mt" style={{ gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -282,9 +306,7 @@ export default function NewApplicationForm({
                   />
                 </div>
               </div>
-              {!reachable && f.name.trim() && (
-                <span className="sub">One of phone or email is needed to send them anything.</span>
-              )}
+              {!reachable && f.name.trim() && <span className="sub">Add a contact when available; owner delivery details are completed in Step 1.</span>}
             </div>
           </div>
 
@@ -406,47 +428,10 @@ export default function NewApplicationForm({
           <div className="panel mt">
             <div className="panel-h">Where they are</div>
             <div className="panel-b">
-              <label className="lbl">Street</label>
-              <input
-                className="field"
-                value={f.address}
-                onChange={(e) => set("address", e.target.value)}
-                autoComplete="street-address"
+              <BusinessAddressFields
+                value={{ address: f.address, city: f.city, state: f.state, zip: f.zip }}
+                onChange={(next) => setF((current) => ({ ...current, ...next }))}
               />
-              <div className="row mt" style={{ gap: 10 }}>
-                <div style={{ flex: 2, minWidth: 0 }}>
-                  <label className="lbl">City</label>
-                  <input
-                    className="field"
-                    value={f.city}
-                    onChange={(e) => set("city", e.target.value)}
-                  />
-                </div>
-                <div style={{ width: 90 }}>
-                  <label className="lbl">State</label>
-                  <select
-                    className="field"
-                    value={f.state}
-                    onChange={(e) => set("state", e.target.value)}
-                  >
-                    <option value="">—</option>
-                    {STATES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ width: 110 }}>
-                  <label className="lbl">ZIP</label>
-                  <input
-                    className="field"
-                    inputMode="numeric"
-                    value={f.zip}
-                    onChange={(e) => set("zip", e.target.value)}
-                  />
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -455,17 +440,19 @@ export default function NewApplicationForm({
           <div className="panel">
             <div className="panel-h">What they are after</div>
             <div className="panel-b">
-              <label className="lbl">How much</label>
+              <label className="lbl">Amount requested *</label>
               <input
-                className="field"
+                className={`field required-field${requested > 0 ? "" : " field-invalid"}`}
+                required
                 inputMode="numeric"
                 placeholder="250,000"
                 value={f.funding_goal}
                 onChange={(e) => set("funding_goal", e.target.value)}
               />
-              <label className="lbl mt">What for</label>
+              <label className="lbl mt">Purpose *</label>
               <select
-                className="field"
+                className={`field required-field${f.funding_purpose ? "" : " field-invalid"}`}
+                required
                 value={f.funding_purpose}
                 onChange={(e) => set("funding_purpose", e.target.value)}
               >
@@ -480,6 +467,15 @@ export default function NewApplicationForm({
                 A goal lets the system work backwards and tell you what the file needs to
                 hit, so it is useful even as a rough number.
               </span>
+              <label className="lbl mt">Use of funds, in writing *</label>
+              <textarea
+                className={`field required-field${f.use_of_proceeds_note.trim() ? "" : " field-invalid"}`}
+                required
+                rows={4}
+                placeholder="Explain exactly how the requested funds will be used."
+                value={f.use_of_proceeds_note}
+                onChange={(e) => set("use_of_proceeds_note", e.target.value)}
+              />
             </div>
           </div>
 

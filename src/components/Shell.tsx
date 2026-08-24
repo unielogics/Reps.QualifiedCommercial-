@@ -14,10 +14,11 @@ import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 import ActionHub from "./ActionHub";
 import MfaBanner from "./MfaBanner";
+import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 
-type IconName = "home" | "plus" | "chart" | "chat" | "calendar";
+type IconName = "home" | "plus" | "chart" | "chat" | "calendar" | "contacts" | "products";
 
 // Same stroke-path idiom the audit app uses, so icons match weight for weight.
 const ICON_PATHS: Record<IconName, string> = {
@@ -26,6 +27,8 @@ const ICON_PATHS: Record<IconName, string> = {
   chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   chat: "M21 12a8 8 0 01-8 8H4l2-3a8 8 0 1115-5z",
   calendar: "M8 3v4M16 3v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z",
+  contacts: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+  products: "M4 5h16v14H4zM8 9h8M8 13h5M4 7l8-4 8 4",
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -79,6 +82,8 @@ function formatTopTime(value: Date) {
 
 const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Portfolio", icon: "home" },
+  { href: "/contacts", label: "Contacts", icon: "contacts" },
+  { href: "/products", label: "Products", icon: "products" },
   { href: "/inbox", label: "Inbox", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "calendar" },
 ];
@@ -266,6 +271,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <MfaBanner />
           {children}
         </div>
+        <ApplicationWorkspaceDock />
       </div>
     </div>
   );

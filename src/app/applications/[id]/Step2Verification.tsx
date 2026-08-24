@@ -51,6 +51,9 @@ type Owner = {
   credit_required: boolean;
   credit_complete: boolean;
   credit_contact_complete: boolean;
+  credit_workflow_status: string | null;
+  credit_delivery_detail: string | null;
+  credit_provider_error_category: string | null;
 };
 
 type CreditInviteResult = {
@@ -615,13 +618,25 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           </div>
           <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
             {requiredOwners.map((owner) => {
+              const workflowStatus = owner.credit_workflow_status ?? "";
+              const failureStatus = ["delivery_failed", "provider_unavailable", "declined", "failed"].includes(workflowStatus);
               const state = owner.credit_complete
                 ? `Completed ${when(owner.credit_pulled_at)}`
-                : owner.invite_opened_at
-                  ? `Opened ${when(owner.invite_opened_at)}`
-                  : owner.invite_sent_at
-                    ? `Sent ${when(owner.invite_sent_at)}`
-                    : "Not sent";
+                : workflowStatus === "provider_unavailable"
+                  ? "Provider unavailable"
+                  : workflowStatus === "delivery_failed"
+                    ? "Delivery failed"
+                    : workflowStatus === "declined"
+                      ? "Declined"
+                      : workflowStatus === "failed"
+                        ? "Failed"
+                        : owner.invite_opened_at
+                          ? `Opened ${when(owner.invite_opened_at)}`
+                          : owner.invite_sent_at
+                            ? `Sent ${when(owner.invite_sent_at)}`
+                            : workflowStatus === "link_created"
+                              ? "Link created"
+                              : "Not sent";
               const path = creditLinks[owner.id];
               return (
                 <div key={owner.id} className={`row requirement-row${owner.credit_complete ? "" : " invalid"}`} style={{ alignItems: "center" }}>
@@ -633,10 +648,15 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                     <span className="sub" style={{ display: "block", marginTop: 3 }}>
                       {maskEmail(owner.email)} · {maskPhone(owner.phone)}
                     </span>
+                    {failureStatus && owner.credit_delivery_detail && (
+                      <span className="validation-hint" style={{ display: "block", marginTop: 5 }}>
+                        {owner.credit_delivery_detail}
+                      </span>
+                    )}
                   </div>
                   <span style={{ flex: 1 }} />
                   <span className={`cellchip ${owner.credit_complete ? "c-ok" : "c-warn"}`}>iSoftPull required</span>
-                  <span className="sub">{state}</span>
+                  <span className={`cellchip ${owner.credit_complete ? "c-ok" : failureStatus ? "c-bad" : "c-warn"}`}>{state}</span>
                   {!owner.credit_complete && (
                     <button type="button" className="btn" disabled={!verification.ownership_complete || !owner.credit_contact_complete || send.isPending} onClick={() => { setCreditOwnerId(owner.id); setModal("credit"); }}>
                       {owner.invite_sent_at ? "Resend" : "Send"}

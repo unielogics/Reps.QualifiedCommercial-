@@ -19,6 +19,7 @@ import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import UseOfProceeds from "./UseOfProceeds";
 import StepActions from "@/components/StepActions";
+import BusinessAddressFields from "@/components/BusinessAddressFields";
 
 const ENTITY_TYPES = [
   "Limited liability company",
@@ -243,18 +244,25 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     (c) => c.consent_kind === "transactional" && c.granted && !c.revoked_at,
   );
 
-  const entityComplete = Boolean(val("name").trim() && val("ein").trim() && val("entity_type").trim());
+  const entityComplete = Boolean(val("name").trim() && val("entity_type").trim());
   const rowsSaved = newOwners.length === 0 && Object.keys(ownerEdits).length === 0 && !Object.values(ownerSaveState).includes("saving") && !Object.values(ownerSaveState).includes("invalid");
   const contactComplete = ownershipComplete && !missingRequiredEmail && !missingRequiredPhone && !hasDuplicateEmail && rowsSaved;
-  const facilityComplete = Number(val("funding_goal").replace(/[^0-9.]/g, "")) > 0 && Boolean(val("funding_purpose").trim());
+  const facilityComplete = Number(val("funding_goal").replace(/[^0-9.]/g, "")) > 0
+    && Boolean(val("funding_purpose").trim())
+    && Boolean(val("use_of_proceeds_note").trim());
   const stepReady = entityComplete && contactComplete && facilityComplete && !patch.isPending;
 
   const saveAndContinue = async () => {
     if (!stepReady) return;
     await patch.mutateAsync({
       name: val("name").trim(),
-      ein: val("ein").trim(),
+      ein: val("ein").trim() || null,
       entity_type: val("entity_type").trim(),
+      started_on: val("started_on").trim() || null,
+      address: val("address").trim() || null,
+      city: val("city").trim() || null,
+      state: val("state").trim() || null,
+      zip: val("zip").trim() || null,
       funding_goal: Number(val("funding_goal").replace(/[^0-9.]/g, "")),
       funding_purpose: val("funding_purpose").trim(),
     });
@@ -370,10 +378,9 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             <div>
               <label className="lbl">EIN</label>
               <input
-                className="field required-field"
-                required
+                className="field"
                 style={{ width: "100%" }}
-                placeholder="00-0000000"
+                placeholder="Optional"
                 value={val("ein")}
                 onChange={(e) => set("ein", e.target.value)}
                 onBlur={() => commit("ein")}
@@ -408,17 +415,18 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                 onBlur={() => commit("started_on")}
               />
             </div>
-            <div>
-              <label className="lbl">Where they are</label>
-              <input
-                className="field"
-                style={{ width: "100%" }}
-                placeholder="City"
-                value={val("city")}
-                onChange={(e) => set("city", e.target.value)}
-                onBlur={() => commit("city")}
-              />
-            </div>
+          </div>
+          <div className="mt">
+            <BusinessAddressFields
+              value={{ address: val("address"), city: val("city"), state: val("state"), zip: val("zip") }}
+              onChange={(next) => {
+                set("address", next.address);
+                set("city", next.city);
+                set("state", next.state);
+                set("zip", next.zip);
+              }}
+              onBlur={(field) => commit(field)}
+            />
           </div>
         </div>
       </div>
@@ -646,6 +654,9 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
             rows={dealer?.use_of_proceeds ?? null}
             note={dealer?.use_of_proceeds_note ?? null}
           />
+          {!val("use_of_proceeds_note").trim() && (
+            <span className="validation-hint">Describe the requested use of funds in writing.</span>
+          )}
         </div>
       </div>
 
@@ -669,7 +680,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                     ? "Each owner must use a different personal email."
                     : "Every 20%+ owner needs a valid personal email and phone."
               : !facilityComplete
-                ? "Complete the red amount and funding-purpose fields."
+                ? "Complete the red amount, funding purpose, and written use-of-funds fields."
                 : "Step 1 is complete. Continue to create the required owner authorizations."
         }
         buttonLabel="Continue to Step 2"

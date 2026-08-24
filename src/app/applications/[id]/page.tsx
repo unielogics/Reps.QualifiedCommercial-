@@ -11,13 +11,14 @@
 // `verification.unlocked` off the decision endpoint, and the endpoints behind
 // steps 3 to 5 refuse regardless of what this component renders.
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { useCase } from "@/lib/useCase";
 import { api } from "@/lib/api";
 import { applicationProfileReady, type ApplicationProfileData } from "@/lib/applicationReadiness";
+import { removeWorkspaceTab, upsertWorkspaceTab } from "@/lib/applicationWorkspace";
 import StepRail, { GATED_FROM } from "@/components/StepRail";
 import Conversation from "@/components/Conversation";
 import Meetings from "@/components/Meetings";
@@ -55,10 +56,10 @@ export default function ApplicationPage() {
   const step = Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : 1;
   const intakeReady = Boolean(
     dealer?.name
-      && dealer?.ein
       && dealer?.entity_type
       && dealer?.funding_goal
       && dealer?.funding_purpose
+      && dealer?.use_of_proceeds_note?.trim()
       && verification.ownership_complete
       && verification.owner_contact_complete
       && verification.required_credit_owner_count > 0,
@@ -80,6 +81,15 @@ export default function ApplicationPage() {
     [router, id],
   );
 
+  useEffect(() => {
+    if (!meId || !dealer?.name) return;
+    upsertWorkspaceTab(meId, {
+      id,
+      name: dealer.name,
+      href: `/applications/${id}?step=${effective}`,
+    });
+  }, [dealer?.name, effective, id, meId]);
+
   if (notFound) {
     return (
       <div className="card">
@@ -93,7 +103,30 @@ export default function ApplicationPage() {
   }
 
   return (
-    <div className="cg">
+    <>
+      <div className="applicationToolbar">
+        <div>
+          <b>{dealer?.name || "Application"}</b>
+          {dealer?.case_ref && <span className="sub num">{dealer.case_ref}</span>}
+        </div>
+        <span className="sp" />
+        <button type="button" className="iconAction" onClick={() => router.push("/")} title="Minimize" aria-label="Minimize application">
+          −
+        </button>
+        <button
+          type="button"
+          className="iconAction"
+          onClick={() => {
+            if (meId) removeWorkspaceTab(meId, id);
+            router.push("/");
+          }}
+          title="Close"
+          aria-label="Close application"
+        >
+          ×
+        </button>
+      </div>
+      <div className="cg">
       <div className="s3">
         <StepRail
           step={effective}
@@ -162,6 +195,7 @@ export default function ApplicationPage() {
           <Meetings dealerId={id} />
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
