@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -75,7 +75,7 @@ export default function ProductBookletPage() {
   const [locale, setLocale] = useState<Locale>(search.get("locale") === "es" ? "es" : "en");
   const [shareOpen, setShareOpen] = useState(false);
   const [notice, setNotice] = useState("");
-  const touchStart = useRef<number | null>(null);
+  const swipeStart = useRef<{ x: number; y: number; pointerId: number } | null>(null);
 
   const detail = useQuery({
     queryKey: ["product-detail", programKey, locale],
@@ -89,6 +89,19 @@ export default function ProductBookletPage() {
   const go = (key: string | undefined) => {
     if (key) router.push(`/products/${key}?locale=${locale}`);
   };
+  const previousKey = detail.data?.previous_key;
+  const nextKey = detail.data?.next_key;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, button, a, [contenteditable='true']")) return;
+      if (event.key === "ArrowLeft" && previousKey) router.push(`/products/${previousKey}?locale=${locale}`);
+      if (event.key === "ArrowRight" && nextKey) router.push(`/products/${nextKey}?locale=${locale}`);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [locale, nextKey, previousKey, router]);
   const download = async () => {
     const token = await getToken();
     const response = await fetch(`${apiBase}/dealer-os/products/pdf?locale=${locale}&keys=${encodeURIComponent(programKey)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
@@ -115,16 +128,7 @@ export default function ProductBookletPage() {
   };
 
   return (
-    <div
-      className="productBooklet"
-      onTouchStart={(event) => { touchStart.current = event.touches[0]?.clientX ?? null; }}
-      onTouchEnd={(event) => {
-        if (touchStart.current == null) return;
-        const distance = (event.changedTouches[0]?.clientX ?? touchStart.current) - touchStart.current;
-        if (Math.abs(distance) > 65) go(distance < 0 ? detail.data.next_key : detail.data.previous_key);
-        touchStart.current = null;
-      }}
-    >
+    <div className="productBooklet">
       <header className="bookletToolbar">
         <button className="backLinkButton" onClick={() => router.push("/products")}><ArrowLeft size={17} /> {labels.back}</button>
         <span className="sp" />
@@ -133,7 +137,23 @@ export default function ProductBookletPage() {
         <div className="seg"><button className={locale === "en" ? "on" : ""} onClick={() => setLocale("en")}>EN</button><button className={locale === "es" ? "on" : ""} onClick={() => setLocale("es")}>ES</button></div>
       </header>
 
-      <main className="bookletPage">
+      <main
+        className="bookletPage"
+        onPointerDown={(event) => {
+          if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+          swipeStart.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+        }}
+        onPointerUp={(event) => {
+          const start = swipeStart.current;
+          swipeStart.current = null;
+          if (!start || start.pointerId !== event.pointerId) return;
+          const horizontal = event.clientX - start.x;
+          const vertical = event.clientY - start.y;
+          if (Math.abs(horizontal) < 60 || Math.abs(horizontal) < Math.abs(vertical) * 1.2) return;
+          go(horizontal < 0 ? detail.data.next_key : detail.data.previous_key);
+        }}
+        onPointerCancel={() => { swipeStart.current = null; }}
+      >
         <section className="bookletHero">
           <div className="bookletHeroIcon"><ProductIcon programKey={item.icon_key || item.program_key} size={32} /></div>
           <div className="bookletHeroCopy">
@@ -145,6 +165,7 @@ export default function ProductBookletPage() {
             <button className="iconAction" onClick={() => go(detail.data.previous_key)} aria-label="Previous program"><ChevronLeft size={20} /></button>
             <span>{detail.data.position} / {detail.data.total}</span>
             <button className="iconAction" onClick={() => go(detail.data.next_key)} aria-label="Next program"><ChevronRight size={20} /></button>
+            <small className="bookletSwipeHint">{locale === "es" ? "Deslice para cambiar" : "Swipe to browse"}</small>
           </div>
         </section>
 

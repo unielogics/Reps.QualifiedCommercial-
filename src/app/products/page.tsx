@@ -102,8 +102,6 @@ export default function ProductsPage() {
       </div>
     </header>
 
-    <div className="seg productMode" role="tablist"><button className={mode === "browse" ? "on" : ""} onClick={() => setMode("browse")}>{t.browse}</button><button className={mode === "finder" ? "on" : ""} onClick={() => setMode("finder")}>{t.finder}</button></div>
-
     {mode === "browse" ? <>
       <div className="productToolbar mt"><input className="field" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} /><select className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><span className="sp" /><button className="iconAction" aria-label="Previous product" onClick={() => rail.current?.scrollBy({ left: -360, behavior: "smooth" })}><ChevronLeft size={18} /></button><button className="iconAction" aria-label="Next product" onClick={() => rail.current?.scrollBy({ left: 360, behavior: "smooth" })}><ChevronRight size={18} /></button></div>
       {selected.length > 0 && <section className="comparisonStrip"><div><span className="eyebrow">Selected comparison</span><b>{selected.length} program{selected.length === 1 ? "" : "s"}</b></div><span className="sp" /><button className="btn" onClick={() => void downloadPdf()}>Download PDF</button><button className="btn pri" onClick={() => setShareOpen(true)}><Share2 size={16} /> {t.pdf}</button></section>}

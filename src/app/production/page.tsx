@@ -254,7 +254,7 @@ export default function ProductionPage() {
       {q.isError && <div className="note mt">Could not load production.</div>}
 
       {t && (
-        <div className="kpis mt">
+        <div className="kpis production-kpis mt">
           <div className="kpi">
             <span className="lbl">Applications opened</span>
             <b className="knum num">{t.funnel.opened}</b>

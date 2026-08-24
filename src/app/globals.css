@@ -365,6 +365,22 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 }
 /* KPI band: each stat owns its rows so labels, numbers, and helper copy never collide. */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.production-kpis { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+.production-kpis .kpi { padding-inline: 12px; }
+@media (max-width: 1400px) {
+  .production-kpis {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+  .production-kpis .kpi {
+    flex: 0 0 190px;
+    scroll-snap-align: start;
+  }
+}
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--sh1); padding: 13px 14px; min-width: 0; min-height: 76px; display: grid; grid-template-rows: auto auto 1fr; align-content: start; }
 .kpi .lbl { display: block; min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
 .kpi .knum { display: block; font-family: var(--fh); font-size: 26px; font-weight: 650; letter-spacing: 0; line-height: 1.05; margin-top: 6px; white-space: nowrap; }
@@ -649,12 +665,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 /* Field Desk product catalog and CRM. */
 .productsPage, .contactsPage, .contactDetail { min-width: 0; }
 .eyebrow { display: block; color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
-.productHeader { align-items: flex-start; }
+.productHeader { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .productHeaderActions, .productToolbar, .productCompare, .screenActions, .contactSearch { display: flex; align-items: center; gap: 10px; }
+.productHeaderActions { justify-content: flex-end; margin-left: auto; }
 .finderLaunch { min-height: 46px; display: inline-flex; align-items: center; gap: 9px; padding: 0 16px; border: 1px solid var(--accent-200); border-radius: 8px; background: var(--surface); color: var(--accent); cursor: pointer; }
 .finderLaunch span { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: var(--accent-100); font-size: 19px; }
 .finderLaunch.on { background: var(--accent); color: #fff; }
-.productMode { width: max-content; margin-top: 16px; }
 .productToolbar .field:first-child { width: min(360px, 45vw); }
 .productToolbar select { width: 190px; }
 .productRail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(310px, 30%); gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; padding: 16px 2px 12px; scrollbar-width: thin; }
@@ -766,12 +782,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .productBooklet { min-height: calc(100dvh - var(--header-h, 0px)); background: var(--sunken2); }
 .bookletToolbar { min-height: 66px; display: flex; align-items: center; gap: 9px; padding: 10px clamp(14px, 4vw, 56px); border-bottom: 1px solid var(--line); background: var(--surface); }
 .backLinkButton { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink2); font: 700 12.5px/1 var(--fb); cursor: pointer; }
-.bookletPage { width: min(1180px, calc(100% - 32px)); margin: 24px auto 50px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; }
+.bookletPage { width: min(1180px, calc(100% - 32px)); margin: 24px auto 50px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; touch-action: pan-y; }
 .bookletHero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 18px; padding: clamp(22px, 4vw, 48px); background: linear-gradient(140deg, var(--accent-100), var(--surface) 62%); border-bottom: 1px solid var(--line); }
 .bookletHeroIcon { width: 68px; height: 68px; display: grid; place-items: center; border-radius: 8px; background: var(--accent); color: #fff; box-shadow: var(--sh2); }
 .bookletHeroCopy h1 { margin: 7px 0 9px; font: 800 clamp(30px, 5vw, 52px)/1 var(--fh); letter-spacing: 0; }
 .bookletHeroCopy p { max-width: 720px; margin: 0; color: var(--ink2); font-size: 16px; line-height: 1.6; }
 .bookletPager { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.bookletSwipeHint { display: none; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .bookletTerms { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
 .bookletTerms > div { min-height: 92px; display: grid; align-content: center; gap: 5px; padding: 16px 20px; border-right: 1px solid var(--line); }
 .bookletTerms > div:last-child { border-right: 0; }
@@ -826,8 +843,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .bookletTerms > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
 }
 @media (max-width: 760px) {
-  .productHeader { gap: 12px; }
-  .productHeaderActions { width: 100%; justify-content: space-between; }
+  .productHeader { grid-template-columns: 1fr; gap: 12px; }
+  .productHeaderActions { width: 100%; justify-content: flex-end; }
   .finderLaunch b { display: none; }
   .productToolbar { flex-wrap: wrap; }
   .productToolbar .field:first-child, .productToolbar select { width: 100%; }
@@ -862,6 +879,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .bookletHeroCopy h1 { font-size: 31px; }
   .bookletHeroCopy p { font-size: 14px; }
   .bookletPager { grid-column: 1 / -1; justify-content: center; }
+  .bookletSwipeHint { display: inline; }
   .bookletTerms { grid-template-columns: 1fr 1fr; }
   .bookletTerms > div { min-height: 82px; padding: 13px; }
   .bookletGrid { grid-template-columns: 1fr; }
