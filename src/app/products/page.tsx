@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, ChevronLeft, ChevronRight, Share2, WandSparkles } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Share2, WandSparkles, X } from "lucide-react";
 import { api, apiBase } from "@/lib/api";
 import { ProductIcon } from "@/components/ProductIcon";
 import ProductShareDialog from "@/components/ProductShareDialog";
@@ -17,8 +17,8 @@ type ProgramResult = { program_key: string; name: string; status: "recommended" 
 type ScreeningResult = { verification: string; client_requested_amount: number | null; recommended_amount: number | null; amount_adjustment_required: boolean; evaluated_programs: ProgramResult[]; next_question: Question | null };
 
 const text = {
-  en: { title: "Products", sub: "Browse, compare, and present financing programs before opening a formal application.", browse: "Browse products", finder: "Product Finder", search: "Search products", compare: "Compare", pdf: "Share PDF", start: "Start application", book: "Book a funding call", open: "View full program", amount: "Program amount", term: "Term", pricing: "Indicative pricing", preliminary: "Preliminary fit only. Verify all eligibility before submission.", details: "Prospect basics", screen: "Screen programs", next: "Next question", results: "Screening results", requested: "Client requested", recommended: "Screened maximum", confirm: "Confirm funding goal" },
-  es: { title: "Productos", sub: "Explore, compare y presente programas antes de abrir una solicitud formal.", browse: "Ver productos", finder: "Buscador de productos", search: "Buscar productos", compare: "Comparar", pdf: "Compartir PDF", start: "Iniciar solicitud", book: "Reservar llamada", open: "Ver programa completo", amount: "Monto del programa", term: "Plazo", pricing: "Precio indicativo", preliminary: "Evaluacion preliminar. Verifique la elegibilidad antes de enviar.", details: "Datos del prospecto", screen: "Evaluar programas", next: "Siguiente pregunta", results: "Resultados", requested: "Monto solicitado", recommended: "Maximo evaluado", confirm: "Confirmar meta" },
+  en: { title: "Products", sub: "Browse, compare, and present financing programs before opening a formal application.", browse: "Browse products", finder: "Product Finder", search: "Search products", compare: "Compare", comparison: "Program comparison", selectMore: "Select another program to compare side by side.", pdf: "Share PDF", start: "Start application", book: "Book a funding call", open: "View full program", amount: "Program amount", term: "Term", pricing: "Indicative pricing", category: "Category", overview: "Overview", nextAction: "Next action", preliminary: "Preliminary fit only. Verify all eligibility before submission.", details: "Prospect basics", screen: "Screen programs", next: "Next question", results: "Screening results", requested: "Client requested", recommended: "Screened maximum", confirm: "Confirm funding goal" },
+  es: { title: "Productos", sub: "Explore, compare y presente programas antes de abrir una solicitud formal.", browse: "Ver productos", finder: "Buscador de productos", search: "Buscar productos", compare: "Comparar", comparison: "Comparacion de programas", selectMore: "Seleccione otro programa para compararlos lado a lado.", pdf: "Compartir PDF", start: "Iniciar solicitud", book: "Reservar llamada", open: "Ver programa completo", amount: "Monto del programa", term: "Plazo", pricing: "Precio indicativo", category: "Categoria", overview: "Resumen", nextAction: "Proximo paso", preliminary: "Evaluacion preliminar. Verifique la elegibilidad antes de enviar.", details: "Datos del prospecto", screen: "Evaluar programas", next: "Siguiente pregunta", results: "Resultados", requested: "Monto solicitado", recommended: "Maximo evaluado", confirm: "Confirmar meta" },
 };
 
 function money(value: number | null) { return value == null ? "—" : `$${Math.round(value).toLocaleString()}`; }
@@ -61,6 +61,7 @@ export default function ProductsPage() {
     queryFn: async () => api<{ enabled: boolean; url: string | null }>("/dealer-os/products/booking", { authToken: (await getToken()) ?? undefined }),
   });
   const items = useMemo(() => (catalog.data?.items ?? []).filter((item) => (category === "all" || item.category === category) && `${item.name} ${item.summary ?? ""}`.toLowerCase().includes(search.toLowerCase())), [catalog.data, category, search]);
+  const comparisonItems = useMemo(() => (catalog.data?.items ?? []).filter((item) => selected.includes(item.program_key)), [catalog.data, selected]);
   const categories = Array.from(new Set((catalog.data?.items ?? []).map((item) => item.category)));
   const activeKeys = selected.length ? selected : items.map((item) => item.program_key);
 
@@ -104,7 +105,27 @@ export default function ProductsPage() {
 
     {mode === "browse" ? <>
       <div className="productToolbar mt"><input className="field" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} /><select className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><span className="sp" /><button className="iconAction" aria-label="Previous product" onClick={() => rail.current?.scrollBy({ left: -360, behavior: "smooth" })}><ChevronLeft size={18} /></button><button className="iconAction" aria-label="Next product" onClick={() => rail.current?.scrollBy({ left: 360, behavior: "smooth" })}><ChevronRight size={18} /></button></div>
-      {selected.length > 0 && <section className="comparisonStrip"><div><span className="eyebrow">Selected comparison</span><b>{selected.length} program{selected.length === 1 ? "" : "s"}</b></div><span className="sp" /><button className="btn" onClick={() => void downloadPdf()}>Download PDF</button><button className="btn pri" onClick={() => setShareOpen(true)}><Share2 size={16} /> {t.pdf}</button></section>}
+      {selected.length > 0 && <section className="comparisonMatrix">
+        <header className="comparisonMatrixHeader">
+          <div><span className="eyebrow">{t.comparison}</span><b>{selected.length} program{selected.length === 1 ? "" : "s"}</b>{selected.length === 1 && <small>{t.selectMore}</small>}</div>
+          <span className="sp" />
+          <button className="btn" onClick={() => void downloadPdf()}>Download PDF</button>
+          <button className="btn pri" onClick={() => setShareOpen(true)}><Share2 size={16} /> {t.pdf}</button>
+        </header>
+        <div className="comparisonTableWrap">
+          <table className="comparisonTable">
+            <thead><tr><th>{t.comparison}</th>{comparisonItems.map((item) => <th key={item.program_key}><span className="comparisonProgramHead"><span className="productGlyph small"><ProductIcon programKey={item.icon_key || item.program_key} size={17} /></span><b>{item.name}</b><button className="comparisonRemove" type="button" aria-label={`Remove ${item.name}`} onClick={() => setSelected((old) => old.filter((key) => key !== item.program_key))}><X size={15} /></button></span></th>)}</tr></thead>
+            <tbody>
+              <tr><th>{t.overview}</th>{comparisonItems.map((item) => <td key={item.program_key}>{item.summary || t.preliminary}</td>)}</tr>
+              <tr><th>{t.amount}</th>{comparisonItems.map((item) => <td key={item.program_key}><b>{money(item.amount_min)}-{money(item.amount_max)}</b></td>)}</tr>
+              <tr><th>{t.term}</th>{comparisonItems.map((item) => <td key={item.program_key}><b>{termRange(item)}</b></td>)}</tr>
+              <tr><th>{t.pricing}</th>{comparisonItems.map((item) => <td key={item.program_key}><b>{item.pricing || "Awaiting review"}</b></td>)}</tr>
+              <tr><th>{t.category}</th>{comparisonItems.map((item) => <td key={item.program_key}><span className="cellchip c-mut">{item.category}</span></td>)}</tr>
+              <tr><th>{t.nextAction}</th>{comparisonItems.map((item) => <td key={item.program_key}>{item.direct_action === "start_application" ? t.start : t.book}</td>)}</tr>
+            </tbody>
+          </table>
+        </div>
+      </section>}
       <div className="productRail" ref={rail}>{items.map((item) => { const on = selected.includes(item.program_key); return <article className={`productCard ${on ? "selected" : ""}`} key={item.program_key} onClick={() => router.push(`/products/${item.program_key}?locale=${locale}`)} tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") router.push(`/products/${item.program_key}?locale=${locale}`); }}>
         <div className="productCardTop"><span className="productGlyph"><ProductIcon programKey={item.icon_key || item.program_key} /></span><span className="cellchip c-mut">{item.category}</span></div><h3>{item.name}</h3><p>{item.summary || t.preliminary}</p>
         <dl><div><dt>{t.amount}</dt><dd>{money(item.amount_min)}-{money(item.amount_max)}</dd></div><div><dt>{t.term}</dt><dd>{termRange(item)}</dd></div><div><dt>{t.pricing}</dt><dd>{item.pricing || "Awaiting review"}</dd></div></dl>

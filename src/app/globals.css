@@ -755,8 +755,21 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 /* Product booklet, presentation delivery, and Step 1 eligibility. */
 .selectedCompare { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .selectedCompare b { color: var(--accent); }
-.comparisonStrip { min-height: 58px; display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--accent-200); border-radius: 8px; background: var(--accent-100); }
-.comparisonStrip > div { display: grid; gap: 2px; }
+.comparisonMatrix { margin-top: 12px; border: 1px solid var(--accent-200); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.comparisonMatrixHeader { min-height: 66px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--accent-200); background: var(--accent-100); }
+.comparisonMatrixHeader > div { display: grid; gap: 2px; }
+.comparisonMatrixHeader small { color: var(--muted); font-size: 11px; }
+.comparisonTableWrap { overflow-x: auto; scrollbar-width: thin; }
+.comparisonTable { width: 100%; min-width: 720px; border-collapse: collapse; table-layout: fixed; }
+.comparisonTable th, .comparisonTable td { padding: 12px 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.comparisonTable th:first-child { width: 150px; color: var(--muted); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.comparisonTable th:last-child, .comparisonTable td:last-child { border-right: 0; }
+.comparisonTable tbody tr:last-child th, .comparisonTable tbody tr:last-child td { border-bottom: 0; }
+.comparisonTable td { color: var(--ink2); font-size: 12px; line-height: 1.45; }
+.comparisonProgramHead { min-height: 34px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.productGlyph.small { width: 30px; height: 30px; border-radius: 7px; }
+.comparisonRemove { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.comparisonRemove:hover { background: var(--danger-tint); color: var(--danger); }
 .productCard { cursor: pointer; outline: 0; }
 .productCard:focus-visible, .productCard:hover { border-color: var(--accent-200); box-shadow: 0 0 0 2px var(--accent-100); }
 .productOpenHint { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); font-size: 12px; font-weight: 750; }
@@ -782,13 +795,20 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .productBooklet { min-height: calc(100dvh - var(--header-h, 0px)); background: var(--sunken2); }
 .bookletToolbar { min-height: 66px; display: flex; align-items: center; gap: 9px; padding: 10px clamp(14px, 4vw, 56px); border-bottom: 1px solid var(--line); background: var(--surface); }
 .backLinkButton { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink2); font: 700 12.5px/1 var(--fb); cursor: pointer; }
-.bookletPage { width: min(1180px, calc(100% - 32px)); margin: 24px auto 50px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; touch-action: pan-y; }
+.bookletStage { position: relative; width: min(1420px, 100%); margin: 0 auto; padding: 0 104px; }
+.bookletPage { width: 100%; margin: 24px auto 50px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; touch-action: pan-y; cursor: grab; }
+.bookletPage.dragging { cursor: grabbing; user-select: none; }
+.bookletEdgeNav { position: absolute; top: 160px; z-index: 2; min-width: 88px; display: grid; place-items: center; gap: 7px; padding: 14px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--accent); box-shadow: var(--sh1); cursor: pointer; }
+.bookletEdgeNav:hover { border-color: var(--accent-200); background: var(--accent-100); }
+.bookletEdgeNav span { max-width: 72px; color: var(--ink2); font-size: 10px; font-weight: 700; line-height: 1.25; text-align: center; }
+.bookletEdgeNav.previous { left: 8px; }
+.bookletEdgeNav.next { right: 8px; }
 .bookletHero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 18px; padding: clamp(22px, 4vw, 48px); background: linear-gradient(140deg, var(--accent-100), var(--surface) 62%); border-bottom: 1px solid var(--line); }
 .bookletHeroIcon { width: 68px; height: 68px; display: grid; place-items: center; border-radius: 8px; background: var(--accent); color: #fff; box-shadow: var(--sh2); }
 .bookletHeroCopy h1 { margin: 7px 0 9px; font: 800 clamp(30px, 5vw, 52px)/1 var(--fh); letter-spacing: 0; }
 .bookletHeroCopy p { max-width: 720px; margin: 0; color: var(--ink2); font-size: 16px; line-height: 1.6; }
 .bookletPager { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
-.bookletSwipeHint { display: none; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.bookletSwipeHint { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .bookletTerms { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
 .bookletTerms > div { min-height: 92px; display: grid; align-content: center; gap: 5px; padding: 16px 20px; border-right: 1px solid var(--line); }
 .bookletTerms > div:last-child { border-right: 0; }
@@ -841,6 +861,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .bookletTerms { grid-template-columns: 1fr 1fr; }
   .bookletTerms > div:nth-child(2) { border-right: 0; }
   .bookletTerms > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .bookletStage { padding: 0 64px; }
+  .bookletEdgeNav { min-width: 48px; }
+  .bookletEdgeNav span { display: none; }
 }
 @media (max-width: 760px) {
   .productHeader { grid-template-columns: 1fr; gap: 12px; }
@@ -851,7 +874,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .productToolbar .sp { display: none; }
   .productRail { grid-auto-columns: calc(100vw - 38px); margin-right: -12px; }
   .productCard { min-height: 370px; }
-  .productCompare, .comparisonStrip { align-items: stretch; flex-direction: column; }
+  .productCompare, .comparisonMatrixHeader { align-items: stretch; flex-direction: column; }
+  .comparisonMatrixHeader .sp { display: none; }
   .finderWorkspace { grid-template-columns: 1fr; }
   .finderIntro { padding: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
   .finderOrb { width: 44px; height: 44px; margin-bottom: 12px; }
@@ -873,7 +897,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .bookletToolbar { flex-wrap: wrap; padding: 9px 12px; }
   .bookletToolbar .sp { display: none; }
   .bookletToolbar .backLinkButton { width: 100%; min-height: 38px; }
+  .bookletStage { width: 100%; padding: 0; }
   .bookletPage { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .bookletEdgeNav { top: 136px; min-width: 42px; width: 42px; height: 58px; padding: 0; border-radius: 0 8px 8px 0; background: rgba(255,255,255,.94); }
+  .bookletEdgeNav.previous { left: 0; }
+  .bookletEdgeNav.next { right: 0; border-radius: 8px 0 0 8px; }
   .bookletHero { grid-template-columns: auto minmax(0, 1fr); padding: 22px 16px; }
   .bookletHeroIcon { width: 52px; height: 52px; }
   .bookletHeroCopy h1 { font-size: 31px; }

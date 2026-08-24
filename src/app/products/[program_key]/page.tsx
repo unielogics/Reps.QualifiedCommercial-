@@ -137,13 +137,18 @@ export default function ProductBookletPage() {
         <div className="seg"><button className={locale === "en" ? "on" : ""} onClick={() => setLocale("en")}>EN</button><button className={locale === "es" ? "on" : ""} onClick={() => setLocale("es")}>ES</button></div>
       </header>
 
+      <div className="bookletStage">
+        <button className="bookletEdgeNav previous" type="button" onClick={() => go(detail.data.previous_key)} aria-label="Previous program"><ChevronLeft size={25} /><span>{locale === "es" ? "Programa anterior" : "Previous program"}</span></button>
       <main
         className="bookletPage"
         onPointerDown={(event) => {
-          if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+          if (!event.isPrimary || (event.target as HTMLElement).closest("button, a, input, textarea, select")) return;
           swipeStart.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+          event.currentTarget.setPointerCapture(event.pointerId);
+          event.currentTarget.classList.add("dragging");
         }}
         onPointerUp={(event) => {
+          event.currentTarget.classList.remove("dragging");
           const start = swipeStart.current;
           swipeStart.current = null;
           if (!start || start.pointerId !== event.pointerId) return;
@@ -152,7 +157,7 @@ export default function ProductBookletPage() {
           if (Math.abs(horizontal) < 60 || Math.abs(horizontal) < Math.abs(vertical) * 1.2) return;
           go(horizontal < 0 ? detail.data.next_key : detail.data.previous_key);
         }}
-        onPointerCancel={() => { swipeStart.current = null; }}
+        onPointerCancel={(event) => { event.currentTarget.classList.remove("dragging"); swipeStart.current = null; }}
       >
         <section className="bookletHero">
           <div className="bookletHeroIcon"><ProductIcon programKey={item.icon_key || item.program_key} size={32} /></div>
@@ -165,7 +170,7 @@ export default function ProductBookletPage() {
             <button className="iconAction" onClick={() => go(detail.data.previous_key)} aria-label="Previous program"><ChevronLeft size={20} /></button>
             <span>{detail.data.position} / {detail.data.total}</span>
             <button className="iconAction" onClick={() => go(detail.data.next_key)} aria-label="Next program"><ChevronRight size={20} /></button>
-            <small className="bookletSwipeHint">{locale === "es" ? "Deslice para cambiar" : "Swipe to browse"}</small>
+            <small className="bookletSwipeHint">{locale === "es" ? "Deslice o arrastre para cambiar" : "Swipe or drag to browse"}</small>
           </div>
         </section>
 
@@ -191,6 +196,8 @@ export default function ProductBookletPage() {
 
         <footer className="bookletDisclosure"><p>{item.disclosure || "Preliminary program information only. Final eligibility and terms require underwriting."}</p><button className="btn" onClick={() => void download()}><Download size={16} /> {labels.download}</button></footer>
       </main>
+        <button className="bookletEdgeNav next" type="button" onClick={() => go(detail.data.next_key)} aria-label="Next program"><span>{locale === "es" ? "Programa siguiente" : "Next program"}</span><ChevronRight size={25} /></button>
+      </div>
       <ProductShareDialog open={shareOpen} onClose={() => setShareOpen(false)} programKeys={[programKey]} locale={locale} />
       {notice && <div className="toastInline">{notice}</div>}
     </div>
