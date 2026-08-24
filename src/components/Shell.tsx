@@ -184,7 +184,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     ...(isSuperAdmin ? [{ href: "/production", label: "Production", icon: "chart" as IconName }] : []),
   ];
   const isActiveNavItem = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+    href === "/"
+      ? pathname === "/" || pathname.startsWith("/applications/")
+      : pathname.startsWith(href);
+  const activeSection = pathname.startsWith("/applications/")
+    ? "Application workspace"
+    : nav.find((item) => isActiveNavItem(item.href))?.label ?? "Field Desk";
 
   return (
     <div className={rail ? "app rail" : "app"}>
@@ -204,7 +209,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {nav.map((item) => {
             const on = isActiveNavItem(item.href);
             return (
-              <Link key={item.href} href={item.href} className={on ? "on" : undefined}>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={on ? "on" : undefined}
+                aria-current={on ? "page" : undefined}
+              >
                 <Icon name={item.icon} />
                 <span>{item.label}</span>
                 {item.href === "/" && unreadTotal > 0 && (
@@ -236,7 +246,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <div style={{ minWidth: 0 }}>
         <div className="top">
-          <b>{isTeam && !isRep ? "Field Desk · team view" : "Field Desk"}</b>
+          <div className="workspaceContext">
+            <span>{isTeam && !isRep ? "Field Desk · team view" : "Field Desk"}</span>
+            <b>{activeSection}</b>
+          </div>
           <div className="sp" />
           {now && (
             <Link href="/calendar" className="topclock" aria-label="Open calendar">
@@ -250,7 +263,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {nav.map((item) => {
             const on = isActiveNavItem(item.href);
             return (
-              <Link key={item.href} href={item.href} className={on ? "on" : undefined}>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={on ? "on" : undefined}
+                aria-current={on ? "page" : undefined}
+              >
                 <Icon name={item.icon} />
                 <span>{item.label}</span>
                 {item.href === "/" && unreadTotal > 0 && (

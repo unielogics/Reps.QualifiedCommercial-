@@ -14,11 +14,11 @@
 // a different conversation from "opened but abandoned", and a rep who cannot
 // tell them apart chases the wrong way.
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, apiUpload } from "@/lib/api";
+import { ApiError, api, apiUpload } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflows";
 import Modal from "@/components/Modal";
@@ -81,6 +81,22 @@ type DocumentRead = {
   status: string;
 };
 
+type StatementUpload = {
+  id: string;
+  filename: string;
+  status: "queued" | "uploading" | "complete" | "failed";
+  error?: string;
+};
+
+function validEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function validPhone(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 function when(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString(undefined, {
@@ -141,7 +157,7 @@ function IconTile({ tone, children }: { tone: "ok" | "warn"; children: React.Rea
 }
 
 export default function Step2Verification({ dealerId }: { dealerId: string }) {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
   const { dealer, verification } = useCase(dealerId);
@@ -153,6 +169,11 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [creditLinks, setCreditLinks] = useState<Record<string, string>>({});
+  const [deliveryEmail, setDeliveryEmail] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [statementUploads, setStatementUploads] = useState<StatementUpload[]>([]);
+  const authReady = isLoaded && Boolean(isSignedIn);
 
   // Rotation, not retrieval: the stored code is a hash and can never be shown
   // again, so "show me the code" always means "mint a new one". The old code
@@ -169,6 +190,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
   const plaid = useQuery({
     queryKey: ["plaid", dealerId],
+    enabled: authReady,
     queryFn: async () =>
       api<PlaidState>(`/dealer-os/dealers/${dealerId}/plaid`, {
         authToken: (await getToken()) ?? undefined,
@@ -177,6 +199,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
   const evidence = useQuery({
     queryKey: ["bank-evidence", dealerId],
+    enabled: authReady,
     queryFn: async () =>
       api<BankEvidenceRead>(`/dealer-os/dealers/${dealerId}/bank-evidence`, {
         authToken: (await getToken()) ?? undefined,
@@ -185,6 +208,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
   const owners = useQuery({
     queryKey: ["owners", dealerId],
+    enabled: authReady,
     queryFn: async () =>
       api<Owner[]>(`/dealer-os/dealers/${dealerId}/owners`, {
         authToken: (await getToken()) ?? undefined,
@@ -193,6 +217,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
   const log = useQuery({
     queryKey: ["delivery-log", dealerId],
+    enabled: authReady,
     queryFn: async () =>
       api<DeliveryRow[]>(`/dealer-os/dealers/${dealerId}/delivery-log`, {
         authToken: (await getToken()) ?? undefined,
@@ -204,8 +229,44 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const creditOwner = ownerRows.find((owner) => owner.id === creditOwnerId) ?? null;
   const activeBanks = (plaid.data?.items ?? []).filter((item) => item.status !== "removed");
 
+  useEffect(() => {
+    if (!modal) return;
+    if (modal === "credit") {
+      setDeliveryEmail(creditOwner?.email ?? "");
+      setDeliveryPhone(creditOwner?.phone ?? "");
+    } else {
+      setDeliveryEmail(dealer?.email ?? "");
+      setDeliveryPhone(dealer?.phone ?? "");
+    }
+    setDeliveryError(null);
+  }, [creditOwner, dealer?.email, dealer?.phone, modal]);
+
+  const persistDeliveryContact = async (ownerId?: string) => {
+    const email = deliveryEmail.trim().toLowerCase();
+    const phone = deliveryPhone.trim();
+    if (!validEmail(email)) throw new Error("Enter a valid personal email address before sending.");
+    if (ownerId && !validPhone(phone)) throw new Error("Enter a valid personal mobile number before sending.");
+    const token = (await getToken()) ?? undefined;
+    if (ownerId) {
+      await api(`/dealer-os/dealers/${dealerId}/owners/${ownerId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ email, phone }),
+        authToken: token,
+      });
+      await qc.invalidateQueries({ queryKey: ["owners", dealerId] });
+      return;
+    }
+    await api(`/dealer-os/dealers/${dealerId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ email, phone: phone || null }),
+      authToken: token,
+    });
+    await qc.invalidateQueries({ queryKey: ["dealer", dealerId] });
+  };
+
   const send = useMutation({
     mutationFn: async (request: { kind: "bank" } | { kind: "credit"; ownerId: string }) => {
+      await persistDeliveryContact(request.kind === "credit" ? request.ownerId : undefined);
       const token = (await getToken()) ?? undefined;
       const channel = alsoText ? "sms" : "email";
       if (request.kind === "bank") {
@@ -220,6 +281,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       );
     },
     onSuccess: (r, request) => {
+      setDeliveryError(null);
       setModal(null);
       setSent((r as { detail?: string | null })?.detail ?? "Sent.");
       if (request.kind === "credit" && (r as CreditInviteResult).path) {
@@ -231,6 +293,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
       void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
     },
+    onError: (error) => setDeliveryError(error instanceof Error ? error.message : "That authorization could not be sent."),
   });
 
   const sendAllCredit = useMutation({
@@ -269,12 +332,14 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   });
 
   const requestUpload = useMutation({
-    mutationFn: async () =>
-      api<BankUploadRequestResult>(`/dealer-os/dealers/${dealerId}/bank-upload-request`, {
+    mutationFn: async () => {
+      await persistDeliveryContact();
+      return api<BankUploadRequestResult>(`/dealer-os/dealers/${dealerId}/bank-upload-request`, {
         method: "POST",
         body: JSON.stringify({ channel: alsoText ? "sms" : "email" }),
         authToken: (await getToken()) ?? undefined,
-      }),
+      });
+    },
     onSuccess: (r) => {
       setModal(null);
       setSent(r.detail ?? "Statement upload request sent.");
@@ -282,21 +347,32 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
       void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
     },
+    onError: (error) => setDeliveryError(error instanceof Error ? error.message : "The upload request could not be sent."),
   });
 
   const uploadStatements = useMutation({
-    mutationFn: async (files: File[]) => {
-      const token = (await getToken()) ?? undefined;
+    mutationFn: async (files: Array<{ id: string; file: File }>) => {
       const uploaded: DocumentRead[] = [];
-      for (const file of files) {
+      for (const item of files) {
+        setStatementUploads((current) => current.map((row) => row.id === item.id ? { ...row, status: "uploading", error: undefined } : row));
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", item.file);
         form.append("kind", "statement");
-        uploaded.push(
-          await apiUpload<DocumentRead>(`/dealer-os/dealers/${dealerId}/documents`, form, {
-            authToken: token,
-          }),
-        );
+        try {
+          let token = (await getToken()) ?? undefined;
+          let document: DocumentRead;
+          try {
+            document = await apiUpload<DocumentRead>(`/dealer-os/dealers/${dealerId}/documents`, form, { authToken: token });
+          } catch (error) {
+            if (!(error instanceof ApiError) || error.status !== 401) throw error;
+            token = (await getToken({ skipCache: true })) ?? undefined;
+            document = await apiUpload<DocumentRead>(`/dealer-os/dealers/${dealerId}/documents`, form, { authToken: token });
+          }
+          uploaded.push(document);
+          setStatementUploads((current) => current.map((row) => row.id === item.id ? { ...row, status: "complete" } : row));
+        } catch (error) {
+          setStatementUploads((current) => current.map((row) => row.id === item.id ? { ...row, status: "failed", error: error instanceof Error ? error.message : "Upload failed" } : row));
+        }
       }
       return uploaded;
     },
@@ -320,7 +396,13 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const bankLinked = evidenceData?.bank_linked ?? verification.bank_linked;
   const handleFiles = (list: FileList | File[]) => {
     const files = Array.from(list).filter((file) => file.size > 0);
-    if (files.length) uploadStatements.mutate(files);
+    if (!files.length) return;
+    const batch = files.map((file, index) => ({ id: `${Date.now()}-${index}-${file.name}-${file.size}`, file }));
+    setStatementUploads((current) => [
+      ...batch.map((item) => ({ id: item.id, filename: item.file.name, status: "queued" as const })),
+      ...current.filter((item) => item.status !== "complete"),
+    ]);
+    uploadStatements.mutate(batch);
   };
 
   const bankTone = bankLinked ? "c-ok" : "c-warn";
@@ -524,15 +606,28 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             />
             <b>Drop bank statements here</b>
             <span className="sub" style={{ display: "block", marginTop: 5 }}>
-              Agent uploads are stored on the file, mirrored into the linked bucket, and sent
-              through extraction as statements.
+              PDF, CSV, or spreadsheet. Upload begins immediately and each file is tracked below.
             </span>
-            {uploadStatements.isPending && (
-              <span className="sub" style={{ display: "block", marginTop: 8 }}>
-                Uploading and extracting statements…
-              </span>
-            )}
           </div>
+          {statementUploads.length > 0 && (
+            <div className="uploadTray mt" aria-live="polite">
+              {statementUploads.map((item) => (
+                <div className={`uploadTrayRow ${item.status}`} key={item.id} title={item.error}>
+                  <span className="uploadState" aria-hidden />
+                  <b>{item.filename}</b>
+                  <span>
+                    {item.status === "uploading"
+                      ? "Uploading"
+                      : item.status === "complete"
+                        ? "Added to file"
+                        : item.status === "failed"
+                          ? item.error || "Failed"
+                          : "Queued"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="row mt" style={{ gap: 8 }}>
             {statementMonths.slice(-6).map((month) => (
               <span key={month} className="cellchip c-ok">
@@ -768,17 +863,31 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               : "The applicant authorizes a soft credit inquiry. It does not affect their score and returns a band rather than an exact figure."}
           </p>
 
-          <span className="lbl mt" style={{ display: "block" }}>
-            Send to
+          <div className="deliveryEditor mt">
+            <label>
+              <span className="lbl">{modal === "credit" ? "Personal email" : "Applicant email"}</span>
+              <input
+                className={`field${deliveryEmail && !validEmail(deliveryEmail) ? " invalid" : ""}`}
+                type="email"
+                value={deliveryEmail}
+                autoComplete="email"
+                onChange={(event) => { setDeliveryEmail(event.target.value); setDeliveryError(null); }}
+              />
+            </label>
+            <label>
+              <span className="lbl">{modal === "credit" ? "Personal mobile" : "Applicant mobile"}</span>
+              <input
+                className={`field${modal === "credit" && deliveryPhone && !validPhone(deliveryPhone) ? " invalid" : ""}`}
+                type="tel"
+                value={deliveryPhone}
+                autoComplete="tel"
+                onChange={(event) => { setDeliveryPhone(event.target.value); setDeliveryError(null); }}
+              />
+            </label>
+          </div>
+          <span className="sub" style={{ display: "block", marginTop: 6 }}>
+            Corrections save to this {modal === "credit" ? "owner" : "application"} before the secure link is sent.
           </span>
-          <div className="kv">
-            <span>Email</span>
-            <b>{modal === "credit" ? creditOwner?.email || "none on file" : dealer?.email || "none on file"}</b>
-          </div>
-          <div className="kv">
-            <span>Mobile</span>
-            <b className="num">{modal === "credit" ? creditOwner?.phone || "required in Step 1" : dealer?.phone || "none on file"}</b>
-          </div>
 
           <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, cursor: "pointer" }}>
             <input type="checkbox" checked={alsoText} onChange={(e) => setAlsoText(e.target.checked)} />
@@ -807,6 +916,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </div>
             </div>
           )}
+          {deliveryError && !modalIsError && (
+            <div className="documentError" style={{ margin: "12px 0 0" }}>{deliveryError}</div>
+          )}
 
           <div className="row mt" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn" onClick={() => setModal(null)}>
@@ -815,7 +927,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <button
               type="button"
               className="btn pri"
-              disabled={modalPending}
+              disabled={modalPending || !validEmail(deliveryEmail) || (modal === "credit" && !validPhone(deliveryPhone))}
               onClick={() => {
                 if (modal === "upload") requestUpload.mutate();
                 else if (modal === "bank") send.mutate({ kind: "bank" });

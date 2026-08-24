@@ -14,7 +14,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "./api";
+import { ApiError, api } from "./api";
 
 export type Verification = {
   bank_linked: boolean;
@@ -102,20 +102,27 @@ const NO_VERIFICATION: Verification = {
 };
 
 export function useCase(id: string) {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const authReady = isLoaded && Boolean(isSignedIn) && Boolean(id);
+  const authenticatedGet = async <T,>(path: string): Promise<T> => {
+    try {
+      return await api<T>(path, { authToken: (await getToken()) ?? undefined });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      return api<T>(path, { authToken: (await getToken({ skipCache: true })) ?? undefined });
+    }
+  };
 
   const dealer = useQuery({
     queryKey: ["dealer", id],
-    queryFn: async () =>
-      api<Dealer>(`/dealer-os/dealers/${id}`, { authToken: (await getToken()) ?? undefined }),
+    enabled: authReady,
+    queryFn: () => authenticatedGet<Dealer>(`/dealer-os/dealers/${id}`),
   });
 
   const decision = useQuery({
     queryKey: ["decision", id],
-    queryFn: async () =>
-      api<Decision>(`/dealer-os/dealers/${id}/decision`, {
-        authToken: (await getToken()) ?? undefined,
-      }),
+    enabled: authReady,
+    queryFn: () => authenticatedGet<Decision>(`/dealer-os/dealers/${id}/decision`),
   });
 
   // Default to locked while loading. Drawing the unlocked shape first and
