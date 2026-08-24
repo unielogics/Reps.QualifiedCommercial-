@@ -34,6 +34,9 @@ export type Verification = {
   required_credit_owner_count: number;
   completed_credit_owner_count: number;
   pending_credit_owner_ids: string[];
+  pre_screen_complete: boolean;
+  pre_screen_blockers: string[];
+  preliminary_program_fit: Record<string, unknown> | null;
 };
 
 export type Program = {
@@ -99,6 +102,9 @@ const NO_VERIFICATION: Verification = {
   required_credit_owner_count: 0,
   completed_credit_owner_count: 0,
   pending_credit_owner_ids: [],
+  pre_screen_complete: false,
+  pre_screen_blockers: [],
+  preliminary_program_fit: null,
 };
 
 export function useCase(id: string) {

@@ -736,9 +736,94 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .presentationRow { display: grid; justify-content: stretch; }
 .empty.compact { min-height: 90px; }
 
+/* Product booklet, presentation delivery, and Step 1 eligibility. */
+.selectedCompare { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.selectedCompare b { color: var(--accent); }
+.comparisonStrip { min-height: 58px; display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--accent-200); border-radius: 8px; background: var(--accent-100); }
+.comparisonStrip > div { display: grid; gap: 2px; }
+.productCard { cursor: pointer; outline: 0; }
+.productCard:focus-visible, .productCard:hover { border-color: var(--accent-200); box-shadow: 0 0 0 2px var(--accent-100); }
+.productOpenHint { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); font-size: 12px; font-weight: 750; }
+.productActions .btn { min-height: 40px; }
+.productShareDialog { --modal-w: 660px; }
+.productShareBody { display: grid; gap: 15px; }
+.productShareBody label { display: grid; gap: 6px; }
+.productShareBody label > span, .shareRecipientGrid label > span { color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.shareSummary { min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--accent-200); border-radius: 8px; background: var(--accent-100); color: var(--accent); }
+.shareMode { width: max-content; }
+.shareMode button { display: inline-flex; align-items: center; gap: 6px; }
+.shareRecipientGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.shareChannels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.shareChannels > button { min-height: 74px; display: flex; align-items: center; gap: 11px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); text-align: left; cursor: pointer; }
+.shareChannels > button.selected { border-color: var(--accent); background: var(--accent-100); color: var(--accent); box-shadow: 0 0 0 2px var(--accent-100); }
+.shareChannels span { display: grid; gap: 3px; }
+.shareChannels small { color: var(--muted); line-height: 1.35; }
+.smsConsent { display: flex !important; grid-template-columns: auto 1fr; align-items: flex-start; gap: 9px !important; padding: 12px; border: 1px solid var(--warn); border-radius: 8px; background: var(--warn-tint); }
+.smsConsent input { margin-top: 2px; }
+.smsConsent span { color: var(--ink2) !important; font-size: 12px !important; font-weight: 550 !important; letter-spacing: 0 !important; line-height: 1.45; text-transform: none !important; }
+.shareDeliveryStatus { padding: 11px 13px; border-radius: 8px; background: var(--sunken2); color: var(--ink2); }
+
+.productBooklet { min-height: calc(100dvh - var(--header-h, 0px)); background: var(--sunken2); }
+.bookletToolbar { min-height: 66px; display: flex; align-items: center; gap: 9px; padding: 10px clamp(14px, 4vw, 56px); border-bottom: 1px solid var(--line); background: var(--surface); }
+.backLinkButton { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink2); font: 700 12.5px/1 var(--fb); cursor: pointer; }
+.bookletPage { width: min(1180px, calc(100% - 32px)); margin: 24px auto 50px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; }
+.bookletHero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 18px; padding: clamp(22px, 4vw, 48px); background: linear-gradient(140deg, var(--accent-100), var(--surface) 62%); border-bottom: 1px solid var(--line); }
+.bookletHeroIcon { width: 68px; height: 68px; display: grid; place-items: center; border-radius: 8px; background: var(--accent); color: #fff; box-shadow: var(--sh2); }
+.bookletHeroCopy h1 { margin: 7px 0 9px; font: 800 clamp(30px, 5vw, 52px)/1 var(--fh); letter-spacing: 0; }
+.bookletHeroCopy p { max-width: 720px; margin: 0; color: var(--ink2); font-size: 16px; line-height: 1.6; }
+.bookletPager { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.bookletTerms { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+.bookletTerms > div { min-height: 92px; display: grid; align-content: center; gap: 5px; padding: 16px 20px; border-right: 1px solid var(--line); }
+.bookletTerms > div:last-child { border-right: 0; }
+.bookletTerms span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.bookletTerms b { font: 750 16px/1.25 var(--fh); }
+.bookletGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.bookletSection { min-height: 220px; padding: 24px 28px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.bookletSection:nth-child(even) { border-right: 0; }
+.bookletSection header { display: flex; align-items: center; gap: 9px; color: var(--accent); }
+.bookletSection h3 { margin: 0; color: var(--ink); font: 750 16px/1.2 var(--fh); }
+.bookletSection ul { display: grid; gap: 9px; margin: 16px 0 0; padding-left: 18px; color: var(--ink2); line-height: 1.5; }
+.bookletSection p { color: var(--muted); line-height: 1.55; }
+.bookletDecision { background: var(--sunken2); }
+.bookletDecision .btn { margin-top: 14px; }
+.bookletDisclosure { display: flex; align-items: center; gap: 20px; padding: 18px 28px; }
+.bookletDisclosure p { flex: 1; margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.bookletLoading { min-height: 60dvh; display: grid; place-items: center; color: var(--muted); }
+
+.eligibilityDialog { --modal-w: 880px; }
+.eligibilityBody { display: grid; gap: 16px; }
+.eligibilityProgress { display: flex; align-items: center; gap: 8px; }
+.eligibilityProgress button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); font-weight: 750; cursor: pointer; }
+.eligibilityProgress button.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+.eligibilityProgress button.complete { border-color: var(--ok); background: var(--ok-tint); color: var(--ok); }
+.eligibilityOwnerHead { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.eligibilityOwnerHead h3 { margin: 4px 0 0; font: 750 23px/1.1 var(--fh); }
+.eligibilityOwnerHead .cellchip { margin-left: auto; }
+.eligibilityQuestions { display: grid; gap: 10px; }
+.eligibilityQuestion { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .42fr); align-items: center; gap: 16px; padding: 13px; border: 1px solid var(--line); border-radius: 8px; }
+.eligibilityQuestion.invalid { border-color: rgba(180, 35, 24, .42); background: var(--danger-tint); }
+.eligibilityQuestion.complete { border-color: rgba(3, 152, 85, .28); }
+.eligibilityQuestion > div:first-child { display: grid; gap: 4px; }
+.eligibilityQuestion span { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.eligibilityYesNo { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.eligibilityYesNo button { min-height: 42px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); font-weight: 700; cursor: pointer; }
+.eligibilityYesNo button.selected { border-color: var(--accent); background: var(--accent); color: #fff; }
+.eligibilityFooter { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.eligibilityPrograms { display: grid; gap: 10px; margin-top: 18px; }
+.eligibilityPrograms article { padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 8px; }
+.eligibilityPrograms article.blocked { border-left-color: var(--danger); }
+.eligibilityPrograms article > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.eligibilityPrograms p { margin: 8px 0 0; color: var(--danger); font-size: 12px; }
+.eligibilityRowAction { min-height: 34px; padding: 0 10px; border: 1px solid var(--warn); border-radius: 8px; background: var(--warn-tint); color: var(--ink2); font: 700 11px/1 var(--fb); white-space: nowrap; cursor: pointer; }
+.eligibilityRowAction.complete { border-color: rgba(3, 152, 85, .3); background: var(--ok-tint); color: var(--ok); }
+.validationBanner { padding: 11px 13px; border: 1px solid rgba(180, 35, 24, .35); border-radius: 8px; background: var(--danger-tint); color: var(--danger); font-size: 12px; }
+
 @media (max-width: 1050px) {
   .productRail { grid-auto-columns: minmax(300px, 45%); }
   .contactGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bookletTerms { grid-template-columns: 1fr 1fr; }
+  .bookletTerms > div:nth-child(2) { border-right: 0; }
+  .bookletTerms > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
 }
 @media (max-width: 760px) {
   .productHeader { gap: 12px; }
@@ -749,7 +834,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .productToolbar .sp { display: none; }
   .productRail { grid-auto-columns: calc(100vw - 38px); margin-right: -12px; }
   .productCard { min-height: 370px; }
-  .productCompare { align-items: stretch; flex-direction: column; }
+  .productCompare, .comparisonStrip { align-items: stretch; flex-direction: column; }
   .finderWorkspace { grid-template-columns: 1fr; }
   .finderIntro { padding: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
   .finderOrb { width: 44px; height: 44px; margin-bottom: 12px; }
@@ -765,4 +850,23 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .contactQuick { width: 100%; margin-left: 0; }
   .contactQuick .btn { flex: 1; }
   .toastInline { left: 12px; right: 12px; bottom: 82px; }
+  .productHeaderActions { flex-wrap: wrap; }
+  .selectedCompare { display: none; }
+  .shareRecipientGrid, .shareChannels { grid-template-columns: 1fr; }
+  .bookletToolbar { flex-wrap: wrap; padding: 9px 12px; }
+  .bookletToolbar .sp { display: none; }
+  .bookletToolbar .backLinkButton { width: 100%; min-height: 38px; }
+  .bookletPage { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .bookletHero { grid-template-columns: auto minmax(0, 1fr); padding: 22px 16px; }
+  .bookletHeroIcon { width: 52px; height: 52px; }
+  .bookletHeroCopy h1 { font-size: 31px; }
+  .bookletHeroCopy p { font-size: 14px; }
+  .bookletPager { grid-column: 1 / -1; justify-content: center; }
+  .bookletTerms { grid-template-columns: 1fr 1fr; }
+  .bookletTerms > div { min-height: 82px; padding: 13px; }
+  .bookletGrid { grid-template-columns: 1fr; }
+  .bookletSection, .bookletSection:nth-child(even) { min-height: 0; padding: 20px 18px; border-right: 0; }
+  .bookletDisclosure { align-items: stretch; flex-direction: column; padding: 18px; }
+  .eligibilityQuestion { grid-template-columns: 1fr; }
+  .eligibilityFooter { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }

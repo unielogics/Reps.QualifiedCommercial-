@@ -62,7 +62,8 @@ export default function ApplicationPage() {
       && dealer?.use_of_proceeds_note?.trim()
       && verification.ownership_complete
       && verification.owner_contact_complete
-      && verification.required_credit_owner_count > 0,
+      && verification.required_credit_owner_count > 0
+      && verification.pre_screen_complete,
   );
   const formsReady = Boolean(
     decision?.ready_for_forms

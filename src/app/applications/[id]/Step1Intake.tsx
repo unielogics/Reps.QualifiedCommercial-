@@ -20,6 +20,7 @@ import { useCase } from "@/lib/useCase";
 import UseOfProceeds from "./UseOfProceeds";
 import StepActions from "@/components/StepActions";
 import BusinessAddressFields from "@/components/BusinessAddressFields";
+import EligibilityCheckpoint, { type PreScreen } from "./EligibilityCheckpoint";
 
 const ENTITY_TYPES = [
   "Limited liability company",
@@ -106,6 +107,9 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   const [newOwners, setNewOwners] = useState<OwnerDraft[]>([]);
   const [ownerEdits, setOwnerEdits] = useState<Record<string, Partial<Record<OwnerField, string>>>>({});
   const [ownerSaveState, setOwnerSaveState] = useState<Record<string, "saving" | "saved" | "invalid">>({});
+  const [eligibilityOpen, setEligibilityOpen] = useState(false);
+  const [eligibilityOwnerId, setEligibilityOwnerId] = useState<string | null>(null);
+  const [continueAfterEligibility, setContinueAfterEligibility] = useState(false);
 
   // Reset the local draft whenever the server view changes, so a value saved
   // elsewhere does not sit behind a stale keystroke.
@@ -158,6 +162,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   const refreshOwners = () => {
     void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
     void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+    void qc.invalidateQueries({ queryKey: ["application-pre-screen", dealerId] });
   };
 
   const createOwner = useMutation({
@@ -185,6 +190,13 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     onError: (_error, draft) => {
       setNewOwners((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "invalid" } : row));
     },
+  });
+
+  const preScreen = useQuery({
+    queryKey: ["application-pre-screen", dealerId],
+    queryFn: async () => api<PreScreen>(`/dealer-os/dealers/${dealerId}/pre-screen`, {
+      authToken: (await getToken()) ?? undefined,
+    }),
   });
 
   const patchOwner = useMutation({
@@ -266,7 +278,10 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       funding_goal: Number(val("funding_goal").replace(/[^0-9.]/g, "")),
       funding_purpose: val("funding_purpose").trim(),
     });
-    router.push(`/applications/${dealerId}?step=2`);
+    const refreshed = await preScreen.refetch();
+    setEligibilityOwnerId(refreshed.data?.incomplete_owner_ids[0] ?? null);
+    setContinueAfterEligibility(true);
+    setEligibilityOpen(true);
   };
 
   const addOwnerRow = () => {
@@ -464,7 +479,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
           )}
 
           <div className="tblwrap">
-            <table className="tbl" style={{ minWidth: 980 }}>
+            <table className="tbl" style={{ minWidth: 1100 }}>
               <thead>
                 <tr>
                   <th>First name</th>
@@ -472,6 +487,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                   <th style={{ width: 120 }}>Ownership %</th>
                   <th>Personal email</th>
                   <th>Personal phone</th>
+                  <th>Eligibility</th>
                   <th>iSoftPull</th>
                   <th>Save</th>
                   <th />
@@ -490,6 +506,21 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                   <td><input aria-label={`${owner.full_name} ownership percentage`} className="field required-field num" required min="0" max="100" type="number" step="0.01" style={{ width: 100 }} inputMode="decimal" value={ownerValue(owner, "ownership_pct")} onChange={(e) => updateOwner(owner.id, "ownership_pct", e.target.value)} onBlur={() => commitOwner(owner, "ownership_pct")} /></td>
                   <td><input aria-label={`${owner.full_name} personal email`} className={`field${required ? " required-field" : ""}${duplicateEmail ? " field-invalid" : ""}`} required={required} style={{ minWidth: 190 }} type="email" value={ownerValue(owner, "email")} onChange={(e) => updateOwner(owner.id, "email", e.target.value)} onBlur={() => commitOwner(owner, "email")} /></td>
                   <td><input aria-label={`${owner.full_name} personal phone`} className={`field${required ? " required-field" : ""}`} required={required} style={{ minWidth: 150 }} type="tel" value={ownerValue(owner, "phone")} onChange={(e) => { e.currentTarget.setCustomValidity(required && e.target.value && !validPhone(e.target.value) ? "Enter a valid personal phone" : ""); updateOwner(owner.id, "phone", e.target.value); }} onBlur={(e) => { e.currentTarget.setCustomValidity(required && !validPhone(e.currentTarget.value) ? "Enter a valid personal phone" : ""); commitOwner(owner, "phone"); }} /></td>
+                  <td>
+                    {required ? (
+                      <button
+                        type="button"
+                        className={`eligibilityRowAction ${preScreen.data?.completed_owner_ids.includes(owner.id) ? "complete" : "required"}`}
+                        onClick={() => {
+                          setEligibilityOwnerId(owner.id);
+                          setContinueAfterEligibility(false);
+                          setEligibilityOpen(true);
+                        }}
+                      >
+                        {preScreen.data?.completed_owner_ids.includes(owner.id) ? "Complete" : "Complete screen"}
+                      </button>
+                    ) : <span className="cellchip c-mut">Not required</span>}
+                  </td>
                   <td>
                     <span className={`cellchip ${required ? "c-warn" : "c-mut"}`}>
                       {required ? "Required" : "Not required"}
@@ -545,6 +576,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                       />
                     </td>
                   ))}
+                  <td><span className="cellchip c-mut">Save row first</span></td>
                   <td><span className={`cellchip ${required ? "c-warn" : "c-mut"}`}>{required ? "Required" : "Not required"}</span></td>
                   <td><span className={`cellchip ${draft.state === "saving" ? "c-mut" : draft.state === "invalid" ? "c-warn" : ""}`}>{draft.state === "saving" ? "Saving…" : draft.state === "invalid" ? "Complete row" : "Unsaved"}</span></td>
                   <td className="r"><button type="button" className="btn sm" onClick={() => setNewOwners((rows) => rows.filter((row) => row.key !== draft.key))}>Remove</button></td>
@@ -686,6 +718,15 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         buttonLabel="Continue to Step 2"
         onContinue={() => void saveAndContinue()}
         pending={patch.isPending || patchOwner.isPending || createOwner.isPending}
+      />
+      <EligibilityCheckpoint
+        dealerId={dealerId}
+        owners={ownerRows}
+        open={eligibilityOpen}
+        initialOwnerId={eligibilityOwnerId}
+        continueAfterComplete={continueAfterEligibility}
+        onClose={() => setEligibilityOpen(false)}
+        onContinue={() => router.push(`/applications/${dealerId}?step=2`)}
       />
     </>
   );
