@@ -812,14 +812,15 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .bookletClose { margin-left: 3px; color: var(--ink2); }
 .bookletClose:hover { border-color: var(--danger); background: var(--danger-tint); color: var(--danger); }
 .backLinkButton { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink2); font: 700 12.5px/1 var(--fb); cursor: pointer; }
-.bookletStage { position: relative; width: min(1420px, 100%); margin: 0 auto; padding: 0 104px; }
-.bookletPage { width: 100%; margin: 24px auto 50px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; touch-action: pan-y; cursor: grab; }
+.bookletStage { position: relative; width: 100%; margin: 0 auto; padding: 0 clamp(12px, 1.8vw, 32px); }
+.bookletPage { width: 100%; margin: clamp(12px, 1.8vw, 24px) auto 104px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; touch-action: pan-y; cursor: grab; }
 .bookletPage.dragging { cursor: grabbing; user-select: none; }
-.bookletEdgeNav { position: absolute; top: 160px; z-index: 2; min-width: 88px; display: grid; place-items: center; gap: 7px; padding: 14px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--accent); box-shadow: var(--sh1); cursor: pointer; }
-.bookletEdgeNav:hover { border-color: var(--accent-200); background: var(--accent-100); }
-.bookletEdgeNav span { max-width: 72px; color: var(--ink2); font-size: 10px; font-weight: 700; line-height: 1.25; text-align: center; }
-.bookletEdgeNav.previous { left: 8px; }
-.bookletEdgeNav.next { right: 8px; }
+.bookletFloatingNav { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 25; display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 28px; background: rgba(255,255,255,.96); box-shadow: var(--sh2); backdrop-filter: blur(12px); transform: translateX(-50%); }
+.bookletFloatingNav > button { width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--accent); cursor: pointer; }
+.bookletFloatingNav > button:hover { background: var(--accent-100); }
+.bookletDots { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.bookletDots span { width: 7px; height: 7px; border-radius: 50%; background: var(--line2); transition: width .15s ease, background .15s ease; }
+.bookletDots span.current { width: 18px; border-radius: 8px; background: var(--accent); }
 .bookletHero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 18px; padding: clamp(22px, 4vw, 48px); background: linear-gradient(140deg, var(--accent-100), var(--surface) 62%); border-bottom: 1px solid var(--line); }
 .bookletHeroIcon { width: 68px; height: 68px; display: grid; place-items: center; border-radius: 8px; background: var(--accent); color: #fff; box-shadow: var(--sh2); }
 .bookletHeroCopy h1 { margin: 7px 0 9px; font: 800 clamp(30px, 5vw, 52px)/1 var(--fh); letter-spacing: 0; }
@@ -878,9 +879,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .bookletTerms { grid-template-columns: 1fr 1fr; }
   .bookletTerms > div:nth-child(2) { border-right: 0; }
   .bookletTerms > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-  .bookletStage { padding: 0 64px; }
-  .bookletEdgeNav { min-width: 48px; }
-  .bookletEdgeNav span { display: none; }
+  .bookletStage { padding: 0 12px; }
 }
 @media (max-width: 760px) {
   .productHeader { grid-template-columns: 1fr; gap: 12px; }
@@ -917,10 +916,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .bookletToolbar .backLinkButton { width: calc(100% - 4px); min-height: 38px; }
   .bookletClose { position: absolute; top: 9px; right: 12px; margin: 0; }
   .bookletStage { width: 100%; padding: 0; }
-  .bookletPage { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
-  .bookletEdgeNav { top: 136px; min-width: 42px; width: 42px; height: 58px; padding: 0; border-radius: 0 8px 8px 0; background: rgba(255,255,255,.94); }
-  .bookletEdgeNav.previous { left: 0; }
-  .bookletEdgeNav.next { right: 0; border-radius: 8px 0 0 8px; }
+  .bookletPage { width: 100%; margin: 0 0 96px; border: 0; border-radius: 0; box-shadow: none; }
+  .bookletFloatingNav { gap: 8px; min-height: 46px; padding: 4px 7px; }
+  .bookletFloatingNav > button { width: 36px; height: 36px; }
+  .bookletDots { gap: 5px; }
+  .bookletDots span { width: 6px; height: 6px; }
+  .bookletDots span.current { width: 16px; }
   .bookletHero { grid-template-columns: auto minmax(0, 1fr); padding: 22px 16px; }
   .bookletHeroIcon { width: 52px; height: 52px; }
   .bookletHeroCopy h1 { font-size: 31px; }

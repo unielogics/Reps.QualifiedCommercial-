@@ -148,7 +148,6 @@ export default function ProductBookletPage() {
       </header>
 
       <div className="bookletStage">
-        <button className="bookletEdgeNav previous" type="button" onClick={() => go(detail.data.previous_key)} aria-label="Previous program"><ChevronLeft size={25} /><span>{locale === "es" ? "Programa anterior" : "Previous program"}</span></button>
       <main
         className="bookletPage"
         onPointerDown={(event) => {
@@ -177,9 +176,7 @@ export default function ProductBookletPage() {
             <p>{item.summary}</p>
           </div>
           <div className="bookletPager">
-            <button className="iconAction" onClick={() => go(detail.data.previous_key)} aria-label="Previous program"><ChevronLeft size={20} /></button>
             <span>{detail.data.position} / {detail.data.total}</span>
-            <button className="iconAction" onClick={() => go(detail.data.next_key)} aria-label="Next program"><ChevronRight size={20} /></button>
             <small className="bookletSwipeHint">{locale === "es" ? "Deslice o arrastre para cambiar" : "Swipe or drag to browse"}</small>
           </div>
         </section>
@@ -206,8 +203,32 @@ export default function ProductBookletPage() {
 
         <footer className="bookletDisclosure"><p>{item.disclosure || "Preliminary program information only. Final eligibility and terms require underwriting."}</p><button className="btn" onClick={() => void download()}><Download size={16} /> {labels.download}</button></footer>
       </main>
-        <button className="bookletEdgeNav next" type="button" onClick={() => go(detail.data.next_key)} aria-label="Next program"><span>{locale === "es" ? "Programa siguiente" : "Next program"}</span><ChevronRight size={25} /></button>
       </div>
+      <nav className="bookletFloatingNav" aria-label={locale === "es" ? "Navegacion de programas" : "Program navigation"}>
+        <button
+          type="button"
+          onClick={() => go(detail.data.previous_key)}
+          aria-label={locale === "es" ? "Programa anterior" : "Previous program"}
+        >
+          <ChevronLeft size={20} />
+        </button>
+        <div className="bookletDots" aria-label={`${labels.program} ${detail.data.position} of ${detail.data.total}`}>
+          {Array.from({ length: detail.data.total }, (_, index) => (
+            <span
+              key={index}
+              className={index + 1 === detail.data.position ? "current" : undefined}
+              aria-hidden="true"
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => go(detail.data.next_key)}
+          aria-label={locale === "es" ? "Programa siguiente" : "Next program"}
+        >
+          <ChevronRight size={20} />
+        </button>
+      </nav>
       <ProductShareDialog open={shareOpen} onClose={() => setShareOpen(false)} programKeys={[programKey]} locale={locale} />
       {notice && <div className="toastInline">{notice}</div>}
     </div>
