@@ -599,10 +599,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
     bottom: 0;
     top: auto;
     z-index: 40;
-    display: flex;
-    gap: 7px;
-    overflow-x: auto;
-    padding: 8px 12px;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+    overflow: visible;
+    padding: 6px 4px max(6px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
     border-bottom: 0;
     background: rgba(255, 255, 255, 0.92);
@@ -614,20 +615,23 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
     display: none;
   }
   .mobileTabs a {
-    min-height: 44px;
-    display: inline-flex;
+    position: relative;
+    min-width: 0;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    gap: 7px;
-    flex: 0 0 auto;
-    padding: 0 13px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
+    gap: 2px;
+    padding: 4px 1px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
     color: var(--ink2);
     text-decoration: none;
-    font-size: 12.5px;
+    font-size: clamp(8px, 2.35vw, 10px);
     font-weight: 650;
-    box-shadow: var(--sh1);
+    box-shadow: none;
   }
   .mobileTabs a.on {
     border-color: var(--accent-200);
@@ -635,19 +639,29 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
     color: var(--accent);
   }
   .mobileTabs svg {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     flex: 0 0 auto;
+  }
+  .mobileTabs a > span:not(.navbadge) {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .app.rail .mobileTabs .navbadge,
   .mobileTabs .navbadge {
-    position: static;
-    margin-left: 0;
-    min-width: 19px;
-    height: 19px;
-    line-height: 19px;
-    font-size: 11px;
-    padding: 0 5px;
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    margin: 0;
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    font-size: 9px;
+    padding: 0 4px;
   }
   .content, .content--wide {
     max-width: none;

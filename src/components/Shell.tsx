@@ -86,13 +86,14 @@ const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/products", label: "Products", icon: "products" },
   { href: "/inbox", label: "Inbox", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "calendar" },
+  { href: "/production", label: "Production", icon: "chart" },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [rail, setRail] = useState(true);
   const [now, setNow] = useState<Date | null>(null);
-  const { name, email, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
+  const { name, email, isRep, isTeam, isResolving } = useMe();
   const { getToken } = useAuth();
 
   // One grouped query for every file, not the per-file endpoint in a loop: a
@@ -178,11 +179,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const nav = [
-    ...REP_NAV,
-    // Production is the super admin's view of what the reps are bringing in.
-    ...(isSuperAdmin ? [{ href: "/production", label: "Production", icon: "chart" as IconName }] : []),
-  ];
+  const nav = REP_NAV;
   const isActiveNavItem = (href: string) =>
     href === "/"
       ? pathname === "/" || pathname.startsWith("/applications/")

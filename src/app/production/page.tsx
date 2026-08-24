@@ -1,6 +1,7 @@
 "use client";
 
-// What the field team is bringing in. Super-admin only, enforced server-side.
+// What the field team is bringing in. The backend scopes this report to the
+// signed-in rep's own book or to the full firm for team users.
 //
 // The headline number is deliberately NOT applications opened. A rep can open
 // twenty applications in an afternoon and none of them are worth anything until
@@ -67,7 +68,11 @@ type Funnel = {
   contract_executed: number;
 };
 
-type Production = { since: string | null; totals: ProductionTotals };
+type Production = {
+  scope: "own" | "firm";
+  since: string | null;
+  totals: ProductionTotals;
+};
 
 const STAGES: Array<{ key: keyof Funnel; label: string }> = [
   { key: "opened", label: "Opened" },
@@ -201,8 +206,9 @@ function LocationTable({ rows }: { rows: LocationMetric[] }) {
 
 export default function ProductionPage() {
   const { getToken } = useAuth();
-  const { isSuperAdmin, isResolving } = useMe();
+  const { isRep, isTeam, isResolving } = useMe();
   const [days, setDays] = useState(90);
+  const canViewProduction = isRep || isTeam;
 
   const q = useQuery({
     queryKey: ["production", days],
@@ -210,28 +216,31 @@ export default function ProductionPage() {
       api<Production>(`/dealer-os/rep-production?days=${days}`, {
         authToken: (await getToken()) ?? undefined,
       }),
-    enabled: isSuperAdmin,
+    enabled: canViewProduction,
   });
 
   if (isResolving) return null;
-  if (!isSuperAdmin) {
+  if (!canViewProduction) {
     return (
       <div className="card">
         <b>Not available</b>
-        <p className="sub mt">Production reporting is limited to super admins.</p>
+        <p className="sub mt">Production reporting is available to Field Desk staff.</p>
       </div>
     );
   }
 
   const d = q.data;
   const t = d?.totals;
+  const isOwnScope = d?.scope === "own";
 
   return (
     <>
       <div className="hd">
-        <h2>Production</h2>
+        <h2>{isOwnScope ? "Your production" : "Production"}</h2>
         <p className="lede">
-          Field output measured at the verification line, not at the point an application was opened.
+          {isOwnScope
+            ? "Your field output, measured at the verification line rather than when an application was opened."
+            : "Field output measured at the verification line, not at the point an application was opened."}
         </p>
       </div>
 
@@ -303,7 +312,7 @@ export default function ProductionPage() {
           <div className="panel-h">
             Verification funnel
             <span style={{ flex: 1 }} />
-            <span className="sub">All reps, this window</span>
+            <span className="sub">{isOwnScope ? "Your book, this window" : "All reps, this window"}</span>
           </div>
           <div className="panel-b">
             {STAGES.map((st) => {
