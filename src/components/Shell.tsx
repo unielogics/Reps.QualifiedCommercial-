@@ -91,6 +91,7 @@ const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isProductFocus = pathname.startsWith("/products/");
   const [rail, setRail] = useState(true);
   const [now, setNow] = useState<Date | null>(null);
   const { name, email, isRep, isTeam, isResolving } = useMe();
@@ -106,7 +107,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       api<{ total: number; per_file: Record<string, number> }>("/dealer-os/unread-summary", {
         authToken: (await getToken()) ?? undefined,
       }),
-    enabled: isRep || isTeam,
+    enabled: (isRep || isTeam) && !isProductFocus,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -177,6 +178,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  if (isProductFocus) {
+    return <main className="productFocusShell">{children}</main>;
   }
 
   const nav = REP_NAV;

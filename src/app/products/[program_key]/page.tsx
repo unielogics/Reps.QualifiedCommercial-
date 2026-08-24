@@ -16,6 +16,7 @@ import {
   Share2,
   ShieldAlert,
   Target,
+  X,
 } from "lucide-react";
 import { ProductIcon } from "@/components/ProductIcon";
 import ProductShareDialog from "@/components/ProductShareDialog";
@@ -135,6 +136,15 @@ export default function ProductBookletPage() {
         <button className="btn" onClick={() => router.push(`/products?selected=${programKey}&locale=${locale}`)}>{labels.compare}</button>
         <button className="btn" onClick={() => setShareOpen(true)}><Share2 size={16} /> {labels.share}</button>
         <div className="seg"><button className={locale === "en" ? "on" : ""} onClick={() => setLocale("en")}>EN</button><button className={locale === "es" ? "on" : ""} onClick={() => setLocale("es")}>ES</button></div>
+        <button
+          className="iconAction bookletClose"
+          type="button"
+          onClick={() => router.push("/products")}
+          aria-label={locale === "es" ? "Cerrar vista del programa" : "Close program view"}
+          title={locale === "es" ? "Cerrar" : "Close"}
+        >
+          <X size={21} />
+        </button>
       </header>
 
       <div className="bookletStage">

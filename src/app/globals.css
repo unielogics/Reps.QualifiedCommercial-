@@ -806,8 +806,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .smsConsent span { color: var(--ink2) !important; font-size: 12px !important; font-weight: 550 !important; letter-spacing: 0 !important; line-height: 1.45; text-transform: none !important; }
 .shareDeliveryStatus { padding: 11px 13px; border-radius: 8px; background: var(--sunken2); color: var(--ink2); }
 
-.productBooklet { min-height: calc(100dvh - var(--header-h, 0px)); background: var(--sunken2); }
-.bookletToolbar { min-height: 66px; display: flex; align-items: center; gap: 9px; padding: 10px clamp(14px, 4vw, 56px); border-bottom: 1px solid var(--line); background: var(--surface); }
+.productFocusShell { width: 100%; height: 100dvh; min-height: 0; overflow: hidden; background: var(--sunken2); }
+.productBooklet { height: 100%; min-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--sunken2); }
+.bookletToolbar { position: sticky; top: 0; z-index: 20; min-height: 66px; display: flex; align-items: center; gap: 9px; padding: 10px clamp(14px, 4vw, 56px); border-bottom: 1px solid var(--line); background: rgba(255,255,255,.96); backdrop-filter: blur(10px); }
+.bookletClose { margin-left: 3px; color: var(--ink2); }
+.bookletClose:hover { border-color: var(--danger); background: var(--danger-tint); color: var(--danger); }
 .backLinkButton { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink2); font: 700 12.5px/1 var(--fb); cursor: pointer; }
 .bookletStage { position: relative; width: min(1420px, 100%); margin: 0 auto; padding: 0 104px; }
 .bookletPage { width: 100%; margin: 24px auto 50px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); overflow: hidden; touch-action: pan-y; cursor: grab; }
@@ -909,8 +912,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .selectedCompare { display: none; }
   .shareRecipientGrid, .shareChannels { grid-template-columns: 1fr; }
   .bookletToolbar { flex-wrap: wrap; padding: 9px 12px; }
+  .bookletToolbar { padding-right: 62px; }
   .bookletToolbar .sp { display: none; }
-  .bookletToolbar .backLinkButton { width: 100%; min-height: 38px; }
+  .bookletToolbar .backLinkButton { width: calc(100% - 4px); min-height: 38px; }
+  .bookletClose { position: absolute; top: 9px; right: 12px; margin: 0; }
   .bookletStage { width: 100%; padding: 0; }
   .bookletPage { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
   .bookletEdgeNav { top: 136px; min-width: 42px; width: 42px; height: 58px; padding: 0; border-radius: 0 8px 8px 0; background: rgba(255,255,255,.94); }
