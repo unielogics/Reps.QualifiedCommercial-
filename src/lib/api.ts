@@ -22,7 +22,24 @@ async function unwrap<T>(res: Response): Promise<T> {
       /* non-JSON error body */
     }
     const detail = (body as { detail?: unknown } | null)?.detail;
-    throw new ApiError(res.status, typeof detail === "string" ? detail : `Request failed (${res.status})`, body);
+    let message = `Request failed (${res.status})`;
+    if (typeof detail === "string") {
+      message = detail;
+    } else if (Array.isArray(detail)) {
+      const issues = detail
+        .map((item) => {
+          if (!item || typeof item !== "object") return null;
+          const issue = item as { loc?: unknown; msg?: unknown };
+          const location = Array.isArray(issue.loc)
+            ? issue.loc.filter((part) => part !== "body").join(".")
+            : "";
+          const problem = typeof issue.msg === "string" ? issue.msg : "Invalid value";
+          return location ? `${location}: ${problem}` : problem;
+        })
+        .filter((item): item is string => Boolean(item));
+      if (issues.length) message = issues.join("; ");
+    }
+    throw new ApiError(res.status, message, body);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

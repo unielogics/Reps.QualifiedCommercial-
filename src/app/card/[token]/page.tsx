@@ -2,7 +2,17 @@
 
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import {
+  BriefcaseBusiness,
+  CalendarDays,
+  Download,
+  FileText,
+  Mail,
+  Phone,
+  ShieldCheck,
+  UserPlus,
+} from "lucide-react";
+import { api, apiBase } from "@/lib/api";
 import type { ProgramPdfAttachment } from "@/lib/repWorkflows";
 
 type Card = {
@@ -17,8 +27,10 @@ type Card = {
   headshot_url: string | null;
   subject: string;
   body: string;
+  message?: string;
   booking_url: string;
   application_url: string;
+  vcard_url?: string;
   program_pdfs: ProgramPdfAttachment[];
 };
 
@@ -44,30 +56,35 @@ export default function ContactCardPage() {
         {q.isError && <p className="sub mt">This contact card could not be found.</p>}
         {card && (
           <>
+            <div className="publicCardContext"><ShieldCheck size={15} /><span>Secure introduction shared with <b>{card.recipient_name}</b></span></div>
             <section className="publicCardIdentity">
               {card.headshot_url ? <img src={card.headshot_url} alt={card.rep_name} /> : <span>{card.rep_name.slice(0, 1)}</span>}
               <div><h1>{card.rep_name}</h1><p>{card.rep_title || "Commercial Funding Advisor"}</p></div>
             </section>
             {card.rep_bio && <p className="publicCardBio">{card.rep_bio}</p>}
-            <p className="lede publicCardMessage">{card.body}</p>
-            <div className="publicCardActions">
-              <a className="btn pri" href={card.booking_url}>Book a time</a>
-              <a className="btn" href={card.application_url}>Open application</a>
-              {card.rep_email && <a className="btn" href={`mailto:${card.rep_email}`}>Email</a>}
-              {card.rep_phone && <a className="btn" href={`tel:${card.rep_phone}`}>Call</a>}
+            {(card.message || card.body) && <div className="publicCardNote"><span>Personal note</span><p>{card.message || card.body}</p></div>}
+            <div className="publicCardPrimaryActions">
+              <a className="btn pri" href={card.booking_url}><CalendarDays size={18} /> Book a time</a>
+              <a className="btn" href={card.application_url}><BriefcaseBusiness size={18} /> Start an application</a>
+              <a className="btn publicCardSave" href={card.vcard_url || `${apiBase}/dealer-os/contact-shares/card/${token}/vcard`} download><UserPlus size={18} /> Save to contacts</a>
+            </div>
+            <div className="publicCardContactActions">
+              {card.rep_email && <a className="publicCardContactButton" href={`mailto:${card.rep_email}`}><Mail size={18} /><span><small>Email</small>{card.rep_email}</span></a>}
+              {card.rep_phone && <a className="publicCardContactButton" href={`tel:${card.rep_phone}`}><Phone size={18} /><span><small>Call</small>{card.rep_phone}</span></a>}
             </div>
             {(card.program_pdfs ?? []).length > 0 && (
-              <div className="panel mt">
-                <div className="panel-h">Program PDFs</div>
-                <div className="panel-b" style={{ display: "grid", gap: 8 }}>
+              <section className="publicCardPrograms">
+                <header><div><span>Shared resources</span><h2>Funding program guides</h2></div><FileText size={22} /></header>
+                <div>
                   {(card.program_pdfs ?? []).map((pdf) => (
-                    <a key={pdf.key} className="linky" href={pdf.download_url} target="_blank" rel="noreferrer">
-                      {pdf.title}
+                    <a key={pdf.key} className="publicCardProgramButton" href={pdf.download_url} target="_blank" rel="noreferrer">
+                      <span><FileText size={18} />{pdf.title}</span><Download size={17} />
                     </a>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
+            <footer className="publicCardFooter"><img src="/qc-icon.svg" alt="" /><span>Qualified Commercial LLC</span><small>Commercial funding guidance and secure client intake</small></footer>
           </>
         )}
       </div>
