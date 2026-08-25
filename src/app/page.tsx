@@ -23,6 +23,8 @@ type UnreadSummary = { total: number; per_file: Record<string, number> };
 type IntegrationStatus = {
   isoftpull: { configured: boolean; environment: string; endpoint: string | null; detail: string };
   plaid: { configured: boolean; environment: string; endpoint: string | null; detail: string };
+  sms: { configured: boolean; environment: string; endpoint: string | null; detail: string };
+  address: { configured: boolean; environment: string; endpoint: string | null; detail: string };
 };
 
 function money(value: number | null) {
@@ -134,6 +136,8 @@ export default function Portfolio() {
       {isSuperAdmin && integrations.data && <div className="integrationStrip mt">
         <div><span className={`providerDot ${integrations.data.isoftpull.configured ? "ready" : "blocked"}`} /><b>iSoftPull</b><span>{integrations.data.isoftpull.detail}</span></div>
         <div><span className={`providerDot ${integrations.data.plaid.configured && integrations.data.plaid.environment === "production" ? "ready" : "blocked"}`} /><b>Plaid · {integrations.data.plaid.environment}</b><span>{integrations.data.plaid.detail}</span></div>
+        <div><span className={`providerDot ${integrations.data.sms.configured ? "ready" : "blocked"}`} /><b>SMS · {integrations.data.sms.environment}</b><span>{integrations.data.sms.detail}</span></div>
+        <div><span className={`providerDot ${integrations.data.address.configured ? "ready" : "blocked"}`} /><b>Address · {integrations.data.address.environment}</b><span>{integrations.data.address.detail}</span></div>
       </div>}
 
       <div className="panel mt">

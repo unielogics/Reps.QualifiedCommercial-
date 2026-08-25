@@ -21,9 +21,9 @@ export default function BusinessAddressFields({
   onChange,
   onBlur,
   manualFallback = "always",
-  searchLabel = "Search Google address (optional)",
+  searchLabel = "Search business address (optional)",
   searchPlaceholder = "Start typing a business address",
-  helperText = "Address is optional. Select a Google result or enter it manually.",
+  helperText = "Address is optional. Select a verified result or enter it manually.",
 }: {
   value: Parts;
   onChange: (next: Parts) => void;
@@ -75,14 +75,14 @@ export default function BusinessAddressFields({
         }
         setSuggestions(rows);
         if (!rows.length) {
-          setSearchMessage("No Google matches found. Complete the address manually below.");
+          setSearchMessage("No address matches found. Complete the address manually below.");
           if (manualFallback === "when-needed") setManualVisible(true);
         }
       } catch (error) {
         setSuggestions([]);
         setSearchMessage(error instanceof ApiError && error.status === 401
           ? "Your session expired. Refresh before using address search."
-          : "Google address search is temporarily unavailable. Manual entry still works.");
+          : "Address search is temporarily unavailable. Manual entry still works.");
         if (manualFallback === "when-needed") setManualVisible(true);
       } finally {
         setSearching(false);
@@ -97,7 +97,7 @@ export default function BusinessAddressFields({
     try {
       const request = async (fresh = false) => api<ResolveResult>("/property-intelligence/address/resolve", {
           method: "POST",
-          body: JSON.stringify({ place_id: suggestion.place_id, session_token: token }),
+          body: JSON.stringify({ place_id: suggestion.place_id, address: suggestion.text, session_token: token }),
           authToken: (await getToken(fresh ? { skipCache: true } : undefined)) ?? undefined,
         });
       let resolved: ResolveResult;
