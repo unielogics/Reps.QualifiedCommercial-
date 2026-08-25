@@ -17,8 +17,9 @@ import MfaBanner from "./MfaBanner";
 import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
+const FUNDING_URL = process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
 
-type IconName = "home" | "plus" | "chart" | "chat" | "calendar" | "contacts" | "products";
+type IconName = "home" | "plus" | "chart" | "chat" | "calendar" | "contacts" | "products" | "bell";
 
 // Same stroke-path idiom the audit app uses, so icons match weight for weight.
 const ICON_PATHS: Record<IconName, string> = {
@@ -29,7 +30,19 @@ const ICON_PATHS: Record<IconName, string> = {
   calendar: "M8 3v4M16 3v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z",
   contacts: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
   products: "M4 5h16v14H4zM8 9h8M8 13h5M4 7l8-4 8 4",
+  bell: "M18 8a6 6 0 00-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4",
 };
+
+type NotificationRow = {
+  id: string;
+  title: string;
+  body: string;
+  deep_link: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+type NotificationList = { unread_count: number; items: NotificationRow[] };
 
 function Icon({ name }: { name: IconName }) {
   return (
@@ -94,6 +107,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const isProductFocus = pathname.startsWith("/products/");
   const [rail, setRail] = useState(true);
   const [now, setNow] = useState<Date | null>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { name, email, isRep, isTeam, isResolving } = useMe();
   const { getToken } = useAuth();
 
@@ -112,6 +126,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
     staleTime: 30_000,
   });
   const unreadTotal = unread.data?.total ?? 0;
+  const notifications = useQuery({
+    queryKey: ["field-notifications"],
+    queryFn: async () => api<NotificationList>("/notifications?limit=12", {
+      authToken: (await getToken()) ?? undefined,
+    }),
+    enabled: (isRep || isTeam) && !isProductFocus,
+    refetchInterval: 30_000,
+  });
+
+  const openNotification = async (row: NotificationRow) => {
+    await api(`/notifications/${row.id}/read`, {
+      method: "POST",
+      authToken: (await getToken()) ?? undefined,
+    });
+    setNotificationsOpen(false);
+    await notifications.refetch();
+    if (row.deep_link) window.location.assign(row.deep_link);
+  };
 
   useEffect(() => {
     try {
@@ -259,6 +291,37 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <b className="num">{formatTopTime(now)}</b>
             </Link>
           )}
+          {isTeam && (
+            <div className="seg consoleSwitch" aria-label="Console switcher">
+              <a href={FUNDING_URL}>Funding</a>
+              <span className="on">Field Desk</span>
+              <a href={AUDIT_URL}>Audit</a>
+            </div>
+          )}
+          <div className="popwrap">
+            <button
+              type="button"
+              className="btn sm"
+              aria-label={`${notifications.data?.unread_count ?? 0} unread notifications`}
+              aria-expanded={notificationsOpen}
+              onClick={() => setNotificationsOpen((value) => !value)}
+            >
+              <Icon name="bell" />
+              {(notifications.data?.unread_count ?? 0) > 0 && <span className="navbadge">{notifications.data?.unread_count}</span>}
+            </button>
+            {notificationsOpen && (
+              <div className="popmenu notificationMenu">
+                <div className="mi" style={{ cursor: "default" }}><b>Notifications</b><small>Appointments and file activity</small></div>
+                {(notifications.data?.items ?? []).map((row) => (
+                  <button key={row.id} type="button" className="mi" onClick={() => void openNotification(row)}>
+                    <b>{row.title}</b>
+                    <small>{row.body}</small>
+                  </button>
+                ))}
+                {!notifications.isLoading && (notifications.data?.items.length ?? 0) === 0 && <div className="mi" style={{ cursor: "default" }}>No notifications yet.</div>}
+              </div>
+            )}
+          </div>
           <ActionHub />
         </div>
         <nav className="mobileTabs" aria-label="Field Desk sections">

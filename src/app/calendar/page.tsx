@@ -1,29 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import BookingDrawer from "@/components/BookingDrawer";
-
-type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "done";
-
-type Appointment = {
-  id: string;
-  dealer_id: string | null;
-  kind: "callback" | "program_intro" | "underwriting_review" | string;
-  title: string;
-  starts_at: string;
-  duration_min: number;
-  timezone: string;
-  invitee_name: string;
-  invitee_email: string | null;
-  invitee_phone: string | null;
-  join_url: string | null;
-  notes: string | null;
-  status: AppointmentStatus;
-};
+import AppointmentEditorDrawer from "@/components/AppointmentEditorDrawer";
+import { appointmentOutcomeLabel, type AppointmentStatus, type RepAppointment as Appointment } from "@/lib/appointments";
 
 type CalendarDay = {
   key: string;
@@ -124,15 +109,18 @@ function gridRange(anchor: Date) {
 export default function RepCalendarPage() {
   const { getToken } = useAuth();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => startOfLocalDay(new Date()));
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [includeCancelled, setIncludeCancelled] = useState(() => searchParams.get("include_cancelled") === "1");
+  const [activeAppointment, setActiveAppointment] = useState<{ row: Appointment; mode: "details" | "edit" | "reschedule" } | null>(null);
 
   const range = useMemo(() => gridRange(month), [month]);
   const appointments = useQuery({
-    queryKey: ["rep-appointments", range],
+    queryKey: ["rep-appointments", range, includeCancelled],
     queryFn: async () =>
-      api<Appointment[]>(`/dealer-os/appointments?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&limit=500`, {
+      api<Appointment[]>(`/dealer-os/appointments?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&limit=500&include_cancelled=${includeCancelled}`, {
         authToken: (await getToken()) ?? undefined,
       }),
   });
@@ -160,6 +148,30 @@ export default function RepCalendarPage() {
       void qc.invalidateQueries({ queryKey: ["rep-appointments"] });
     },
   });
+
+  const cancelAppointment = useMutation({
+    mutationFn: async (id: string) => api<Appointment>(`/dealer-os/appointments/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Cancelled by the booking rep." }),
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onSuccess: () => {
+      setActiveAppointment(null);
+      void qc.invalidateQueries({ queryKey: ["rep-appointments"] });
+    },
+  });
+
+  useEffect(() => {
+    const requested = searchParams.get("appointment");
+    if (!requested || activeAppointment || !appointments.data) return;
+    const row = appointments.data.find((item) => item.id === requested);
+    if (row) {
+      setActiveAppointment({ row, mode: "details" });
+      const date = new Date(row.starts_at);
+      setMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+      setSelectedDate(startOfLocalDay(date));
+    }
+  }, [activeAppointment, appointments.data, searchParams]);
 
   return (
     <>
@@ -196,6 +208,10 @@ export default function RepCalendarPage() {
         <button type="button" className="btn pri" onClick={() => setBookingOpen(true)}>
           Add appointment
         </button>
+        <label className="chip" style={{ cursor: "pointer" }}>
+          <input type="checkbox" checked={includeCancelled} onChange={(event) => setIncludeCancelled(event.target.checked)} />
+          Include cancelled
+        </label>
       </div>
 
       <div className="kpis mt">
@@ -277,6 +293,12 @@ export default function RepCalendarPage() {
                     appointment={appt}
                     busy={patchStatus.isPending}
                     onStatus={(status) => patchStatus.mutate({ id: appt.id, status })}
+                    onOpen={(mode) => setActiveAppointment({ row: appt, mode })}
+                    onCancel={() => {
+                      if (window.confirm(`Cancel and archive ${appt.title}? The appointment history will be retained.`)) {
+                        cancelAppointment.mutate(appt.id);
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -313,6 +335,13 @@ export default function RepCalendarPage() {
       </div>
 
       {bookingOpen && <BookingDrawer onClose={() => setBookingOpen(false)} />}
+      {activeAppointment && (
+        <AppointmentEditorDrawer
+          appointment={activeAppointment.row}
+          mode={activeAppointment.mode}
+          onClose={() => setActiveAppointment(null)}
+        />
+      )}
     </>
   );
 }
@@ -321,10 +350,14 @@ function AppointmentCard({
   appointment,
   busy,
   onStatus,
+  onOpen,
+  onCancel,
 }: {
   appointment: Appointment;
   busy: boolean;
   onStatus: (status: AppointmentStatus) => void;
+  onOpen: (mode: "details" | "edit" | "reschedule") => void;
+  onCancel: () => void;
 }) {
   const starts = new Date(appointment.starts_at);
   const isDone = appointment.status === "done";
@@ -338,8 +371,9 @@ function AppointmentCard({
       </div>
       <div className="repApptBody">
         <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
-          <b>{appointment.title}</b>
+          <button type="button" className="linky" onClick={() => onOpen("details")}><b>{appointment.title}</b></button>
           <span className={`cellchip ${statusClass(appointment.status)}`}>{appointment.status}</span>
+          {appointment.outcome && <span className={`cellchip ${appointment.outcome === "converted" ? "c-ok" : appointment.outcome === "not_converted" ? "c-bad" : "c-warn"}`}>{appointmentOutcomeLabel(appointment.outcome)}</span>}
         </div>
         <div className="sub">
           {kindLabel(appointment.kind)} · {appointment.invitee_name}
@@ -347,21 +381,23 @@ function AppointmentCard({
           {appointment.invitee_phone ? ` · ${appointment.invitee_phone}` : ""}
         </div>
         {appointment.notes && <p>{appointment.notes}</p>}
+        <div className="sub" style={{ marginTop: 7 }}>
+          {[appointment.company, appointment.program_name, appointment.requested_amount, appointment.full_address].filter(Boolean).join(" · ")}
+        </div>
         <div className="repApptActions">
           {!isDone && !isCancelled && (
             <button type="button" className="btn sm" disabled={busy} onClick={() => onStatus("done")}>
               Mark done
             </button>
           )}
-          {isDone || isCancelled ? (
+          {isDone && !isCancelled ? (
             <button type="button" className="btn sm" disabled={busy} onClick={() => onStatus("confirmed")}>
               Reopen
             </button>
-          ) : (
-            <button type="button" className="btn sm danger" disabled={busy} onClick={() => onStatus("cancelled")}>
-              Cancel
-            </button>
-          )}
+          ) : null}
+          {!isCancelled && <button type="button" className="btn sm" onClick={() => onOpen("edit")}>Edit</button>}
+          {!isCancelled && <button type="button" className="btn sm" onClick={() => onOpen("reschedule")}>Reschedule</button>}
+          {!isCancelled && <button type="button" className="btn sm danger" disabled={busy} onClick={onCancel}>Cancel</button>}
           {appointment.join_url && (
             <a className="btn sm" href={appointment.join_url} target="_blank" rel="noreferrer">
               Join

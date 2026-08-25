@@ -190,6 +190,10 @@ a { color: var(--accent); }
 .popmenu .mi:hover { background: var(--sunken2); }
 .popmenu .mi:disabled { opacity: 0.55; cursor: default; }
 .popmenu .mi small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 1px; white-space: normal; }
+.notificationMenu { width: min(360px, calc(100vw - 24px)); max-height: min(480px, calc(100vh - 90px)); overflow-y: auto; }
+.consoleSwitch { min-height: 38px; align-items: center; }
+.consoleSwitch a, .consoleSwitch span { min-height: 32px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 750; }
+.consoleSwitch .on { background: var(--surface); color: var(--accent); box-shadow: var(--sh1); }
 .field { border: 1px solid var(--line); border-radius: 9px; min-height: 44px; padding: 9px 11px; font-size: 13px; font-family: inherit; color: var(--ink); background: var(--surface); outline: none; min-width: 0; width: 100%; }
 .field:focus { border-color: var(--accent-400); }
 .field.grow { flex: 1; min-width: 180px; }
@@ -592,6 +596,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   }
   .topclock span { display: none; }
   .topclock b { font-size: 20px; }
+  .consoleSwitch { display: none; }
   .mobileTabs {
     position: fixed;
     left: 0;
