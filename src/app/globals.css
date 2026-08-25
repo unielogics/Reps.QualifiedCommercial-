@@ -1015,14 +1015,19 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 
 .settingsPage { padding: clamp(16px, 2.5vw, 38px); }
 .settingsLayout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, .55fr); align-items: start; gap: 18px; }
+.settingsLayout > * { min-width: 0; }
 .settingsFormPanel { overflow: visible; }
 .settingsForm { display: grid; gap: 20px; padding: 18px; }
 .headshotEditor { display: flex; align-items: center; gap: 16px; }
 .headshotEditor > div { display: grid; gap: 5px; }
 .headshotEditor p { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
 .headshotButton { position: relative; width: 92px; height: 92px; flex: 0 0 92px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 50%; background: var(--sunken2); color: var(--muted); cursor: pointer; }
+.headshotButton:focus-within, .headshotButton:hover { border-color: var(--accent-200); box-shadow: 0 0 0 3px var(--accent-100); }
 .headshotButton > img { width: 100%; height: 100%; object-fit: cover; }
 .headshotButton > span { position: absolute; right: 3px; bottom: 3px; width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); color: #fff; }
+.settingsFileTrigger { width: max-content; cursor: pointer; }
+.headshotButton.isDisabled, .settingsFileTrigger.isDisabled { pointer-events: none; opacity: .6; }
+.nativeFileInput { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; opacity: 0; }
 .settingsToggle { min-height: 67px; display: flex !important; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .settingsToggle > span { display: grid; gap: 3px; }
 .settingsToggle small { color: var(--muted); font-size: 11px; }
@@ -1092,10 +1097,19 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .publicCardFooter span { font-weight: 800; }
 .publicCardFooter small { color: var(--muted); }
 
+@media (max-width: 1180px) {
+  .settingsLayout { grid-template-columns: minmax(0, 1fr); }
+  .businessCardPreview { position: static; width: min(720px, 100%); }
+}
+
 @media (max-width: 1050px) {
   .taxonomyCascade { grid-template-columns: 1fr 1fr; }
   .taxonomyField:last-of-type { grid-column: 1 / -1; }
-  .settingsLayout { grid-template-columns: minmax(0, 1fr) minmax(300px, .72fr); }
+}
+
+@media (max-width: 900px) {
+  .settingsPage .hd { align-items: stretch; flex-direction: column; }
+  .settingsPage .hd .btn { align-self: flex-start; }
 }
 
 @media (max-width: 760px) {
