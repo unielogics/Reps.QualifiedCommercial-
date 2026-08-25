@@ -19,7 +19,7 @@ import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 const FUNDING_URL = process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
 
-type IconName = "home" | "plus" | "chart" | "chat" | "calendar" | "contacts" | "products" | "bell";
+type IconName = "home" | "plus" | "chart" | "chat" | "calendar" | "contacts" | "products" | "bell" | "settings";
 
 // Same stroke-path idiom the audit app uses, so icons match weight for weight.
 const ICON_PATHS: Record<IconName, string> = {
@@ -31,6 +31,7 @@ const ICON_PATHS: Record<IconName, string> = {
   contacts: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
   products: "M4 5h16v14H4zM8 9h8M8 13h5M4 7l8-4 8 4",
   bell: "M18 8a6 6 0 00-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4",
+  settings: "M12 15.5A3.5 3.5 0 1012 8a3.5 3.5 0 000 7.5zM19.4 15a1.7 1.7 0 00.34 1.88l.06.06-2.1 3.64-.09-.03a1.7 1.7 0 00-1.8.36 1.7 1.7 0 01-2.81-1.1 1.7 1.7 0 00-1.66-1.06h-.08a1.7 1.7 0 00-1.66 1.06 1.7 1.7 0 01-2.81 1.1 1.7 1.7 0 00-1.8-.36l-.09.03-2.1-3.64.06-.06A1.7 1.7 0 003.6 15a1.7 1.7 0 01-1.15-2.77 1.7 1.7 0 000-1.96A1.7 1.7 0 013.6 7.5a1.7 1.7 0 00-.34-1.88l-.06-.06 2.1-3.64.09.03a1.7 1.7 0 001.8-.36A1.7 1.7 0 0110 2.7a1.7 1.7 0 001.66 1.05h.08A1.7 1.7 0 0013.4 2.7a1.7 1.7 0 012.81-1.1 1.7 1.7 0 001.8.36l.09-.03 2.1 3.64-.06.06A1.7 1.7 0 0020.4 7.5a1.7 1.7 0 011.15 2.77 1.7 1.7 0 000 1.96A1.7 1.7 0 0120.4 15z",
 };
 
 type NotificationRow = {
@@ -101,6 +102,7 @@ const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/calendar", label: "Calendar", icon: "calendar" },
   { href: "/production", label: "Production", icon: "chart" },
 ];
+const DESKTOP_NAV = [...REP_NAV, { href: "/settings", label: "Settings", icon: "settings" as IconName }];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -216,7 +218,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return <main className="productFocusShell">{children}</main>;
   }
 
-  const nav = REP_NAV;
+  const nav = DESKTOP_NAV;
   const isActiveNavItem = (href: string) =>
     href === "/"
       ? pathname === "/" || pathname.startsWith("/applications/")
@@ -266,7 +268,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <div className="foot">
           <SignedIn>
-            <UserButton afterSignOutUrl="/sign-in" />
+            <UserButton afterSignOutUrl="/sign-in">
+              <UserButton.MenuItems>
+                <UserButton.Link label="Field Desk settings" labelIcon={<Icon name="settings" />} href="/settings" />
+              </UserButton.MenuItems>
+            </UserButton>
             <div className="side-user">
               <b>{name || "Field rep"}</b>
               {email && <span>{email}</span>}
@@ -325,7 +331,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <ActionHub />
         </div>
         <nav className="mobileTabs" aria-label="Field Desk sections">
-          {nav.map((item) => {
+          {REP_NAV.map((item) => {
             const on = isActiveNavItem(item.href);
             return (
               <Link

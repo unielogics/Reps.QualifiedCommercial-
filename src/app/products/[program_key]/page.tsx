@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { ProductIcon } from "@/components/ProductIcon";
 import ProductShareDialog from "@/components/ProductShareDialog";
+import TermScenarioTables, { type TermScenario } from "@/components/TermScenarioTables";
 import { api, apiBase } from "@/lib/api";
 
 type Locale = "en" | "es";
@@ -36,6 +37,8 @@ type ProductDetail = {
   term_max_months: number | null;
   direct_action: "start_application" | "book_call";
   icon_key: string;
+  term_scenarios: TermScenario[];
+  illustration_amount: number;
   details: {
     closing_timeline?: string;
     uses?: string[];
@@ -76,11 +79,12 @@ export default function ProductBookletPage() {
   const [locale, setLocale] = useState<Locale>(search.get("locale") === "es" ? "es" : "en");
   const [shareOpen, setShareOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const requestedAmount = Number(search.get("amount")) || undefined;
   const swipeStart = useRef<{ x: number; y: number; pointerId: number } | null>(null);
 
   const detail = useQuery({
-    queryKey: ["product-detail", programKey, locale],
-    queryFn: async () => api<DetailResponse>(`/dealer-os/products/detail/${encodeURIComponent(programKey)}?locale=${locale}`, { authToken: (await getToken()) ?? undefined }),
+    queryKey: ["product-detail", programKey, locale, requestedAmount ?? null],
+    queryFn: async () => api<DetailResponse>(`/dealer-os/products/detail/${encodeURIComponent(programKey)}?locale=${locale}${requestedAmount ? `&amount=${requestedAmount}` : ""}`, { authToken: (await getToken()) ?? undefined }),
   });
   const booking = useQuery({
     queryKey: ["products", "booking"],
@@ -88,7 +92,7 @@ export default function ProductBookletPage() {
   });
 
   const go = (key: string | undefined) => {
-    if (key) router.push(`/products/${key}?locale=${locale}`);
+    if (key) router.push(`/products/${key}?locale=${locale}${requestedAmount ? `&amount=${requestedAmount}` : ""}`);
   };
   const previousKey = detail.data?.previous_key;
   const nextKey = detail.data?.next_key;
@@ -97,15 +101,15 @@ export default function ProductBookletPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, button, a, [contenteditable='true']")) return;
-      if (event.key === "ArrowLeft" && previousKey) router.push(`/products/${previousKey}?locale=${locale}`);
-      if (event.key === "ArrowRight" && nextKey) router.push(`/products/${nextKey}?locale=${locale}`);
+      if (event.key === "ArrowLeft" && previousKey) go(previousKey);
+      if (event.key === "ArrowRight" && nextKey) go(nextKey);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [locale, nextKey, previousKey, router]);
+  }, [locale, nextKey, previousKey, requestedAmount]);
   const download = async () => {
     const token = await getToken();
-    const response = await fetch(`${apiBase}/dealer-os/products/pdf?locale=${locale}&keys=${encodeURIComponent(programKey)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const response = await fetch(`${apiBase}/dealer-os/products/pdf?locale=${locale}&keys=${encodeURIComponent(programKey)}${requestedAmount ? `&amount=${requestedAmount}` : ""}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!response.ok) return setNotice("PDF unavailable");
     const url = URL.createObjectURL(await response.blob());
     const anchor = document.createElement("a");
@@ -186,6 +190,11 @@ export default function ProductBookletPage() {
           <div><span>{labels.term}</span><b>{termRange(item)}</b></div>
           <div><span>{labels.pricing}</span><b>{item.pricing || "Subject to review"}</b></div>
           <div><span>{labels.timeline}</span><b>{item.details.closing_timeline || "Subject to review"}</b></div>
+        </section>
+
+        <section className="bookletScenarioSection">
+          <div className="bookletScenarioHeading"><span className="eyebrow">{locale === "es" ? "Escenarios publicados" : "Published term scenarios"}</span><h2>{locale === "es" ? "Mejor caso y mayor costo" : "Best case and highest configured cost"}</h2><p>{locale === "es" ? "Ilustracion amortizada; no es una oferta ni aprobacion." : "Fully amortizing illustration; not an offer or approval."}</p></div>
+          {item.term_scenarios?.length ? <TermScenarioTables scenarios={item.term_scenarios} locale={locale} /> : <div className="termUnavailable">{locale === "es" ? "Los terminos se determinan despues de la revision." : "Terms determined after review."}</div>}
         </section>
 
         <div className="bookletGrid">

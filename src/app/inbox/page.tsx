@@ -28,6 +28,7 @@ type Message = {
   channel: string;
   body: string;
   delivery_status: string;
+  provider_error: string | null;
   sender: string | null;
   recipient: string | null;
   created_at: string;
@@ -175,6 +176,7 @@ export default function InboxPage() {
                           <span className="msg-edit">{m.delivery_status}</span>
                         </div>
                         <div className="msg-b">{m.body}</div>
+                        {m.provider_error && <div className="note">{m.provider_error}</div>}
                       </div>
                     ))}
                     {!messages.isLoading && (messages.data ?? []).length === 0 && (
