@@ -13,10 +13,23 @@ type FileRow = {
   case_ref: string | null;
   email?: string | null;
   phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  funding_goal?: number | string | null;
+  funding_purpose?: string | null;
 };
 
 type Slot = { starts_at: string; label: string; date_label: string };
-type Availability = { timezone: string; duration_min: number; slots: Slot[] };
+type Availability = {
+  timezone: string;
+  duration_min: number;
+  buffer_before_min: number;
+  buffer_after_min: number;
+  host_name: string | null;
+  slots: Slot[];
+};
 type SourceMode = "file" | "lead";
 
 const KINDS = [
@@ -65,6 +78,10 @@ export default function BookingDrawer({
   const [inviteeEmail, setInviteeEmail] = useState(initialEmail ?? "");
   const [inviteePhone, setInviteePhone] = useState(initialPhone ?? "");
   const [notes, setNotes] = useState("");
+  const [programName, setProgramName] = useState("");
+  const [requestedAmount, setRequestedAmount] = useState("");
+  const [fullAddress, setFullAddress] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
 
   const files = useQuery({
     queryKey: ["files"],
@@ -110,6 +127,10 @@ export default function BookingDrawer({
           invitee_email: inviteeEmail.trim() || null,
           invitee_phone: inviteePhone.trim() || null,
           notes: notes.trim() || null,
+          program_name: programName.trim() || null,
+          requested_amount: requestedAmount.trim() || null,
+          full_address: fullAddress.trim() || null,
+          transactional_sms_consent: smsConsent,
         }),
         authToken: (await getToken()) ?? undefined,
       }),
@@ -172,6 +193,19 @@ export default function BookingDrawer({
                     if (!inviteeEmail.trim() && file.email) setInviteeEmail(file.email);
                     if (!inviteePhone.trim() && file.phone) setInviteePhone(file.phone);
                     if (!company.trim()) setCompany(file.name);
+                    if (!programName.trim() && file.funding_purpose) setProgramName(file.funding_purpose.replaceAll("_", " "));
+                    if (!requestedAmount.trim() && file.funding_goal) {
+                      setRequestedAmount(
+                        new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+                          .format(Number(file.funding_goal)),
+                      );
+                    }
+                    if (!fullAddress.trim()) {
+                      setFullAddress([
+                        file.address,
+                        [file.city, file.state, file.zip].filter(Boolean).join(" "),
+                      ].filter(Boolean).join(", "));
+                    }
                   }
                 }}
               >
@@ -225,6 +259,21 @@ export default function BookingDrawer({
             </div>
           </div>
 
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+            <div>
+              <label className="lbl">Program to discuss</label>
+              <input className="field" value={programName} onChange={(e) => setProgramName(e.target.value)} placeholder="EZ Term, MicroCap, DSCR..." />
+            </div>
+            <div>
+              <label className="lbl">Interested amount</label>
+              <input className="field" inputMode="decimal" value={requestedAmount} onChange={(e) => setRequestedAmount(e.target.value)} placeholder="$250,000" />
+            </div>
+          </div>
+          <div>
+            <label className="lbl">Full business or property address</label>
+            <input className="field" value={fullAddress} onChange={(e) => setFullAddress(e.target.value)} placeholder="Street, city, state ZIP" />
+          </div>
+
           <div className="bookingCalendar">
             <div className="slotRail" aria-label="Available days">
               {availability.isLoading && <span className="sub">Loading times...</span>}
@@ -259,6 +308,12 @@ export default function BookingDrawer({
               <span className="lbl">Selected time</span>
               <b>{selectedSummary(selectedSlot)}</b>
               <span className="sub">{availability.data?.timezone ?? "Rep calendar"}</span>
+              {availability.data ? (
+                <span className="sub">
+                  {availability.data.duration_min} min with {availability.data.buffer_before_min} min before and {availability.data.buffer_after_min} min after
+                  {availability.data.host_name ? ` · ${availability.data.host_name}'s calendar` : ""}
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -266,6 +321,23 @@ export default function BookingDrawer({
             <label className="lbl">Notes</label>
             <textarea className="field" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Agenda, callback reason, or program questions." />
           </div>
+
+          {inviteePhone.trim() ? (
+            <label className="pick" style={{ alignItems: "flex-start" }}>
+              <input
+                type="checkbox"
+                checked={smsConsent}
+                onChange={(e) => setSmsConsent(e.target.checked)}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                <b>Transactional SMS consent confirmed</b>
+                <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                  The client agreed to receive appointment confirmations and reminders from Qualified Commercial. Message and data rates may apply. Reply STOP to opt out.
+                </span>
+              </span>
+            </label>
+          ) : null}
 
           {book.isError && <div className="note">{book.error instanceof Error ? book.error.message : "That appointment could not be booked."}</div>}
 
