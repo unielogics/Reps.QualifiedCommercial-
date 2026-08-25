@@ -20,10 +20,18 @@ export default function BusinessAddressFields({
   value,
   onChange,
   onBlur,
+  manualFallback = "always",
+  searchLabel = "Search Google address (optional)",
+  searchPlaceholder = "Start typing a business address",
+  helperText = "Address is optional. Select a Google result or enter it manually.",
 }: {
   value: Parts;
   onChange: (next: Parts) => void;
   onBlur?: (field: keyof Parts) => void;
+  manualFallback?: "always" | "when-needed";
+  searchLabel?: string;
+  searchPlaceholder?: string;
+  helperText?: string;
 }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const [query, setQuery] = useState("");
@@ -33,6 +41,15 @@ export default function BusinessAddressFields({
   const [token, setToken] = useState(sessionToken);
   const [searching, setSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const [manualVisible, setManualVisible] = useState(manualFallback === "always");
+
+  useEffect(() => {
+    if (query || !Object.values(value).some(Boolean)) return;
+    setQuery([
+      value.address,
+      [value.city, value.state, value.zip].filter(Boolean).join(" "),
+    ].filter(Boolean).join(", "));
+  }, [query, value]);
 
   useEffect(() => {
     if (!open || query.trim().length < 2 || !isLoaded || !isSignedIn) {
@@ -57,12 +74,16 @@ export default function BusinessAddressFields({
           rows = await request(true);
         }
         setSuggestions(rows);
-        if (!rows.length) setSearchMessage("No Google matches yet. Keep typing or enter the address manually.");
+        if (!rows.length) {
+          setSearchMessage("No Google matches found. Complete the address manually below.");
+          if (manualFallback === "when-needed") setManualVisible(true);
+        }
       } catch (error) {
         setSuggestions([]);
         setSearchMessage(error instanceof ApiError && error.status === 401
           ? "Your session expired. Refresh before using address search."
           : "Google address search is temporarily unavailable. Manual entry still works.");
+        if (manualFallback === "when-needed") setManualVisible(true);
       } finally {
         setSearching(false);
       }
@@ -95,12 +116,14 @@ export default function BusinessAddressFields({
       setQuery(suggestion.text);
       setSuggestions([]);
       setOpen(false);
+      setManualVisible(false);
       setToken(sessionToken());
     } catch (error) {
       setOpen(true);
       setSearchMessage(error instanceof ApiError && error.status === 401
         ? "Your session expired. Refresh before selecting an address."
         : "That address could not be resolved. Choose another result or enter it manually.");
+      if (manualFallback === "when-needed") setManualVisible(true);
     } finally {
       setResolving(false);
     }
@@ -111,11 +134,11 @@ export default function BusinessAddressFields({
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <div style={{ position: "relative" }}>
-        <label className="lbl">Search Google address (optional)</label>
+        <label className="lbl">{searchLabel}</label>
         <input
           className="field"
           value={query}
-          placeholder="Start typing a business address"
+          placeholder={searchPlaceholder}
           autoComplete="off"
           onFocus={() => setOpen(true)}
           onBlur={() => window.setTimeout(() => setOpen(false), 160)}
@@ -142,7 +165,12 @@ export default function BusinessAddressFields({
           <div className="addressSearchMessage">{searchMessage}</div>
         )}
       </div>
-      <div className="addressGrid">
+      {manualFallback === "when-needed" && !manualVisible ? (
+        <button type="button" className="btn" style={{ justifySelf: "start" }} onClick={() => setManualVisible(true)}>
+          Enter address manually
+        </button>
+      ) : null}
+      {manualVisible ? <div className="addressGrid">
         <div>
           <label className="lbl">Street</label>
           <input className="field" value={value.address} onChange={(e) => update("address", e.target.value)} onBlur={() => onBlur?.("address")} />
@@ -162,8 +190,8 @@ export default function BusinessAddressFields({
           <label className="lbl">ZIP</label>
           <input className="field" inputMode="numeric" value={value.zip} onChange={(e) => update("zip", e.target.value)} onBlur={() => onBlur?.("zip")} />
         </div>
-      </div>
-      <span className="sub">Address is optional. Select a Google result or enter it manually.</span>
+      </div> : null}
+      <span className="sub">{helperText}</span>
     </div>
   );
 }

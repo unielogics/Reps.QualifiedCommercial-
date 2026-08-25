@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { CalendarSlotDay } from "@/lib/repWorkflows";
+import BusinessAddressFields from "./BusinessAddressFields";
 import Drawer from "./Drawer";
 
 type FileRow = {
@@ -28,9 +29,11 @@ type Availability = {
   buffer_before_min: number;
   buffer_after_min: number;
   host_name: string | null;
+  calendar_sync_status: "connected" | "disconnected" | "unavailable";
   slots: Slot[];
 };
 type SourceMode = "file" | "lead";
+type AddressParts = { address: string; city: string; state: string; zip: string };
 
 const KINDS = [
   { key: "callback", label: "Callback" },
@@ -80,7 +83,7 @@ export default function BookingDrawer({
   const [notes, setNotes] = useState("");
   const [programName, setProgramName] = useState("");
   const [requestedAmount, setRequestedAmount] = useState("");
-  const [fullAddress, setFullAddress] = useState("");
+  const [address, setAddress] = useState<AddressParts>({ address: "", city: "", state: "", zip: "" });
   const [smsConsent, setSmsConsent] = useState(false);
 
   const files = useQuery({
@@ -129,7 +132,10 @@ export default function BookingDrawer({
           notes: notes.trim() || null,
           program_name: programName.trim() || null,
           requested_amount: requestedAmount.trim() || null,
-          full_address: fullAddress.trim() || null,
+          full_address: [
+            address.address.trim(),
+            [address.city.trim(), address.state.trim(), address.zip.trim()].filter(Boolean).join(" "),
+          ].filter(Boolean).join(", ") || null,
           transactional_sms_consent: smsConsent,
         }),
         authToken: (await getToken()) ?? undefined,
@@ -200,11 +206,13 @@ export default function BookingDrawer({
                           .format(Number(file.funding_goal)),
                       );
                     }
-                    if (!fullAddress.trim()) {
-                      setFullAddress([
-                        file.address,
-                        [file.city, file.state, file.zip].filter(Boolean).join(" "),
-                      ].filter(Boolean).join(", "));
+                    if (!Object.values(address).some((part) => part.trim())) {
+                      setAddress({
+                        address: file.address ?? "",
+                        city: file.city ?? "",
+                        state: file.state ?? "",
+                        zip: file.zip ?? "",
+                      });
                     }
                   }
                 }}
@@ -269,12 +277,24 @@ export default function BookingDrawer({
               <input className="field" inputMode="decimal" value={requestedAmount} onChange={(e) => setRequestedAmount(e.target.value)} placeholder="$250,000" />
             </div>
           </div>
-          <div>
-            <label className="lbl">Full business or property address</label>
-            <input className="field" value={fullAddress} onChange={(e) => setFullAddress(e.target.value)} placeholder="Street, city, state ZIP" />
-          </div>
+          <BusinessAddressFields
+            key={`${sourceMode}:${dealerId || "new"}`}
+            value={address}
+            onChange={setAddress}
+            manualFallback="when-needed"
+            searchLabel="Business or property address"
+            searchPlaceholder="Start typing the full address"
+            helperText="Choose a Google suggestion. If it is not listed, enter the complete address manually."
+          />
 
           <div className="bookingCalendar">
+            {availability.data?.calendar_sync_status !== "connected" ? (
+              <div className="note" style={{ gridColumn: "1 / -1" }}>
+                {availability.data?.calendar_sync_status === "unavailable"
+                  ? "Franco's Google Calendar is temporarily unavailable. Booking is paused to prevent a double-booking."
+                  : "Franco's Google Calendar must be reconnected before reps can book a time."}
+              </div>
+            ) : null}
             <div className="slotRail" aria-label="Available days">
               {availability.isLoading && <span className="sub">Loading times...</span>}
               {days.map((day, index) => (
