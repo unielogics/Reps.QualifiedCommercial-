@@ -20,6 +20,7 @@ export default function BusinessAddressFields({
   value,
   onChange,
   onBlur,
+  onResolved,
   manualFallback = "always",
   searchLabel = "Search business address (optional)",
   searchPlaceholder = "Start typing a business address",
@@ -28,6 +29,7 @@ export default function BusinessAddressFields({
   value: Parts;
   onChange: (next: Parts) => void;
   onBlur?: (field: keyof Parts) => void;
+  onResolved?: (next: Parts) => void;
   manualFallback?: "always" | "when-needed";
   searchLabel?: string;
   searchPlaceholder?: string;
@@ -42,6 +44,7 @@ export default function BusinessAddressFields({
   const [searching, setSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [manualVisible, setManualVisible] = useState(manualFallback === "always");
+  const [verified, setVerified] = useState(false);
 
   useEffect(() => {
     if (query || !Object.values(value).some(Boolean)) return;
@@ -107,12 +110,15 @@ export default function BusinessAddressFields({
         if (!(error instanceof ApiError) || error.status !== 401) throw error;
         resolved = await request(true);
       }
-      onChange({
+      const next = {
         address: resolved.address.street ?? "",
         city: resolved.address.city ?? "",
         state: resolved.address.state ?? "",
         zip: resolved.address.zip ?? "",
-      });
+      };
+      onChange(next);
+      onResolved?.(next);
+      setVerified(true);
       setQuery(suggestion.text);
       setSuggestions([]);
       setOpen(false);
@@ -129,7 +135,10 @@ export default function BusinessAddressFields({
     }
   };
 
-  const update = (key: keyof Parts, next: string) => onChange({ ...value, [key]: next });
+  const update = (key: keyof Parts, next: string) => {
+    setVerified(false);
+    onChange({ ...value, [key]: next });
+  };
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
@@ -191,7 +200,7 @@ export default function BusinessAddressFields({
           <input className="field" inputMode="numeric" value={value.zip} onChange={(e) => update("zip", e.target.value)} onBlur={() => onBlur?.("zip")} />
         </div>
       </div> : null}
-      <span className="sub">{helperText}</span>
+      <span className="sub">{verified ? "Verified address" : "Manual · Unverified"} · {helperText}</span>
     </div>
   );
 }

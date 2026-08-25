@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import StepActions from "@/components/StepActions";
+import BusinessAddressFields from "@/components/BusinessAddressFields";
 import { applicationProfileReady, type ApplicationProfileData } from "@/lib/applicationReadiness";
 
 type Owner = {
@@ -36,6 +37,17 @@ type Account = {
 };
 
 type ApplicationProfile = ApplicationProfileData;
+type AddressParts = { address: string; city: string; state: string; zip: string };
+
+function splitAddress(value: string): AddressParts {
+  const [address = "", city = "", stateZip = ""] = value.split(",").map((part) => part.trim());
+  const match = stateZip.match(/^([A-Za-z]{2})\s*(.*)$/);
+  return { address, city, state: match?.[1]?.toUpperCase() ?? "", zip: match?.[2] ?? "" };
+}
+
+function joinAddress(value: AddressParts): string {
+  return [value.address, value.city, [value.state, value.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+}
 
 function Verified({ source }: { source: string }) {
   return <span className="cellchip c-pet">{source}</span>;
@@ -208,15 +220,15 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
               <label className="lbl">Credit band <Verified source="Soft inquiry" /></label>
               <input className={`field${owner?.credit_score ? "" : " field-invalid"}`} style={{ width: "100%" }} value={band(owner?.credit_score)} readOnly />
             </div>
-            <div>
-              <label className="lbl">Home address</label>
-              <input
-                className="field required-field"
-                required
-                style={{ width: "100%" }}
-                placeholder="Street, city, state, ZIP"
-                value={val("guarantor_home_address")}
-                onChange={(e) => set("guarantor_home_address", e.target.value)}
+            <div style={{ gridColumn: "span 2" }}>
+              <BusinessAddressFields
+                value={splitAddress(val("guarantor_home_address"))}
+                searchLabel="Guarantor home address"
+                searchPlaceholder="Start typing the guarantor's U.S. home address"
+                helperText="Select a verified result or enter the address manually."
+                manualFallback="when-needed"
+                onChange={(next) => set("guarantor_home_address", joinAddress(next))}
+                onResolved={(next) => patch.mutate({ guarantor_home_address: joinAddress(next) })}
                 onBlur={() => commit("guarantor_home_address")}
               />
             </div>

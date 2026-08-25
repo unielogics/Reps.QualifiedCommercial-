@@ -284,7 +284,7 @@ export default function BookingDrawer({
             manualFallback="when-needed"
             searchLabel="Business or property address"
             searchPlaceholder="Start typing the full address"
-            helperText="Choose a Google suggestion. If it is not listed, enter the complete address manually."
+            helperText="Choose a verified result. If it is not listed, enter the complete address manually."
           />
 
           <div className="bookingCalendar">

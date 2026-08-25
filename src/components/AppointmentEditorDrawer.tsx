@@ -193,7 +193,7 @@ export default function AppointmentEditorDrawer({
                 manualFallback="when-needed"
                 searchLabel="Business or property address"
                 searchPlaceholder="Search the complete address"
-                helperText="Select a Google result or use the manual address fields."
+                helperText="Select a verified result or use the manual address fields."
               />
               <label><span className="lbl">Notes</span><textarea className="field" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
               <label><span className="lbl">Join link</span><input className="field" type="url" value={joinUrl} onChange={(e) => setJoinUrl(e.target.value)} /></label>
