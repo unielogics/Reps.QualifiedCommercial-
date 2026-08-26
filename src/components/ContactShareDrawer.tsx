@@ -97,7 +97,13 @@ export default function ContactShareDrawer({
   );
 
   return (
-    <Drawer title="Share contact information" width={780} onClose={onClose}>
+    <Drawer
+      title="Share contact information"
+      width={980}
+      onClose={onClose}
+      variant="workspace"
+      dismissOnBackdrop={false}
+    >
       <div className="panel">
         <div className="panel-h">Recipient</div>
         <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
