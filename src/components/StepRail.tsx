@@ -22,8 +22,8 @@ export const STEPS: Step[] = [
   { n: 1, title: "Applicant intake", blurb: "Entity, principals, request" },
   { n: 2, title: "Verification", blurb: "Bank link · credit authorization" },
   { n: 3, title: "Financial profile", blurb: "Metrics, credit band, capacity" },
-  { n: 4, title: "Credit application", blurb: "Full submission package" },
-  { n: 5, title: "Contracts and execution", blurb: "Field fill, review, signature" },
+  { n: 4, title: "Underwriting package", blurb: "Route evidence · human review" },
+  { n: 5, title: "Application and execution", blurb: "QC master PDF · signature" },
 ];
 
 /** Steps at or beyond this index need both authorizations back. */
@@ -101,7 +101,7 @@ export default function StepRail({
                 className={`rung${cur ? " cur" : ""}${done ? " done" : ""}`}
                 disabled={locked}
                 onClick={() => !locked && onGo(s.n)}
-                title={s.n === 2 && !intakeReady ? "Complete all required Step 1 fields" : s.n === 5 && !formsReady ? "Complete Step 4 and clear underwriting before contracts" : locked ? gateLabel : undefined}
+                title={s.n === 2 && !intakeReady ? "Complete all required Step 1 fields" : s.n === 5 && !formsReady ? "Complete Step 4 evidence and human review before releasing the application" : locked ? gateLabel : undefined}
                 style={{
                   textAlign: "left",
                   font: "inherit",

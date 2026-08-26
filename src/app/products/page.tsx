@@ -118,6 +118,8 @@ export default function ProductsPage() {
   const visibleQuestions = (catalog.data?.questions ?? []).filter((question) => {
     if (["real_estate_purpose", "owned_real_estate_available"].includes(question.key) && answers.real_estate_involved === false) return false;
     if (question.key === "youngest_mca_days" && Number(answers.mca_count) === 0) return false;
+    if (question.key === "tax_payment_plan_current" && answers.tax_liability_over_10000 !== true) return false;
+    if (question.key === "term_obligations_released_or_on_plan" && answers.judgment_over_50000_within_7_years !== true && answers.aggregate_liens_judgments_over_25000_within_7_years !== true) return false;
     return true;
   });
   const activeQuestionIndex = visibleQuestions.findIndex((question) => answers[question.key] === undefined || answers[question.key] === "");

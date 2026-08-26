@@ -75,6 +75,14 @@ export type Dealer = {
   state: string | null;
   zip: string | null;
   industry: string;
+  industry_label: string | null;
+  subindustry: string | null;
+  subindustry_label: string | null;
+  industry_entry_id: string | null;
+  subindustry_entry_id: string | null;
+  activity_entry_id: string | null;
+  naics_code: string | null;
+  naics_label: string | null;
   status: string;
   started_on: string | null;
   funding_goal: number | null;

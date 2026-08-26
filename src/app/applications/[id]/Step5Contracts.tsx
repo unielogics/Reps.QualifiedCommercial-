@@ -1,35 +1,23 @@
 "use client";
 
-// Step 5 — the contract package.
-//
-// The documents themselves arrive next: this step is built as a registry so
-// they load as templates rather than as a code change. What is here now is the
-// shape a rep works in — a switcher across the package, a paged view of the
-// document with its fields filled in place, and the two signature blocks.
-//
-// The signing engine already exists in the backend (document_signature.py) and
-// its good idea is that signing is mechanically an upload: the certificate is
-// stored as a normal file against the case, with three hashes, an IP and a
-// user agent. So "send to phone to sign" issues a one-time link into that
-// flow rather than inventing a second one.
-//
-// Forms are held until the file is actually fundable. Paperwork that goes out
-// on a file which then gets declined on the first thing a lender looks at
-// costs the owner time and costs us the relationship.
-
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Download, FileSignature, Mail, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
-import { useCase } from "@/lib/useCase";
-import UnderwritingSlots from "@/components/UnderwritingSlots";
+import type { SubmissionReadiness } from "@/lib/applicationReadiness";
+
+const MASTER_KEY = "qc_business_financing_application";
 
 type CaseDoc = {
   id: string;
   template_key: string;
   status: string;
-  field_values: Record<string, string> | null;
   filled_sha256: string | null;
+  signed_at: string | null;
+  signer_name: string | null;
+  signer_title: string | null;
+  signature_sha256: string | null;
 };
 
 type GenerateResult = {
@@ -37,314 +25,205 @@ type GenerateResult = {
   placed: Record<string, string>;
   missing_data: string[];
   overlay_problems: string[];
+  sha256: string;
   download_url: string | null;
 };
 
 type Template = {
   key: string;
   title: string;
-  page_count: number | null;
-  has_acroform: boolean;
   revision: number;
   active: boolean;
-  s3_key: string | null;
+  render_kind: "uploaded_pdf" | "generated_html";
+};
+
+type SendResult = {
+  url: string;
+  passcode: string | null;
+  delivered: boolean;
+  emailed: boolean;
+  texted: boolean;
+  detail: string | null;
 };
 
 export default function Step5Contracts({ dealerId }: { dealerId: string }) {
-  const { decision } = useCase(dealerId);
   const { getToken } = useAuth();
-  const [doc, setDoc] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const [generated, setGenerated] = useState<GenerateResult | null>(null);
 
-  // The package comes from the registry the desk maintains, so a new
-  // agreement uploaded on the dashboard appears here without a deploy.
+  const readiness = useQuery({
+    queryKey: ["submission-readiness", dealerId],
+    queryFn: async () => api<SubmissionReadiness>(
+      `/dealer-os/dealers/${dealerId}/submission-readiness`,
+      { authToken: (await getToken()) ?? undefined },
+    ),
+  });
   const templates = useQuery({
     queryKey: ["contract-templates"],
-    queryFn: async () =>
-      api<Template[]>("/dealer-os/contract-templates", {
-        authToken: (await getToken()) ?? undefined,
-      }),
+    queryFn: async () => api<Template[]>("/dealer-os/contract-templates", {
+      authToken: (await getToken()) ?? undefined,
+    }),
   });
-  const pkg = (templates.data ?? []).filter((t) => t.active && t.s3_key);
-  useEffect(() => {
-    if (doc === null && pkg.length) setDoc(pkg[0].key);
-  }, [doc, pkg]);
-  const current = pkg.find((t) => t.key === doc) ?? pkg[0];
-
-  const ready = decision?.ready_for_forms ?? false;
-  const qc = useQueryClient();
-  const [gen, setGen] = useState<GenerateResult | null>(null);
-
+  const template = templates.data?.find((item) => item.key === MASTER_KEY && item.active);
   const caseDocs = useQuery({
     queryKey: ["case-contracts", dealerId],
-    queryFn: async () =>
-      api<CaseDoc[]>(`/dealer-os/dealers/${dealerId}/contracts`, {
-        authToken: (await getToken()) ?? undefined,
-      }),
+    queryFn: async () => api<CaseDoc[]>(`/dealer-os/dealers/${dealerId}/contracts`, {
+      authToken: (await getToken()) ?? undefined,
+    }),
   });
-  const caseDoc = (caseDocs.data ?? []).find((d) => d.template_key === current?.key);
+  const caseDoc = caseDocs.data?.find((item) => item.template_key === MASTER_KEY);
 
   const generate = useMutation({
-    mutationFn: async () =>
-      api<GenerateResult>(`/dealer-os/dealers/${dealerId}/contracts/${current?.key}/generate`, {
+    mutationFn: async () => api<GenerateResult>(
+      `/dealer-os/dealers/${dealerId}/contracts/${MASTER_KEY}/generate`,
+      { method: "POST", authToken: (await getToken()) ?? undefined },
+    ),
+    onSuccess: (result) => {
+      setGenerated(result);
+      void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
+    },
+  });
+  const send = useMutation({
+    mutationFn: async () => api<SendResult>(
+      `/dealer-os/dealers/${dealerId}/contracts/${MASTER_KEY}/send-signature`,
+      {
         method: "POST",
+        body: JSON.stringify({ channel: "email" }),
         authToken: (await getToken()) ?? undefined,
-      }),
-    onSuccess: (r) => {
-      setGen(r);
-      void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
-    },
+      },
+    ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] }),
+  });
+  const download = useMutation({
+    mutationFn: async () => api<{ url: string; status: string; sha256: string | null }>(
+      `/dealer-os/dealers/${dealerId}/contracts/${MASTER_KEY}/url`,
+      { authToken: (await getToken()) ?? undefined },
+    ),
+    onSuccess: (result) => window.open(result.url, "_blank", "noopener,noreferrer"),
   });
 
-  const sendForSignature = useMutation({
-    mutationFn: async () =>
-      api<{ emailed: boolean; texted: boolean; detail: string | null }>(
-        `/dealer-os/dealers/${dealerId}/contracts/${current?.key}/send-signature`,
-        { method: "POST", body: JSON.stringify({ channel: "email" }), authToken: (await getToken()) ?? undefined },
-      ),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
-    },
-  });
+  useEffect(() => {
+    if (generated?.download_url) window.open(generated.download_url, "_blank", "noopener,noreferrer");
+  }, [generated?.download_url]);
 
-  const preview = useMutation({
-    mutationFn: async () =>
-      api<{ url: string }>(`/dealer-os/dealers/${dealerId}/contracts/${current?.key}/url`, {
-        authToken: (await getToken()) ?? undefined,
-      }),
-    onSuccess: (r) => window.open(r.url, "_blank", "noopener"),
-  });
+  const releaseReady = Boolean(readiness.data?.ready && template);
+  const executed = caseDoc?.status === "executed";
+  const outForSignature = caseDoc?.status === "out_for_signature";
 
   return (
     <>
       <div className="panel">
         <div className="panel-h">
-          Step 5 · Contract package
-          <span style={{ flex: 1 }} />
-          <span className={`cellchip ${ready ? "c-ok" : "c-warn"}`}>
-            {ready ? "Ready for forms" : "Not ready for forms"}
+          Step 5 · QC master application
+          <span className="sp" />
+          <span className={`cellchip ${executed || releaseReady ? "c-ok" : "c-warn"}`}>
+            {executed ? "Executed" : releaseReady ? "Ready to generate" : "Release gate closed"}
           </span>
         </div>
         <div className="panel-b">
-          <div className="seg">
-            {pkg.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={current?.key === t.key ? "on" : undefined}
-                onClick={() => setDoc(t.key)}
-              >
-                {t.title}
-              </button>
-            ))}
-            {pkg.length === 0 && !templates.isLoading && (
-              <button type="button" className="on" disabled>
-                No agreements uploaded yet
-              </button>
-            )}
-          </div>
-          <span className="sub" style={{ display: "block", marginTop: 10 }}>
-            Every field is filled from steps 1 through 4. Edit in place on the document and the
-            value writes back to the case record.
-          </span>
-          {!ready && (
-            <div className="note">
-              <div>
-                Holding the package until the file clears. Sending an owner paperwork on a file
-                that then gets declined costs them time and costs us the relationship.
-              </div>
+          <div className="row" style={{ alignItems: "flex-start", gap: 14 }}>
+            <FileSignature size={24} aria-hidden />
+            <div>
+              <b>Qualified Commercial Business Financing Application and Certifications</b>
+              <p className="sub" style={{ margin: "5px 0 0", lineHeight: 1.55 }}>
+                One lender-neutral application is generated from the verified case. It contains
+                the canonical NAICS hierarchy, owner schedule, evidence summary, selected
+                funding path, conditions, and certifications. It never includes an SSN, a raw
+                credit score, or the identity of a downstream funding source.
+              </p>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
       <div className="panel">
         <div className="panel-h">
-          {current ? `${current.title} · r${current.revision}` : "Contract package"}
-          {current && !current.has_acroform && (
-            <span className="cellchip c-mut">Text document</span>
-          )}
-          <span style={{ flex: 1 }} />
-          <button type="button" className="btn sm" disabled>Previous</button>
-          <button type="button" className="btn sm" disabled>Next</button>
-          <button type="button" className="btn sm" disabled>Download</button>
+          Application execution
+          <span className="sp" />
+          {caseDoc && <span className="sub">Updated status: {caseDoc.status.replace(/_/g, " ")}</span>}
         </div>
         <div className="panel-b">
-          <div
-            style={{
-              border: "1px solid var(--line)",
-              borderRadius: "var(--r-sm)",
-              background: "var(--surface)",
-              padding: "clamp(18px, 3vw, 30px)",
-            }}
-          >
-            {!current && (
-              <span className="sub">
-                The desk uploads the package on the dashboard under Settings, then it appears
-                here on every case.
-              </span>
-            )}
-            {current && (
-              <>
-                <div className="row" style={{ alignItems: "center", gap: 10 }}>
-                  <b style={{ fontFamily: "var(--fh)", fontSize: 15 }}>
-                    {caseDoc?.filled_sha256
-                      ? "Prepopulated copy on file"
-                      : "Not generated for this case yet"}
-                  </b>
-                  {caseDoc && (
-                    <span
-                      className={`cellchip ${
-                        caseDoc.status === "executed"
-                          ? "c-ok"
-                          : caseDoc.status === "out_for_signature"
-                            ? "c-acc"
-                            : caseDoc.status === "ready"
-                              ? "c-ok"
-                              : "c-warn"
-                      }`}
-                    >
-                      {caseDoc.status.replace(/_/g, " ")}
-                    </span>
-                  )}
-                  <span style={{ flex: 1 }} />
-                  <button
-                    type="button"
-                    className="btn pri"
-                    disabled={generate.isPending || caseDoc?.status === "out_for_signature" || caseDoc?.status === "executed"}
-                    onClick={() => generate.mutate()}
-                  >
-                    {generate.isPending
-                      ? "Filling…"
-                      : caseDoc?.filled_sha256
-                        ? "Regenerate from the case"
-                        : "Generate prepopulated agreement"}
-                  </button>
-                  {caseDoc?.filled_sha256 && (
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={preview.isPending}
-                      onClick={() => preview.mutate()}
-                    >
-                      Preview PDF
-                    </button>
-                  )}
-                  {caseDoc?.filled_sha256 && caseDoc.status !== "out_for_signature" && caseDoc.status !== "executed" && (
-                    <button
-                      type="button"
-                      className="btn pri"
-                      disabled={sendForSignature.isPending}
-                      onClick={() => sendForSignature.mutate()}
-                    >
-                      {sendForSignature.isPending ? "Sending…" : "Send for signature"}
-                    </button>
-                  )}
-                </div>
-                <span className="sub" style={{ display: "block", marginTop: 8 }}>
-                  Every field it can answer is filled from steps 1 through 4: the client entity,
-                  the principal, the 3 percent commission, the use of funds sentence, and you on
-                  the consultant line. What the case does not know is listed, never guessed.
-                </span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            <div className="note" style={{ margin: 0 }}>
+              <div><ShieldCheck size={17} /><b>Designated signer only</b><br /><span className="sub">The primary owner or authorized representative certifies the business record. Every 20%+ owner still completes a separate iSoftPull.</span></div>
+            </div>
+            <div className="note" style={{ margin: 0 }}>
+              <div><CheckCircle2 size={17} /><b>Immutable evidence</b><br /><span className="sub">The final PDF records the visible signature, title, time, IP, user agent, document hash, signature hash, and completion certificate.</span></div>
+            </div>
+            <div className="note" style={{ margin: 0 }}>
+              <div><Mail size={17} /><b>Client delivery</b><br /><span className="sub">Execution triggers an automatic download and email. A secure download remains in the client room as a fallback.</span></div>
+            </div>
+          </div>
 
-                {gen && gen.missing_data.length > 0 && (
-                  <div className="warnline mt">
-                    Still blank, because the case has not collected it:{" "}
-                    {gen.missing_data.join(" · ")}
-                  </div>
-                )}
-                {gen && gen.missing_data.length === 0 && (
-                  <div className="note">
-                    <div>
-                      Every mapped field is filled ({Object.keys(gen.placed).length} placed).
-                      Preview it, then send it for signature. Sending freezes the paper: the
-                      client signs exactly what you previewed, on their own device.
-                    </div>
-                  </div>
-                )}
-                {sendForSignature.isSuccess && (
-                  <div className="note">
-                    <div>
-                      Sent. The client signs in their secure room — signature box first, the
-                      full agreement one toggle away. Their executed copy is emailed the moment
-                      it lands, and the status here flips to executed.
-                    </div>
-                  </div>
-                )}
-                {sendForSignature.isError && (
-                  <div className="note">
-                    <div>
-                      {sendForSignature.error instanceof Error
-                        ? sendForSignature.error.message
-                        : "That did not send."}
-                    </div>
-                  </div>
-                )}
-                {gen && gen.overlay_problems.length > 0 && (
-                  <div className="note">
-                    <div>
-                      Template problem, tell the desk: {gen.overlay_problems.join(" · ")}
-                    </div>
-                  </div>
-                )}
-                {generate.isError && (
-                  <div className="note">
-                    <div>
-                      {generate.error instanceof Error
-                        ? generate.error.message
-                        : "The fill did not run."}
-                    </div>
-                  </div>
-                )}
-              </>
+          {!releaseReady && !executed && (
+            <div className="warnline mt">
+              Complete every Step 4 source requirement and record a fundable human review
+              before releasing the application.
+            </div>
+          )}
+
+          <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn pri"
+              disabled={!releaseReady || generate.isPending || outForSignature || executed}
+              onClick={() => generate.mutate()}
+            >
+              <FileSignature size={16} />
+              {generate.isPending ? "Generating complete PDF…" : caseDoc?.filled_sha256 ? "Regenerate master application" : "Generate master application"}
+            </button>
+            {caseDoc?.filled_sha256 && (
+              <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate()}>
+                <Download size={16} /> {executed ? "Download executed PDF" : "Review populated PDF"}
+              </button>
+            )}
+            {caseDoc?.filled_sha256 && !outForSignature && !executed && (
+              <button type="button" className="btn pri" disabled={!releaseReady || send.isPending} onClick={() => send.mutate()}>
+                <Mail size={16} /> {send.isPending ? "Sending…" : "Email primary signer"}
+              </button>
             )}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: 18,
-              marginTop: 18,
-            }}
-          >
-            <div>
-              <span className="lbl">Borrower signature</span>
-              <div
-                style={{
-                  border: "1px dashed var(--line2)",
-                  borderRadius: "var(--r-sm)",
-                  padding: "14px 12px",
-                  marginTop: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span className="sub">Awaiting the applicant</span>
-                <span style={{ flex: 1 }} />
-                <button type="button" className="btn sm pri" disabled title="Available once the package is loaded">
-                  Send to phone to sign
-                </button>
+          {generated && (
+            <div className="note mt">
+              <div>
+                <b>PDF generated.</b> {Object.keys(generated.placed).length} populated sections;
+                SHA-256 <span className="num">{generated.sha256.slice(0, 16)}…</span>.
+                {generated.missing_data.length > 0 && <> Awaiting: {generated.missing_data.join(" · ")}.</>}
               </div>
             </div>
-            <div>
-              <span className="lbl">Lender signature</span>
-              <div
-                style={{
-                  border: "1px dashed var(--line2)",
-                  borderRadius: "var(--r-sm)",
-                  padding: "14px 12px",
-                  marginTop: 6,
-                }}
-              >
-                <span className="sub">Countersigned after the borrower executes</span>
+          )}
+          {send.isSuccess && (
+            <div className="note mt">
+              <div>
+                <b>{send.data.emailed ? "Signature request emailed." : "Signature room created."}</b>{" "}
+                The signer reviews the complete PDF before signing. The signed PDF and
+                evidentiary certificate are delivered after execution.
+                {send.data.detail ? ` ${send.data.detail}` : ""}
               </div>
             </div>
-          </div>
+          )}
+          {(generate.isError || send.isError || download.isError) && (
+            <div className="note mt">
+              {(generate.error ?? send.error ?? download.error) instanceof Error
+                ? (generate.error ?? send.error ?? download.error)?.message
+                : "The document action did not complete."}
+            </div>
+          )}
         </div>
       </div>
-      <UnderwritingSlots dealerId={dealerId} />
+
+      {executed && (
+        <div className="panel">
+          <div className="panel-h">Execution record</div>
+          <div className="panel-b">
+            <div className="kv"><span>Signer</span><b>{caseDoc.signer_name || "Primary authorized representative"}</b></div>
+            <div className="kv"><span>Title</span><b>{caseDoc.signer_title || "Recorded in certificate"}</b></div>
+            <div className="kv"><span>Signed</span><b>{caseDoc.signed_at ? new Date(caseDoc.signed_at).toLocaleString() : "Complete"}</b></div>
+            <div className="kv"><span>Signature hash</span><b className="num">{caseDoc.signature_sha256 ? `${caseDoc.signature_sha256.slice(0, 16)}…` : "Stored in PDF certificate"}</b></div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,358 +1,253 @@
 "use client";
 
-// Step 4 — the submission package.
-//
-// The whole point of arriving here through the gate is that most of this is
-// already known and cannot be retyped. Fields sourced from the bank connection
-// or the bureau render locked with a source chip; a rep who could overwrite a
-// verified figure would make every "Verified" chip in the product meaningless.
-//
-// The rest is what a lender asks for and nobody has yet: a landlord, a
-// guarantor's home address, a date of birth. Those are the rep's to collect,
-// and they carry into the contract package at step 5.
-
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, CheckCircle2, FileCheck2, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
-import { useCase } from "@/lib/useCase";
+import { useMe } from "@/lib/useMe";
 import StepActions from "@/components/StepActions";
-import BusinessAddressFields from "@/components/BusinessAddressFields";
-import { applicationProfileReady, type ApplicationProfileData } from "@/lib/applicationReadiness";
+import {
+  type ApplicationProfileData,
+  type SubmissionReadiness,
+} from "@/lib/applicationReadiness";
 
-type Owner = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  credit_score: number | null;
-  is_primary: boolean;
+const STATUS: Record<string, { label: string; cls: string }> = {
+  complete: { label: "Complete", cls: "c-ok" },
+  missing: { label: "Missing", cls: "c-warn" },
+  supplemental: { label: "Supplemental only", cls: "c-warn" },
+  not_applicable: { label: "Not applicable", cls: "c-mut" },
 };
-
-type Account = {
-  id: string;
-  institution_name: string | null;
-  name: string | null;
-  mask: string | null;
-};
-
-type ApplicationProfile = ApplicationProfileData;
-type AddressParts = { address: string; city: string; state: string; zip: string };
-
-function splitAddress(value: string): AddressParts {
-  const [address = "", city = "", stateZip = ""] = value.split(",").map((part) => part.trim());
-  const match = stateZip.match(/^([A-Za-z]{2})\s*(.*)$/);
-  return { address, city, state: match?.[1]?.toUpperCase() ?? "", zip: match?.[2] ?? "" };
-}
-
-function joinAddress(value: AddressParts): string {
-  return [value.address, value.city, [value.state, value.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-}
-
-function Verified({ source }: { source: string }) {
-  return <span className="cellchip c-pet">{source}</span>;
-}
-
-function band(score: number | null | undefined): string {
-  if (score === null || score === undefined) return "";
-  const lo = Math.floor(score / 30) * 30;
-  return `${lo}–${lo + 29}`;
-}
 
 export default function Step4Application({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
-  const { dealer, decision } = useCase(dealerId);
-  const [draft, setDraft] = useState<Record<string, string>>({});
-
-  const owners = useQuery({
-    queryKey: ["owners", dealerId],
-    queryFn: async () =>
-      api<Owner[]>(`/dealer-os/dealers/${dealerId}/owners`, {
-        authToken: (await getToken()) ?? undefined,
-      }),
-  });
-
-  const accounts = useQuery({
-    queryKey: ["accounts", dealerId],
-    queryFn: async () =>
-      api<Account[]>(`/dealer-os/dealers/${dealerId}/accounts`, {
-        authToken: (await getToken()) ?? undefined,
-      }),
+  const { isSuperAdmin } = useMe();
+  const [reviewNote, setReviewNote] = useState("");
+  const [financialDraft, setFinancialDraft] = useState({
+    annual_sales: "",
+    annual_cash_flow_available_for_debt: "",
+    monthly_debt_payments: "",
   });
 
   const profile = useQuery({
     queryKey: ["application-profile", dealerId],
-    queryFn: async () =>
-      api<ApplicationProfile | null>(`/dealer-os/dealers/${dealerId}/application-profile`, {
-        authToken: (await getToken()) ?? undefined,
-      }),
+    queryFn: async () => api<ApplicationProfileData | null>(
+      `/dealer-os/dealers/${dealerId}/application-profile`,
+      { authToken: (await getToken()) ?? undefined },
+    ),
   });
 
-  useEffect(() => setDraft({}), [dealerId, profile.data]);
+  const readiness = useQuery({
+    queryKey: ["submission-readiness", dealerId],
+    queryFn: async () => api<SubmissionReadiness>(
+      `/dealer-os/dealers/${dealerId}/submission-readiness`,
+      { authToken: (await getToken()) ?? undefined },
+    ),
+  });
 
-  const patch = useMutation({
-    mutationFn: async (body: Record<string, unknown>) =>
-      api<ApplicationProfile>(`/dealer-os/dealers/${dealerId}/application-profile`, {
+  const patchProfile = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => api<ApplicationProfileData>(
+      `/dealer-os/dealers/${dealerId}/application-profile`,
+      {
         method: "PATCH",
         body: JSON.stringify(body),
         authToken: (await getToken()) ?? undefined,
-      }),
+      },
+    ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["application-profile", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["submission-readiness", dealerId] });
       void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
     },
   });
 
-  const owner = owners.data?.find((o) => o.is_primary) ?? owners.data?.[0];
-  const acct = accounts.data?.[0];
+  useEffect(() => {
+    if (!profile.data) return;
+    setFinancialDraft({
+      annual_sales: profile.data.annual_sales?.toString() ?? "",
+      annual_cash_flow_available_for_debt:
+        profile.data.annual_cash_flow_available_for_debt?.toString() ?? "",
+      monthly_debt_payments: profile.data.monthly_debt_payments?.toString() ?? "",
+    });
+  }, [
+    profile.data?.annual_sales,
+    profile.data?.annual_cash_flow_available_for_debt,
+    profile.data?.monthly_debt_payments,
+  ]);
 
-  const grid: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-    gap: 12,
+  const commitFinancial = async (field: keyof typeof financialDraft) => {
+    const raw = financialDraft[field].trim();
+    try {
+      await patchProfile.mutateAsync({ [field]: raw ? Number(raw) : null });
+    } catch {
+      // The mutation error remains visible below; keep the draft so the rep can retry.
+    }
   };
 
-  const verifiedCount = [dealer?.name, acct?.institution_name, owner?.full_name,
-    owner?.credit_score].filter(Boolean).length;
+  const review = useMutation({
+    mutationFn: async (status: "fundable" | "not_fundable" | "pending") => api<SubmissionReadiness>(
+      `/dealer-os/dealers/${dealerId}/submission-readiness/human-review`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status, note: reviewNote.trim() || null }),
+        authToken: (await getToken()) ?? undefined,
+      },
+    ),
+    onSuccess: (data) => {
+      qc.setQueryData(["submission-readiness", dealerId], data);
+      setReviewNote("");
+    },
+  });
 
-  const val = (key: keyof ApplicationProfile) =>
-    draft[key] ?? String((profile.data?.[key] ?? "") as string | number);
-  const set = (key: keyof ApplicationProfile, value: string) =>
-    setDraft((p) => ({ ...p, [key]: value }));
-  const commit = (key: keyof ApplicationProfile, transform?: (v: string) => unknown) => {
-    if (draft[key] === undefined) return;
-    const next = transform ? transform(draft[key]) : draft[key].trim() || null;
-    patch.mutate({ [key]: next });
-  };
-  const liveProfile: ApplicationProfile = {
-    landlord_mortgagee: val("landlord_mortgagee") || null,
-    guarantor_home_address: val("guarantor_home_address") || null,
-    guarantor_dob: val("guarantor_dob") || null,
-    selected_program: val("selected_program") || null,
-    term_requested_months: Number(val("term_requested_months")) || null,
-    collateral_description: val("collateral_description") || null,
-    use_of_proceeds_text: val("use_of_proceeds_text") || null,
-  };
-  const verifiedComplete = Boolean(
-    (dealer?.legal_name || dealer?.name)
-      && acct
-      && owner?.full_name
-      && owner?.credit_score
-      && dealer?.funding_goal
-      && dealer?.funding_purpose,
-  );
-  const profileComplete = applicationProfileReady(liveProfile, dealer?.funding_purpose);
-  const stepReady = verifiedComplete && profileComplete && Boolean(decision?.ready_for_forms) && !patch.isPending;
-  const equipmentProgram = dealer?.funding_purpose === "equipment"
-    || val("selected_program").toLowerCase().includes("equipment");
-
-  const saveAndContinue = async () => {
-    if (!stepReady) return;
-    await patch.mutateAsync(liveProfile);
-    router.push(`/applications/${dealerId}?step=5`);
-  };
+  const data = readiness.data;
+  const openItems = data?.items.filter((item) => item.status === "missing" || item.status === "supplemental") ?? [];
+  const stepReady = Boolean(data?.ready);
 
   return (
     <>
       <div className="panel">
         <div className="panel-h">
-          Step 4 · Credit application
-          <span style={{ flex: 1 }} />
-          <span className="cellchip c-acc num">{verifiedCount} fields prefilled</span>
-        </div>
-        <div className="panel-b">
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>
-            Verified data populates the submission automatically. Fields marked{" "}
-            <span className="cellchip c-pet">Verified</span> are locked to their source; the
-            remainder are entered here and carried into the contract package at step 5.
-          </p>
-        </div>
-      </div>
-
-      <div className={`panel${verifiedComplete ? "" : " panel-invalid"}`}>
-        <div className="panel-h">Business and banking</div>
-        <div className="panel-b">
-          <div style={grid}>
-            <div>
-              <label className="lbl">Legal entity name <Verified source="Verified" /></label>
-              <input className={`field${dealer?.legal_name || dealer?.name ? "" : " field-invalid"}`} style={{ width: "100%" }} value={dealer?.legal_name || dealer?.name || ""} readOnly />
-            </div>
-            <div>
-              <label className="lbl">EIN <span className="sub">Optional</span></label>
-              <input className="field" style={{ width: "100%" }} value={dealer?.ein ?? ""} readOnly />
-            </div>
-            <div>
-              <label className="lbl">Operating account <Verified source="Bank" /></label>
-              <input
-                className={`field${acct ? "" : " field-invalid"}`}
-                style={{ width: "100%" }}
-                value={acct ? `${acct.institution_name ?? ""} ${acct.mask ? "····" + acct.mask : ""}`.trim() : ""}
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="lbl">Landlord or mortgagee</label>
-              <input
-                className={`field${equipmentProgram ? " required-field" : ""}`}
-                required={equipmentProgram}
-                style={{ width: "100%" }}
-                placeholder="Required for the equipment program"
-                value={val("landlord_mortgagee")}
-                onChange={(e) => set("landlord_mortgagee", e.target.value)}
-                onBlur={() => commit("landlord_mortgagee")}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className={`panel${owner?.full_name && owner?.credit_score && val("guarantor_home_address").trim() && val("guarantor_dob").trim() ? "" : " panel-invalid"}`}>
-        <div className="panel-h">Guarantor</div>
-        <div className="panel-b">
-          <div style={grid}>
-            <div>
-              <label className="lbl">Name <Verified source="Verified" /></label>
-              <input className={`field${owner?.full_name ? "" : " field-invalid"}`} style={{ width: "100%" }} value={owner?.full_name ?? ""} readOnly />
-            </div>
-            <div>
-              <label className="lbl">Credit band <Verified source="Soft inquiry" /></label>
-              <input className={`field${owner?.credit_score ? "" : " field-invalid"}`} style={{ width: "100%" }} value={band(owner?.credit_score)} readOnly />
-            </div>
-            <div style={{ gridColumn: "span 2" }}>
-              <BusinessAddressFields
-                value={splitAddress(val("guarantor_home_address"))}
-                searchLabel="Guarantor home address"
-                searchPlaceholder="Start typing the guarantor's U.S. home address"
-                helperText="Select a verified result or enter the address manually."
-                manualFallback="when-needed"
-                onChange={(next) => set("guarantor_home_address", joinAddress(next))}
-                onResolved={(next) => patch.mutate({ guarantor_home_address: joinAddress(next) })}
-                onBlur={() => commit("guarantor_home_address")}
-              />
-            </div>
-            <div>
-              <label className="lbl">Date of birth</label>
-              <input
-                className="field required-field"
-                required
-                style={{ width: "100%" }}
-                type="date"
-                value={val("guarantor_dob").slice(0, 10)}
-                onChange={(e) => set("guarantor_dob", e.target.value)}
-                onBlur={() => commit("guarantor_dob", (v) => v || null)}
-              />
-            </div>
-          </div>
-          <span className="sub" style={{ display: "block", marginTop: 10 }}>
-            These save back to the case and carry into the contract package at step 5.
+          Step 4 · Underwriting package
+          <span className="sp" />
+          <span className={`cellchip ${data?.ready ? "c-ok" : data?.human_review_status === "not_fundable" ? "c-bad" : "c-warn"}`}>
+            {data?.ready
+              ? "Approved for application release"
+              : data?.human_review_status === "not_fundable"
+                ? "Not fundable"
+                : "Conditions remain"}
           </span>
-          {patch.isError && (
-            <div className="note">
-              {patch.error instanceof Error ? patch.error.message : "That field did not save."}
+        </div>
+        <div className="panel-b">
+          <div className="row" style={{ alignItems: "flex-start", gap: 14 }}>
+            <FileCheck2 size={22} aria-hidden />
+            <div>
+              <b>{data?.route_label || "Funding route is still being evaluated"}</b>
+              <p className="sub" style={{ margin: "5px 0 0", lineHeight: 1.55 }}>
+                This package is built from the same versioned rules used in Product Finder and
+                Step 1.5. A failed rule blocks only that route. It never erases the original
+                self-reported answers or another viable path.
+              </p>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
-      <div className={`panel${profileComplete && dealer?.funding_goal && dealer?.funding_purpose ? "" : " panel-invalid"}`}>
-        <div className="panel-h">Facility terms requested</div>
-        <div className="panel-b">
-          <div style={grid}>
-            <div>
-              <label className="lbl">Amount <Verified source="From step 1" /></label>
-              <input
-                className={`field num${dealer?.funding_goal ? "" : " field-invalid"}`}
-                style={{ width: "100%" }}
-                value={dealer?.funding_goal ? "$" + Math.round(dealer.funding_goal).toLocaleString() : ""}
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="lbl">Purpose <Verified source="From step 1" /></label>
-              <input
-                className={`field${dealer?.funding_purpose ? "" : " field-invalid"}`}
-                style={{ width: "100%" }}
-                value={(dealer?.funding_purpose ?? "").replace(/_/g, " ")}
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="lbl">Term requested</label>
-              <input
-                className="field required-field"
-                required
-                type="number"
-                min="1"
-                max="360"
-                style={{ width: "100%" }}
-                placeholder="Months"
-                inputMode="numeric"
-                value={val("term_requested_months")}
-                onChange={(e) => set("term_requested_months", e.target.value)}
-                onBlur={() =>
-                  commit("term_requested_months", (v) => {
-                    const n = Number(v.replace(/\D/g, ""));
-                    return n > 0 ? n : null;
-                  })
-                }
-              />
-            </div>
-            <div>
-              <label className="lbl">Use of proceeds</label>
-              <input
-                className="field required-field"
-                required
-                style={{ width: "100%" }}
-                placeholder="What the money buys"
-                value={val("use_of_proceeds_text")}
-                onChange={(e) => set("use_of_proceeds_text", e.target.value)}
-                onBlur={() => commit("use_of_proceeds_text")}
-              />
-            </div>
-            <div>
-              <label className="lbl">Program</label>
-              <input
-                className="field required-field"
-                required
-                style={{ width: "100%" }}
-                placeholder="Working capital, equipment, SBA referral..."
-                value={val("selected_program")}
-                onChange={(e) => set("selected_program", e.target.value)}
-                onBlur={() => commit("selected_program")}
-              />
-            </div>
-            <div>
-              <label className="lbl">Collateral description</label>
-              <input
-                className="field required-field"
-                required
-                style={{ width: "100%" }}
-                placeholder="Equipment, receivables, real estate, or none"
-                value={val("collateral_description")}
-                onChange={(e) => set("collateral_description", e.target.value)}
-                onBlur={() => commit("collateral_description")}
-              />
-            </div>
+      <div className="panel">
+        <div className="panel-h">
+          Route-specific evidence
+          <span className="sp" />
+          <span className="sub">{data?.rules_version || "Loading rules…"}</span>
+        </div>
+        <div className="panel-b" style={{ padding: 0 }}>
+          <div className="tblwrap">
+            <table className="tbl" style={{ minWidth: 720 }}>
+              <thead>
+                <tr>
+                  <th>Requirement</th>
+                  <th>Status</th>
+                  <th>Evidence</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.items ?? []).map((item) => {
+                  const state = STATUS[item.status] ?? STATUS.missing;
+                  return (
+                    <tr key={`${item.route}:${item.requirement}`}>
+                      <td><b>{item.requirement}</b><span className="sub" style={{ display: "block" }}>{item.route === "all" ? "All routes" : item.route}</span></td>
+                      <td><span className={`cellchip ${state.cls}`}>{state.label}</span></td>
+                      <td>{item.evidence}</td>
+                      <td className="sub">{item.source || "Application record"}</td>
+                    </tr>
+                  );
+                })}
+                {!readiness.isLoading && !(data?.items.length) && (
+                  <tr><td colSpan={4} className="sub">No readiness evidence is available yet.</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-h">Cash flow and debt service</div>
+        <div className="panel-b">
+          <p className="sub" style={{ marginTop: 0, lineHeight: 1.55 }}>
+            <b>Monthly debt payments</b> means the total scheduled payments the business must
+            make each month on loans, lines of credit, equipment notes, SBA debt, MCAs, and
+            property debt paid by the business. Do not enter the balance owed. Enter the monthly
+            payment burden so the system can compare available cash flow against debt service.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            <label>
+              <span className="lbl">Annual sales</span>
+              <input className={`field required-field${Number(financialDraft.annual_sales) > 0 ? "" : " field-invalid"}`} style={{ width: "100%" }} type="number" min="0" inputMode="decimal" value={financialDraft.annual_sales} onChange={(event) => setFinancialDraft((current) => ({ ...current, annual_sales: event.target.value }))} onBlur={() => void commitFinancial("annual_sales")} />
+            </label>
+            <label>
+              <span className="lbl">Annual cash flow available for debt</span>
+              <input className="field" style={{ width: "100%" }} type="number" min="0" inputMode="decimal" value={financialDraft.annual_cash_flow_available_for_debt} onChange={(event) => setFinancialDraft((current) => ({ ...current, annual_cash_flow_available_for_debt: event.target.value }))} onBlur={() => void commitFinancial("annual_cash_flow_available_for_debt")} />
+            </label>
+            <label>
+              <span className="lbl">Monthly debt payments</span>
+              <input className="field" style={{ width: "100%" }} type="number" min="0" inputMode="decimal" value={financialDraft.monthly_debt_payments} onChange={(event) => setFinancialDraft((current) => ({ ...current, monthly_debt_payments: event.target.value }))} onBlur={() => void commitFinancial("monthly_debt_payments")} />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {openItems.length > 0 && (
+        <div className="panel panel-invalid">
+          <div className="panel-h"><AlertTriangle size={17} /> Conditions before release</div>
+          <div className="panel-b">
+            <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 8 }}>
+              {openItems.map((item) => <li key={`open:${item.requirement}`}><b>{item.requirement}:</b> {item.evidence}</li>)}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      <div className="panel">
+        <div className="panel-h"><ShieldCheck size={17} /> Human underwriting decision</div>
+        <div className="panel-b">
+          <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span className={`cellchip ${data?.human_review_status === "fundable" ? "c-ok" : data?.human_review_status === "not_fundable" ? "c-bad" : "c-warn"}`}>
+              {(data?.human_review_status ?? "pending").replace(/_/g, " ")}
+            </span>
+            <span className="sub">
+              Step 5 remains locked until a super admin records a fundable route and every
+              source requirement is complete.
+            </span>
+          </div>
+          {isSuperAdmin && (
+            <>
+              <textarea className="field mt" style={{ width: "100%" }} rows={3} placeholder="Decision note, remaining conditions, or reason the current file is not fundable" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
+              <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
+                <button type="button" className="btn pri" disabled={review.isPending} onClick={() => review.mutate("fundable")}><CheckCircle2 size={16} /> Mark fundable</button>
+                <button type="button" className="btn" disabled={review.isPending} onClick={() => review.mutate("pending")}>Return to pending</button>
+                <button type="button" className="btn" disabled={review.isPending || !reviewNote.trim()} onClick={() => review.mutate("not_fundable")}>Mark not fundable</button>
+              </div>
+            </>
+          )}
+          {(review.isError || patchProfile.isError) && (
+            <div className="note mt">{(review.error ?? patchProfile.error) instanceof Error ? (review.error ?? patchProfile.error)?.message : "That update did not save."}</div>
+          )}
         </div>
       </div>
 
       <StepActions
         ready={stepReady}
-        message={
-          !verifiedComplete
-            ? "A red verified field is still missing. Return to the earlier step that supplies it."
-            : !profileComplete
-              ? "Complete every red lender-application field before generating contracts."
-              : !decision?.ready_for_forms
-                ? "The application is complete, but contracts remain locked until underwriting clears the file."
-                : "The application fields are complete and ready for the contract package."
-        }
+        message={stepReady
+          ? "The evidence package and human review are complete. Generate the QC master application in Step 5."
+          : data?.human_review_status === "not_fundable"
+            ? "The current file is not approved for application release."
+            : `${openItems.length || 1} release condition${openItems.length === 1 ? "" : "s"} remain.`}
         buttonLabel="Continue to Step 5"
-        onContinue={() => void saveAndContinue()}
-        pending={patch.isPending}
+        onContinue={() => router.push(`/applications/${dealerId}?step=5`)}
+        pending={readiness.isLoading || patchProfile.isPending || review.isPending}
       />
     </>
   );

@@ -28,20 +28,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import BusinessAddressFields from "./BusinessAddressFields";
-
-// The shared vocabulary — same slugs the backend uses to pick document
-// checklists and gate industry-specific programs.
-const INDUSTRIES: Array<{ slug: string; label: string }> = [
-  { slug: "restaurant_food_service", label: "Restaurant / food service" },
-  { slug: "auto_service", label: "Auto sales or service" },
-  { slug: "grocery_commodities", label: "Grocery / commodities" },
-  { slug: "trucking_logistics", label: "Trucking / logistics" },
-  { slug: "manufacturing", label: "Manufacturing" },
-  { slug: "retail_ecommerce", label: "Retail / e-commerce" },
-  { slug: "construction_trades", label: "Construction / trades" },
-  { slug: "professional_practice", label: "Professional practice" },
-  { slug: "other", label: "Something else" },
-];
+import ProductFinderTaxonomy, { type ProductFinderTaxonomyValue } from "./ProductFinderTaxonomy";
 
 const PURPOSES: Array<{ slug: string; label: string }> = [
   { slug: "working_capital", label: "Working capital" },
@@ -57,7 +44,6 @@ type Form = {
   entity_type: string;
   phone: string;
   email: string;
-  industry: string;
   address: string;
   city: string;
   state: string;
@@ -78,7 +64,6 @@ const EMPTY: Form = {
   entity_type: "",
   phone: "",
   email: "",
-  industry: "other",
   address: "",
   city: "",
   state: "",
@@ -126,6 +111,18 @@ export default function NewApplicationForm({
   const qc = useQueryClient();
   const { getToken } = useAuth();
   const [f, setF] = useState<Form>(EMPTY);
+  const [taxonomy, setTaxonomy] = useState<ProductFinderTaxonomyValue>({
+    industry_entry_id: null,
+    industry: "",
+    industry_label: "",
+    subindustry_entry_id: null,
+    subindustry: "",
+    subindustry_label: "",
+    activity_entry_id: null,
+    naics_code: "",
+    naics_label: "",
+    taxonomy_status: "unclassified",
+  });
   const [error, setError] = useState<string | null>(null);
 
   // The wording is the server's, not this component's. If this request fails
@@ -163,6 +160,9 @@ export default function NewApplicationForm({
   const canSubmit = Boolean(
     f.name.trim()
       && f.entity_type.trim()
+      && taxonomy.industry_entry_id
+      && taxonomy.subindustry_entry_id
+      && taxonomy.activity_entry_id
       && requested > 0
       && f.funding_purpose
       && f.use_of_proceeds_note.trim()
@@ -174,7 +174,9 @@ export default function NewApplicationForm({
       const body: Record<string, unknown> = {
         name: f.name.trim(),
         entity_type: f.entity_type,
-        industry: f.industry,
+        industry_entry_id: taxonomy.industry_entry_id,
+        subindustry_entry_id: taxonomy.subindustry_entry_id,
+        activity_entry_id: taxonomy.activity_entry_id,
         funding_goal: requested,
         funding_purpose: f.funding_purpose,
         use_of_proceeds_note: f.use_of_proceeds_note.trim(),
@@ -250,22 +252,14 @@ export default function NewApplicationForm({
                 required
               />
 
-              <label className="lbl mt">Industry *</label>
-              <select
-                className="field"
-                value={f.industry}
-                onChange={(e) => set("industry", e.target.value)}
-              >
-                {INDUSTRIES.map((i) => (
-                  <option key={i.slug} value={i.slug}>
-                    {i.label}
-                  </option>
-                ))}
-              </select>
-              <span className="sub">
-                This decides which documents we ask for and which programs the file can
-                reach, so it is worth getting right here.
-              </span>
+              <div className="mt">
+                <ProductFinderTaxonomy value={taxonomy} onChange={setTaxonomy} locale="en" />
+                {!taxonomy.activity_entry_id && (
+                  <span className="validation-hint">
+                    Select the complete category, subcategory, and six-digit NAICS activity.
+                  </span>
+                )}
+              </div>
 
               <label className="lbl mt">Entity type *</label>
               <select

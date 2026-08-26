@@ -8,8 +8,8 @@ const STEPS = [
   ["1", "Applicant intake", "Open the file, capture consent, request amount and use."],
   ["2", "Verification", "Send bank and credit authorization from the new case."],
   ["3", "Financial profile", "Unlocked only after bank and credit return."],
-  ["4", "Credit application", "Persist the remaining submission fields."],
-  ["5", "Contracts and execution", "Generate forms, send signature, collect review times."],
+  ["4", "Underwriting package", "Map route evidence and record the human decision."],
+  ["5", "Application and execution", "Generate and sign the QC master application."],
 ];
 
 export default function ApplicationWizardDrawer({ onClose, onMinimize, minimized = false }: { onClose: () => void; onMinimize?: () => void; minimized?: boolean }) {

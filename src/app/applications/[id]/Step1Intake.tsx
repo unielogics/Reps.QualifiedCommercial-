@@ -20,6 +20,8 @@ import { useCase } from "@/lib/useCase";
 import UseOfProceeds from "./UseOfProceeds";
 import StepActions from "@/components/StepActions";
 import BusinessAddressFields from "@/components/BusinessAddressFields";
+import ProductFinderTaxonomy, { type ProductFinderTaxonomyValue } from "@/components/ProductFinderTaxonomy";
+import { type ApplicationProfileData } from "@/lib/applicationReadiness";
 import EligibilityCheckpoint, { type PreScreen } from "./EligibilityCheckpoint";
 
 const ENTITY_TYPES = [
@@ -28,18 +30,6 @@ const ENTITY_TYPES = [
   "C corporation",
   "Partnership",
   "Sole proprietorship",
-];
-
-const INDUSTRIES: Array<[string, string]> = [
-  ["restaurant_food_service", "Restaurant / food service"],
-  ["auto_service", "Auto sales or service"],
-  ["grocery_commodities", "Grocery / commodities"],
-  ["trucking_logistics", "Trucking / logistics"],
-  ["manufacturing", "Manufacturing"],
-  ["retail_ecommerce", "Retail / e-commerce"],
-  ["construction_trades", "Construction / trades"],
-  ["professional_practice", "Professional practice"],
-  ["other", "Something else"],
 ];
 
 const PURPOSES: Array<[string, string]> = [
@@ -104,6 +94,19 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   const qc = useQueryClient();
   const { dealer } = useCase(dealerId);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [profileDraft, setProfileDraft] = useState<Record<string, string>>({});
+  const [taxonomy, setTaxonomy] = useState<ProductFinderTaxonomyValue>({
+    industry_entry_id: null,
+    industry: "",
+    industry_label: "",
+    subindustry_entry_id: null,
+    subindustry: "",
+    subindustry_label: "",
+    activity_entry_id: null,
+    naics_code: "",
+    naics_label: "",
+    taxonomy_status: "unclassified",
+  });
   const [newOwners, setNewOwners] = useState<OwnerDraft[]>([]);
   const [ownerEdits, setOwnerEdits] = useState<Record<string, Partial<Record<OwnerField, string>>>>({});
   const [ownerSaveState, setOwnerSaveState] = useState<Record<string, "saving" | "saved" | "invalid">>({});
@@ -114,6 +117,21 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
   // Reset the local draft whenever the server view changes, so a value saved
   // elsewhere does not sit behind a stale keystroke.
   useEffect(() => setDraft({}), [dealer?.id]);
+  useEffect(() => {
+    if (!dealer) return;
+    setTaxonomy({
+      industry_entry_id: dealer.industry_entry_id,
+      industry: dealer.industry ?? "",
+      industry_label: dealer.industry_label ?? "",
+      subindustry_entry_id: dealer.subindustry_entry_id,
+      subindustry: dealer.subindustry ?? "",
+      subindustry_label: dealer.subindustry_label ?? "",
+      activity_entry_id: dealer.activity_entry_id,
+      naics_code: dealer.naics_code ?? "",
+      naics_label: dealer.naics_label ?? "",
+      taxonomy_status: dealer.activity_entry_id ? "official" : "unclassified",
+    });
+  }, [dealer]);
 
   const owners = useQuery({
     queryKey: ["owners", dealerId],
@@ -144,6 +162,18 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     },
   });
 
+  const patchProfile = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => api<ApplicationProfileData>(`/dealer-os/dealers/${dealerId}/application-profile`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["application-profile", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["submission-readiness", dealerId] });
+    },
+  });
+
   // Indexed through a plain record: the field names are the API's, and typing
   // them as keyof Dealer buys nothing while fighting the optional dealer.
   const val = (k: string) =>
@@ -157,6 +187,16 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     const current = ((dealer as Record<string, unknown> | undefined)?.[k] ?? "").toString();
     if (raw === current) return;
     patch.mutate({ [k]: transform ? transform(raw) : raw.trim() || null });
+  };
+
+  const profileVal = (key: keyof ApplicationProfileData) =>
+    profileDraft[key] ?? String((profile.data?.[key] ?? "") as string | number);
+  const setProfile = (key: keyof ApplicationProfileData, value: string) =>
+    setProfileDraft((current) => ({ ...current, [key]: value }));
+  const commitProfile = (key: keyof ApplicationProfileData, transform?: (value: string) => unknown) => {
+    const raw = profileDraft[key];
+    if (raw === undefined) return;
+    patchProfile.mutate({ [key]: transform ? transform(raw) : raw.trim() || null });
   };
 
   const refreshOwners = () => {
@@ -191,6 +231,15 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       setNewOwners((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "invalid" } : row));
     },
   });
+
+  const profile = useQuery({
+    queryKey: ["application-profile", dealerId],
+    queryFn: async () => api<ApplicationProfileData | null>(`/dealer-os/dealers/${dealerId}/application-profile`, {
+      authToken: (await getToken()) ?? undefined,
+    }),
+  });
+
+  useEffect(() => setProfileDraft({}), [dealerId, profile.data]);
 
   const preScreen = useQuery({
     queryKey: ["application-pre-screen", dealerId],
@@ -256,13 +305,33 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     (c) => c.consent_kind === "transactional" && c.granted && !c.revoked_at,
   );
 
-  const entityComplete = Boolean(val("name").trim() && val("entity_type").trim());
+  const taxonomyComplete = Boolean(taxonomy.industry_entry_id && taxonomy.subindustry_entry_id && taxonomy.activity_entry_id && taxonomy.naics_code);
+  const entityComplete = Boolean(
+    val("name").trim()
+      && val("entity_type").trim()
+      && val("started_on").trim()
+      && val("address").trim()
+      && val("city").trim()
+      && val("state").trim()
+      && val("zip").trim()
+      && taxonomyComplete,
+  );
+  const profileComplete = Boolean(
+    profileVal("state_of_formation").trim()
+      && profileVal("location_type").trim()
+      && profileVal("mailing_address").trim()
+      && profileVal("mailing_city").trim()
+      && profileVal("mailing_state").trim()
+      && profileVal("mailing_zip").trim()
+      && profileVal("signer_title").trim()
+      && Number(profileVal("annual_sales")) > 0,
+  );
   const rowsSaved = newOwners.length === 0 && Object.keys(ownerEdits).length === 0 && !Object.values(ownerSaveState).includes("saving") && !Object.values(ownerSaveState).includes("invalid");
   const contactComplete = ownershipComplete && !missingRequiredEmail && !missingRequiredPhone && !hasDuplicateEmail && rowsSaved;
   const facilityComplete = Number(val("funding_goal").replace(/[^0-9.]/g, "")) > 0
     && Boolean(val("funding_purpose").trim())
     && Boolean(val("use_of_proceeds_note").trim());
-  const stepReady = entityComplete && contactComplete && facilityComplete && !patch.isPending;
+  const stepReady = entityComplete && profileComplete && contactComplete && facilityComplete && !patch.isPending && !patchProfile.isPending;
 
   const saveAndContinue = async () => {
     if (!stepReady) return;
@@ -277,6 +346,18 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       zip: val("zip").trim() || null,
       funding_goal: Number(val("funding_goal").replace(/[^0-9.]/g, "")),
       funding_purpose: val("funding_purpose").trim(),
+    });
+    await patchProfile.mutateAsync({
+      dba_name: profileVal("dba_name").trim() || null,
+      website: profileVal("website").trim() || null,
+      state_of_formation: profileVal("state_of_formation").trim(),
+      location_type: profileVal("location_type").trim(),
+      mailing_address: profileVal("mailing_address").trim(),
+      mailing_city: profileVal("mailing_city").trim(),
+      mailing_state: profileVal("mailing_state").trim(),
+      mailing_zip: profileVal("mailing_zip").trim(),
+      annual_sales: Number(profileVal("annual_sales")),
+      signer_title: profileVal("signer_title").trim(),
     });
     const refreshed = await preScreen.refetch();
     setEligibilityOwnerId(refreshed.data?.incomplete_owner_ids[0] ?? null);
@@ -402,27 +483,9 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
               />
             </div>
             <div>
-              <label className="lbl">Industry</label>
-              <select
-                className="field"
-                style={{ width: "100%" }}
-                value={val("industry")}
-                onChange={(e) => {
-                  set("industry", e.target.value);
-                  patch.mutate({ industry: e.target.value });
-                }}
-              >
-                {INDUSTRIES.map(([slug, label]) => (
-                  <option key={slug} value={slug}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
               <label className="lbl">Trading since</label>
               <input
-                className="field"
+                className={`field required-field${val("started_on").trim() ? "" : " field-invalid"}`}
                 style={{ width: "100%" }}
                 type="date"
                 value={val("started_on").slice(0, 10)}
@@ -430,6 +493,23 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                 onBlur={() => commit("started_on")}
               />
             </div>
+          </div>
+          <div className="mt">
+            <ProductFinderTaxonomy
+              value={taxonomy}
+              locale="en"
+              onChange={(next) => {
+                setTaxonomy(next);
+                if (next.industry_entry_id && next.subindustry_entry_id && next.activity_entry_id) {
+                  patch.mutate({
+                    industry_entry_id: next.industry_entry_id,
+                    subindustry_entry_id: next.subindustry_entry_id,
+                    activity_entry_id: next.activity_entry_id,
+                  });
+                }
+              }}
+            />
+            {!taxonomyComplete && <span className="validation-hint">Select the complete category, subcategory, and six-digit NAICS activity.</span>}
           </div>
           <div className="mt">
             <BusinessAddressFields
@@ -441,6 +521,80 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                 set("zip", next.zip);
               }}
               onBlur={(field) => commit(field)}
+            />
+            {(!val("address").trim() || !val("city").trim() || !val("state").trim() || !val("zip").trim()) && (
+              <span className="validation-hint">Complete the physical business address.</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className={`panel${profileComplete ? "" : " panel-invalid"}`}>
+        <div className="panel-h">
+          Application identity and signer
+          <span style={{ flex: 1 }} />
+          {chip(profileComplete)}
+        </div>
+        <div className="panel-b">
+          <div style={grid}>
+            <div>
+              <label className="lbl">DBA / trade name <span className="sub">Optional</span></label>
+              <input className="field" style={{ width: "100%" }} value={profileVal("dba_name")} onChange={(event) => setProfile("dba_name", event.target.value)} onBlur={() => commitProfile("dba_name")} />
+            </div>
+            <div>
+              <label className="lbl">Website <span className="sub">Optional</span></label>
+              <input className="field" style={{ width: "100%" }} inputMode="url" placeholder="https://" value={profileVal("website")} onChange={(event) => setProfile("website", event.target.value)} onBlur={() => commitProfile("website")} />
+            </div>
+            <div>
+              <label className="lbl">State of formation</label>
+              <input className={`field required-field${profileVal("state_of_formation").trim() ? "" : " field-invalid"}`} style={{ width: "100%" }} maxLength={2} placeholder="NJ" value={profileVal("state_of_formation")} onChange={(event) => setProfile("state_of_formation", event.target.value.toUpperCase())} onBlur={() => commitProfile("state_of_formation")} />
+            </div>
+            <div>
+              <label className="lbl">Business location type</label>
+              <select className={`field required-field${profileVal("location_type").trim() ? "" : " field-invalid"}`} style={{ width: "100%" }} value={profileVal("location_type")} onChange={(event) => { setProfile("location_type", event.target.value); patchProfile.mutate({ location_type: event.target.value || null }); }}>
+                <option value="">Select</option>
+                <option value="owned">Owned</option>
+                <option value="leased">Leased</option>
+                <option value="home_based">Home based</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="lbl">Annual sales</label>
+              <input className={`field required-field num${Number(profileVal("annual_sales")) > 0 ? "" : " field-invalid"}`} style={{ width: "100%" }} type="number" min="1" inputMode="numeric" value={profileVal("annual_sales")} onChange={(event) => setProfile("annual_sales", event.target.value)} onBlur={() => commitProfile("annual_sales", (value) => Number(value) || null)} />
+            </div>
+            <div>
+              <label className="lbl">Authorized signer title</label>
+              <input className={`field required-field${profileVal("signer_title").trim() ? "" : " field-invalid"}`} style={{ width: "100%" }} placeholder="President, Managing Member, CEO" value={profileVal("signer_title")} onChange={(event) => setProfile("signer_title", event.target.value)} onBlur={() => commitProfile("signer_title")} />
+            </div>
+          </div>
+          <div className="mt">
+            <BusinessAddressFields
+              value={{
+                address: profileVal("mailing_address"),
+                city: profileVal("mailing_city"),
+                state: profileVal("mailing_state"),
+                zip: profileVal("mailing_zip"),
+              }}
+              searchLabel="Mailing address"
+              searchPlaceholder="Search the business mailing address"
+              helperText="Required for the application. Use the physical address if mail is received there."
+              onChange={(next) => {
+                setProfile("mailing_address", next.address);
+                setProfile("mailing_city", next.city);
+                setProfile("mailing_state", next.state);
+                setProfile("mailing_zip", next.zip);
+              }}
+              onResolved={(next) => patchProfile.mutate({
+                mailing_address: next.address,
+                mailing_city: next.city,
+                mailing_state: next.state,
+                mailing_zip: next.zip,
+              })}
+              onBlur={(field) => {
+                const map = { address: "mailing_address", city: "mailing_city", state: "mailing_state", zip: "mailing_zip" } as const;
+                commitProfile(map[field]);
+              }}
             />
           </div>
         </div>
@@ -692,9 +846,9 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      {patch.isError && (
+      {(patch.isError || patchProfile.isError) && (
         <div className="note">
-          <div>That did not save. Check the value and try again.</div>
+          <div>{(patch.error ?? patchProfile.error) instanceof Error ? (patch.error ?? patchProfile.error)?.message : "That did not save. Check the value and try again."}</div>
         </div>
       )}
 
@@ -702,7 +856,9 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         ready={stepReady}
         message={
           !entityComplete
-            ? "Complete the red applicant entity fields."
+            ? "Complete the red entity, physical address, and NAICS classification fields."
+            : !profileComplete
+              ? "Complete the red formation, mailing, annual sales, and signer fields."
             : !contactComplete
               ? !rowsSaved
                 ? "Save or remove every incomplete owner row."
@@ -717,7 +873,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         }
         buttonLabel="Continue to Step 2"
         onContinue={() => void saveAndContinue()}
-        pending={patch.isPending || patchOwner.isPending || createOwner.isPending}
+        pending={patch.isPending || patchProfile.isPending || patchOwner.isPending || createOwner.isPending}
       />
       <EligibilityCheckpoint
         dealerId={dealerId}

@@ -17,7 +17,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { useCase } from "@/lib/useCase";
 import { api } from "@/lib/api";
-import { applicationProfileReady, type ApplicationProfileData } from "@/lib/applicationReadiness";
+import { type SubmissionReadiness } from "@/lib/applicationReadiness";
 import { removeWorkspaceTab, upsertWorkspaceTab } from "@/lib/applicationWorkspace";
 import StepRail, { GATED_FROM } from "@/components/StepRail";
 import Conversation from "@/components/Conversation";
@@ -44,10 +44,10 @@ export default function ApplicationPage() {
   const { dealer, decision, verification, unlocked, isLoading, notFound } = useCase(id);
 
   const raw = Number(search.get("step") || "1");
-  const profile = useQuery({
-    queryKey: ["application-profile", id],
+  const readiness = useQuery({
+    queryKey: ["submission-readiness", id],
     enabled: unlocked,
-    queryFn: async () => api<ApplicationProfileData | null>(`/dealer-os/dealers/${id}/application-profile`, {
+    queryFn: async () => api<SubmissionReadiness>(`/dealer-os/dealers/${id}/submission-readiness`, {
       authToken: (await getToken()) ?? undefined,
     }),
   });
@@ -60,15 +60,16 @@ export default function ApplicationPage() {
       && dealer?.funding_goal
       && dealer?.funding_purpose
       && dealer?.use_of_proceeds_note?.trim()
+      && dealer?.industry_entry_id
+      && dealer?.subindustry_entry_id
+      && dealer?.activity_entry_id
+      && dealer?.naics_code
       && verification.ownership_complete
       && verification.owner_contact_complete
       && verification.required_credit_owner_count > 0
       && verification.pre_screen_complete,
   );
-  const formsReady = Boolean(
-    decision?.ready_for_forms
-      && applicationProfileReady(profile.data, dealer?.funding_purpose),
-  );
+  const formsReady = Boolean(readiness.data?.ready);
   const effective = step >= 2 && !intakeReady
     ? 1
     : step >= GATED_FROM && !unlocked
