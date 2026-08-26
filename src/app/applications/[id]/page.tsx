@@ -44,7 +44,7 @@ export default function ApplicationPage() {
   const router = useRouter();
   const search = useSearchParams();
   const { getToken } = useAuth();
-  const { id: meId } = useMe();
+  const { id: meId, isSuperAdmin } = useMe();
   const { dealer, decision, verification, unlocked, isLoading, notFound } = useCase(id);
 
   const raw = Number(search.get("step") || "1");
@@ -62,6 +62,15 @@ export default function ApplicationPage() {
       `/dealer-os/dealers/${id}/underwriting-review-preferences`,
       { authToken: (await getToken()) ?? undefined },
     ),
+  });
+  const caseDocs = useQuery({
+    queryKey: ["case-contracts", id],
+    enabled: unlocked,
+    queryFn: async () => api<Array<{ template_key: string; status: string }>>(
+      `/dealer-os/dealers/${id}/contracts`,
+      { authToken: (await getToken()) ?? undefined },
+    ),
+    refetchInterval: 15_000,
   });
   // Clamp rather than trust: a hand-typed ?step=9 should land on the sequence,
   // and ?step=4 on a locked file should land on the step that is actually next.
@@ -82,6 +91,9 @@ export default function ApplicationPage() {
       && verification.pre_screen_complete,
   );
   const packageReady = Boolean(readiness.data?.package_ready);
+  const applicationExecuted = Boolean(caseDocs.data?.some(
+    (document) => document.template_key === "qc_business_financing_application" && document.status === "executed",
+  ));
   const reviewTimesReady = Boolean(activeUnderwritingReviewPreference(reviewPreferences.data));
   const effective = step >= 2 && !intakeReady
     ? 1
@@ -89,7 +101,7 @@ export default function ApplicationPage() {
       ? 2
       : step >= 4 && !reviewTimesReady
         ? 3
-        : step === 5 && !packageReady
+        : step === 5 && (!packageReady || !applicationExecuted || !isSuperAdmin)
           ? 4
           : step;
 
@@ -151,6 +163,8 @@ export default function ApplicationPage() {
           intakeReady={intakeReady}
           reviewTimesReady={reviewTimesReady}
           packageReady={packageReady}
+          applicationExecuted={applicationExecuted}
+          canOpenStep5={isSuperAdmin}
           gateLabel={unlocked ? "Unlocked by verification" : "Locked until verification returns"}
           onGo={go}
         />

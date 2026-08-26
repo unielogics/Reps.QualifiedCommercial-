@@ -23,7 +23,7 @@ export const STEPS: Step[] = [
   { n: 2, title: "Verification", blurb: "Bank link · credit authorization" },
   { n: 3, title: "Financial profile", blurb: "Metrics, credit band, capacity" },
   { n: 4, title: "Underwriting package", blurb: "Route evidence · calculations" },
-  { n: 5, title: "Desk review and execution", blurb: "Summary · decision · signature" },
+  { n: 5, title: "Super-admin desk review", blurb: "Decision · status · closing" },
 ];
 
 /** Steps at or beyond this index need both authorizations back. */
@@ -35,6 +35,8 @@ export default function StepRail({
   intakeReady,
   reviewTimesReady,
   packageReady,
+  applicationExecuted,
+  canOpenStep5,
   gateLabel,
   onGo,
 }: {
@@ -43,6 +45,8 @@ export default function StepRail({
   intakeReady: boolean;
   reviewTimesReady: boolean;
   packageReady: boolean;
+  applicationExecuted: boolean;
+  canOpenStep5: boolean;
   gateLabel: string;
   onGo: (n: number) => void;
 }) {
@@ -58,7 +62,7 @@ export default function StepRail({
           const locked = (s.n === 2 && !intakeReady)
             || (s.n >= GATED_FROM && !unlocked)
             || (s.n >= 4 && !reviewTimesReady)
-            || (s.n === 5 && !packageReady);
+            || (s.n === 5 && (!packageReady || !applicationExecuted || !canOpenStep5));
           const cur = s.n === step;
           const done = s.n < step && !locked;
           return (
@@ -108,6 +112,13 @@ export default function StepRail({
                   <span />
                 </div>
               )}
+              {s.n === 5 && (
+                <div className={`stepCheckpoint${applicationExecuted ? " complete" : ""}`}>
+                  <span />
+                  <b>{applicationExecuted ? "Application executed" : "Application signature pending"}</b>
+                  <span />
+                </div>
+              )}
               <button
                 type="button"
                 className={`rung${cur ? " cur" : ""}${done ? " done" : ""}`}
@@ -119,6 +130,10 @@ export default function StepRail({
                     ? "Choose three client review windows at the end of Step 3"
                     : s.n === 5 && !packageReady
                       ? "Complete the Step 4 evidence package before desk review"
+                      : s.n === 5 && !applicationExecuted
+                        ? "The primary signer must execute the QC application at the end of Step 4"
+                        : s.n === 5 && !canOpenStep5
+                          ? "Step 5 is reserved for the super admin"
                       : locked ? gateLabel : undefined}
                 style={{
                   textAlign: "left",

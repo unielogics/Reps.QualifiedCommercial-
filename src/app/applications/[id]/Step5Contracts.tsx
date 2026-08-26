@@ -361,7 +361,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     window.setTimeout(() => setCopied((current) => current === label ? null : current), 1800);
   };
 
-  const releaseReady = Boolean(readiness.data?.ready && template);
+  const releaseReady = Boolean(readiness.data?.package_ready && template);
   const executed = caseDoc?.status === "executed";
   const outForSignature = caseDoc?.status === "out_for_signature";
   const decisionTone = readiness.data?.human_review_status === "fundable"
@@ -377,7 +377,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     <>
       <div className="panel">
         <div className="panel-h">
-          Step 5 · Final review and execution
+          Step 5 · Super-admin desk review and closing
           <span className="sp" />
           <span className={`cellchip ${decisionTone}`}>
             {humanStatus(readiness.data?.human_review_status)}
@@ -463,7 +463,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
           <div className="panel-b">
             <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
               <span className={`cellchip ${decisionTone}`}>{humanStatus(readiness.data?.human_review_status)}</span>
-              <span className="sub">Only a super admin can release the master application for signature.</span>
+              <span className="sub">Only a super admin records the final fundability decision and closing status.</span>
             </div>
             <textarea className="field mt" style={{ width: "100%" }} rows={3} placeholder="Decision note, conditions, or reason this route is not fundable" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
             <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -515,8 +515,8 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
               <thead><tr><th>Stage</th><th>Record</th><th>Who completes it</th><th>Purpose</th></tr></thead>
               <tbody>
                 <tr><td>Step 2</td><td><b>FCRA / iSoftPull consent</b></td><td>Every 20%+ owner</td><td>Independent authorization for that owner’s soft credit inquiry. This is not the financing application.</td></tr>
-                <tr><td>Step 4</td><td><b>No agreement is signed</b></td><td>Not applicable</td><td>Step 4 assembles and validates the underwriting evidence package.</td></tr>
-                <tr><td>Step 5</td><td><b>QC Business Financing Application and Certifications</b></td><td>Primary owner or authorized representative</td><td>Certifies the business, ownership, request, disclosures, and evidence summary.</td></tr>
+                <tr><td>Step 4</td><td><b>QC Business Financing Application and Certifications</b></td><td>Primary owner or authorized representative</td><td>Certifies the business, ownership, request, disclosures, and evidence summary before the file reaches desk review.</td></tr>
+                <tr><td>Step 5</td><td><b>No new client signature</b></td><td>Super admin</td><td>Reviews the executed application, records the decision and status, manages the bucket, and completes the file disposition.</td></tr>
               </tbody>
             </table>
           </div>
@@ -529,12 +529,12 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
           QC master application
           <span className="sp" />
           <span className={`cellchip ${executed ? "c-ok" : releaseReady ? "c-acc" : "c-warn"}`}>
-            {executed ? "Executed" : outForSignature ? "Awaiting signature" : releaseReady ? "Ready to generate" : "Desk release required"}
+            {executed ? "Executed" : outForSignature ? "Awaiting signature" : releaseReady ? "Ready to generate" : "Step 4 package required"}
           </span>
         </div>
         <div className="panel-b">
           <p className="sub" style={{ marginTop: 0 }}>The populated lender-neutral PDF excludes SSNs, raw credit scores, and downstream lender identity. After execution, the customer receives the signed PDF by email and the secure room retains a download copy. An email failure never invalidates a signature.</p>
-          {!releaseReady && !executed && <div className="warnline">A super-admin fundable decision is required before generation or delivery.</div>}
+          {!releaseReady && !executed && <div className="warnline">Complete the Step 4 evidence package before generation or delivery.</div>}
           <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
             <button type="button" className="btn pri" disabled={!releaseReady || generate.isPending || outForSignature || executed} onClick={() => generate.mutate()}><FileSignature size={16} /> {generate.isPending ? "Generating PDF…" : caseDoc?.filled_sha256 ? "Regenerate application" : "Generate application"}</button>
             {caseDoc?.filled_sha256 && <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate()}><Download size={16} /> {executed ? "View executed agreement" : "View populated agreement"}</button>}

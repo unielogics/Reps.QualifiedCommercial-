@@ -31,6 +31,7 @@ import UnderwritingSlots from "@/components/UnderwritingSlots";
 type Period = {
   period: string;
   deposits: number | null;
+  starting_balance: number | null;
   ending_balance: number | null;
   avg_daily_balance: number | null;
   low_balance: number | null;
@@ -58,8 +59,17 @@ function monthLabel(iso: string): string {
   });
 }
 
-/** Bars for deposits with an average-daily-balance line over them, as designed. */
-function DepositsChart({ rows }: { rows: Period[] }) {
+type BalanceKey = "starting_balance" | "ending_balance" | "avg_daily_balance";
+
+const BALANCE_SERIES: Array<{ key: BalanceKey; label: string; color: string }> = [
+  { key: "starting_balance", label: "Starting balance", color: "#0d6e63" },
+  { key: "ending_balance", label: "Ending balance", color: "#1b4b9e" },
+  { key: "avg_daily_balance", label: "Average daily balance", color: "#b78600" },
+];
+
+/** Evidence-backed monthly balances. Hover, focus, or tap a month for details. */
+function BalanceChart({ rows }: { rows: Period[] }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   if (rows.length === 0) {
     return (
       <span className="sub">
@@ -68,72 +78,144 @@ function DepositsChart({ rows }: { rows: Period[] }) {
       </span>
     );
   }
-  const W = 640;
-  const H = 190;
-  const top = 36;
-  const base = 150;
-  const maxDep = Math.max(...rows.map((r) => r.deposits ?? 0), 1);
-  const maxAdb = Math.max(...rows.map((r) => r.avg_daily_balance ?? 0), 1);
-  const slot = (W - 56) / rows.length;
-  const barW = Math.min(54, slot * 0.56);
-
-  const x = (i: number) => 40 + slot * i + slot / 2;
-  const yDep = (v: number) => base - (v / maxDep) * (base - top);
-  const yAdb = (v: number) => base - (v / maxAdb) * (base - top) * 0.72;
-
-  const line = rows
-    .map((r, i) => `${x(i)},${yAdb(r.avg_daily_balance ?? 0)}`)
-    .join(" ");
+  const values = rows.flatMap((row) => BALANCE_SERIES.map(({ key }) => row[key])).filter(
+    (value): value is number => value !== null && Number.isFinite(value),
+  );
+  if (values.length === 0) {
+    return <span className="sub">The statement months are present, but no readable monthly balance figures were found.</span>;
+  }
+  const W = 720;
+  const H = 230;
+  const left = 64;
+  const right = 22;
+  const top = 24;
+  const bottom = 184;
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const spread = Math.max(rawMax - rawMin, Math.abs(rawMax) * 0.1, 1);
+  const minimum = rawMin >= 0 ? 0 : rawMin - spread * 0.08;
+  const maximum = rawMax + spread * 0.08;
+  const slot = (W - left - right) / Math.max(rows.length, 1);
+  const x = (index: number) => left + slot * index + slot / 2;
+  const y = (value: number) => bottom - ((value - minimum) / Math.max(maximum - minimum, 1)) * (bottom - top);
+  const segments = (key: BalanceKey): string[] => {
+    const result: string[] = [];
+    let current: string[] = [];
+    rows.forEach((row, index) => {
+      const value = row[key];
+      if (value === null || !Number.isFinite(value)) {
+        if (current.length > 1) result.push(current.join(" "));
+        current = [];
+        return;
+      }
+      current.push(`${x(index)},${y(value)}`);
+    });
+    if (current.length > 1) result.push(current.join(" "));
+    return result;
+  };
+  const active = activeIndex === null ? null : rows[activeIndex];
+  const tickValues = [maximum, (maximum + minimum) / 2, minimum];
 
   return (
-    <>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }} aria-label="Monthly deposits with average daily balance overlay">
-        <line x1="40" y1={base} x2={W - 20} y2={base} stroke="rgba(15,23,32,0.16)" strokeWidth="1" />
-        <line x1="40" y1="100" x2={W - 20} y2="100" stroke="rgba(15,23,32,0.06)" strokeWidth="1" />
-        <line x1="40" y1="50" x2={W - 20} y2="50" stroke="rgba(15,23,32,0.06)" strokeWidth="1" />
-        {rows.map((r, i) => {
-          const v = r.deposits ?? 0;
-          const y = yDep(v);
+    <div className="balanceChart">
+      <svg viewBox={`0 0 ${W} ${H}`} aria-label="Starting, ending, and average daily balances for up to six statement months">
+        {tickValues.map((value, index) => {
+          const tickY = top + ((bottom - top) / 2) * index;
           return (
-            <rect
-              key={r.period}
-              x={x(i) - barW / 2}
-              y={y}
-              width={barW}
-              height={Math.max(0, base - y)}
-              rx="3"
-              fill="#1b4b9e"
-            />
+            <g key={index}>
+              <line x1={left} y1={tickY} x2={W - right} y2={tickY} className="balanceGrid" />
+              <text x={left - 8} y={tickY + 4} textAnchor="end" className="balanceAxis">{money(value, true)}</text>
+            </g>
           );
         })}
-        <polyline points={line} fill="none" stroke="#8a6a1f" strokeWidth="2" />
-        {rows.map((r, i) => (
-          <circle key={`d${r.period}`} cx={x(i)} cy={yAdb(r.avg_daily_balance ?? 0)} r="3" fill="#8a6a1f" />
+        {BALANCE_SERIES.map((series) => (
+          <g key={series.key}>
+            {segments(series.key).map((points, index) => (
+              <polyline key={index} points={points} fill="none" stroke={series.color} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+            ))}
+            {rows.map((row, index) => row[series.key] !== null && (
+              <circle key={`${series.key}-${row.period}`} cx={x(index)} cy={y(row[series.key] as number)} r={activeIndex === index ? 5 : 3.5} fill={series.color} stroke="var(--surface)" strokeWidth="2" />
+            ))}
+          </g>
         ))}
-        {rows.map((r, i) => (
-          <text key={`t${r.period}`} x={x(i)} y="170" textAnchor="middle" fontFamily="Inter" fontSize="11" fill="#5a6675">
-            {monthLabel(r.period)}
-          </text>
+        {rows.map((row, index) => (
+          <g key={row.period}>
+            <rect
+              x={left + slot * index}
+              y={top}
+              width={slot}
+              height={bottom - top + 24}
+              className={activeIndex === index ? "balanceHit active" : "balanceHit"}
+              tabIndex={0}
+              role="button"
+              aria-label={`${monthLabel(row.period)} financial details`}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+              onFocus={() => setActiveIndex(index)}
+              onBlur={() => setActiveIndex(null)}
+              onClick={() => setActiveIndex((current) => current === index ? null : index)}
+            />
+            <text x={x(index)} y={bottom + 25} textAnchor="middle" className="balanceMonth">{monthLabel(row.period)}</text>
+          </g>
         ))}
-        <text x="34" y="54" textAnchor="end" fontFamily="Inter" fontSize="10" fill="#8b97a6">
-          {money(maxDep, true)}
-        </text>
-        <text x="34" y={base + 4} textAnchor="end" fontFamily="Inter" fontSize="10" fill="#8b97a6">
-          $0
-        </text>
       </svg>
       <div className="lg">
-        <span>
-          <i style={{ background: "#1b4b9e" }} />
-          Monthly deposits
-        </span>
-        <span>
-          <i style={{ background: "#8a6a1f" }} />
-          Average daily balance
-        </span>
+        {BALANCE_SERIES.map((series) => <span key={series.key}><i style={{ background: series.color }} />{series.label}</span>)}
       </div>
-    </>
+      {active ? (
+        <div className="balanceDetails" role="status">
+          <div><span>Statement month</span><b>{new Date(`${active.period}T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" })}</b></div>
+          <div><span>Starting balance</span><b>{money(active.starting_balance)}</b></div>
+          <div><span>Ending balance</span><b>{money(active.ending_balance)}</b></div>
+          <div><span>Average daily balance</span><b>{money(active.avg_daily_balance)}</b></div>
+          <div><span>Deposits</span><b>{money(active.deposits)}</b></div>
+          <div><span>Low balance</span><b>{money(active.low_balance)}</b></div>
+          <div><span>Returned items</span><b>{active.nsf_count ?? "—"}</b></div>
+        </div>
+      ) : <p className="balanceHint">Hover, focus, or tap a month to inspect its statement details.</p>}
+    </div>
   );
+}
+
+function hasBankBalances(row: Period): boolean {
+  return [row.starting_balance, row.ending_balance, row.avg_daily_balance, row.deposits]
+    .some((value) => value !== null);
+}
+
+function combinedBusinessPeriods(periods: Period[]): Period[] {
+  const grouped = new Map<string, Period[]>();
+  periods.forEach((row) => grouped.set(row.period, [...(grouped.get(row.period) ?? []), row]));
+  const sum = (rows: Period[], key: keyof Pick<Period, "deposits" | "starting_balance" | "ending_balance" | "avg_daily_balance" | "low_balance">) => {
+    const values = rows.map((row) => row[key]).filter((value): value is number => value !== null);
+    return values.length ? values.reduce((total, value) => total + value, 0) : null;
+  };
+  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([period, monthRows]) => {
+    const legacy = monthRows.filter((row) => row.account_id === null && hasBankBalances(row));
+    if (legacy.length > 0) {
+      return [...legacy].sort((left, right) => (
+        [right.starting_balance, right.ending_balance, right.avg_daily_balance, right.deposits].filter((value) => value !== null).length
+        - [left.starting_balance, left.ending_balance, left.avg_daily_balance, left.deposits].filter((value) => value !== null).length
+      ))[0];
+    }
+    const seen = new Set<string>();
+    const attributed = monthRows.filter((row) => {
+      if (row.account_id === null || !hasBankBalances(row)) return false;
+      const signature = [row.starting_balance, row.ending_balance, row.avg_daily_balance, row.deposits].join("|");
+      if (seen.has(signature)) return false;
+      seen.add(signature);
+      return true;
+    });
+    return {
+      period,
+      account_id: null,
+      deposits: sum(attributed, "deposits"),
+      starting_balance: sum(attributed, "starting_balance"),
+      ending_balance: sum(attributed, "ending_balance"),
+      avg_daily_balance: sum(attributed, "avg_daily_balance"),
+      low_balance: sum(attributed, "low_balance"),
+      nsf_count: attributed.length ? attributed.reduce((total, row) => total + (row.nsf_count ?? 0), 0) : null,
+    };
+  }).filter(hasBankBalances);
 }
 
 function Meter({
@@ -203,10 +285,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
   const m = health.data?.snapshot?.metrics ?? {};
   // Business-level rows only, newest six, oldest first so the chart reads left
   // to right the way a person would.
-  const rows = (periods.data ?? [])
-    .filter((p) => p.account_id === null)
-    .slice(0, 6)
-    .reverse();
+  const rows = combinedBusinessPeriods(periods.data ?? []).slice(-6);
 
   const dscr = m.dscr ?? null;
   const adb = m.adb ?? null;
@@ -267,12 +346,12 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
 
       <div className="panel">
         <div className="panel-h">
-          Deposits and balance · six months
+          Monthly balance trend · up to six months
           <span style={{ flex: 1 }} />
-          <span className="sub">Source: the connected bank</span>
+          <span className="sub">Source: verified statement evidence across connected accounts</span>
         </div>
         <div className="panel-b">
-          {periods.isLoading ? <span className="sub">Loading…</span> : <DepositsChart rows={rows} />}
+          {periods.isLoading ? <span className="sub">Loading…</span> : <BalanceChart rows={rows} />}
         </div>
       </div>
 

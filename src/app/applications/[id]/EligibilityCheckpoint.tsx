@@ -138,11 +138,19 @@ function fileComplete(answer: FileAnswers): boolean {
   ));
 }
 
-function YesNo({ value, onChange }: { value: boolean | undefined; onChange: (value: boolean) => void }) {
+function YesNo({
+  value,
+  label,
+  onChange,
+}: {
+  value: boolean | undefined;
+  label?: string;
+  onChange: (value: boolean) => void;
+}) {
   return (
-    <div className="eligibilityYesNo" role="group">
-      <button type="button" className={value === true ? "selected" : ""} onClick={() => onChange(true)}>Yes</button>
-      <button type="button" className={value === false ? "selected" : ""} onClick={() => onChange(false)}>No</button>
+    <div className="eligibilityYesNo" role="group" aria-label={label}>
+      <button type="button" aria-pressed={value === true} className={value === true ? "selected" : ""} onClick={() => onChange(true)}>Yes</button>
+      <button type="button" aria-pressed={value === false} className={value === false ? "selected" : ""} onClick={() => onChange(false)}>No</button>
     </div>
   );
 }
@@ -170,6 +178,9 @@ export default function EligibilityCheckpoint({
   const [stage, setStage] = useState(0);
   const [answers, setAnswers] = useState<Record<string, OwnerAnswers>>({});
   const [fileAnswers, setFileAnswers] = useState<FileAnswers>({});
+  const [residencyEligible, setResidencyEligible] = useState<Record<string, boolean | undefined>>({});
+  const [bankruptcyHistory, setBankruptcyHistory] = useState<Record<string, boolean | undefined>>({});
+  const [felonyHistory, setFelonyHistory] = useState<Record<string, boolean | undefined>>({});
   const [showSummary, setShowSummary] = useState(false);
   const [error, setError] = useState("");
 
@@ -185,6 +196,24 @@ export default function EligibilityCheckpoint({
     if (!open || !query.data) return;
     setAnswers(query.data.owner_answers ?? {});
     setFileAnswers(query.data.file_answers ?? {});
+    setResidencyEligible(Object.fromEntries(Object.entries(query.data.owner_answers ?? {}).map(
+      ([ownerId, ownerAnswer]) => [
+        ownerId,
+        ownerAnswer.residency_status ? ownerAnswer.residency_status !== "other" : undefined,
+      ],
+    )));
+    setBankruptcyHistory(Object.fromEntries(Object.entries(query.data.owner_answers ?? {}).map(
+      ([ownerId, ownerAnswer]) => [
+        ownerId,
+        ownerAnswer.bankruptcy_timing ? ownerAnswer.bankruptcy_timing !== "none" : undefined,
+      ],
+    )));
+    setFelonyHistory(Object.fromEntries(Object.entries(query.data.owner_answers ?? {}).map(
+      ([ownerId, ownerAnswer]) => [
+        ownerId,
+        ownerAnswer.felony_timing ? ownerAnswer.felony_timing !== "none" : undefined,
+      ],
+    )));
     const preferred = initialOwnerId
       ? requiredOwners.findIndex((owner) => owner.id === initialOwnerId)
       : requiredOwners.findIndex((owner) => !query.data?.completed_owner_ids.includes(owner.id));
@@ -212,6 +241,12 @@ export default function EligibilityCheckpoint({
   const owner = stage < requiredOwners.length ? requiredOwners[stage] : null;
   const answer = owner ? (answers[owner.id] ?? {}) : undefined;
   const onBusiness = stage === requiredOwners.length;
+  const updateOwner = (ownerId: string, patch: Partial<OwnerAnswers>) => {
+    setAnswers((state) => ({
+      ...state,
+      [ownerId]: { ...(state[ownerId] ?? {}), ...patch },
+    }));
+  };
 
   const next = async () => {
     setError("");
@@ -271,12 +306,26 @@ export default function EligibilityCheckpoint({
                     <div><span className="eyebrow">Required owner {stage + 1} of {requiredOwners.length}</span><h3>{owner.full_name}</h3></div>
                     <span className="cellchip c-warn">{Number(owner.ownership_pct ?? 0).toFixed(2)}% owner</span>
                   </div>
-                  <label className={answer?.residency_status ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
-                    <div><b>Residency status</b><span>The direct programs distinguish U.S. citizens, legal permanent residents, and other statuses.</span></div>
-                    <select className="field" value={answer?.residency_status ?? ""} onChange={(event) => setAnswers((state) => ({ ...state, [owner.id]: { ...(state[owner.id] ?? {}), residency_status: event.target.value as OwnerAnswers["residency_status"] } }))}>
-                      <option value="">Select</option><option value="citizen">U.S. citizen</option><option value="legal_permanent_resident">Legal permanent resident</option><option value="other">Other</option>
-                    </select>
-                  </label>
+                  <div className={typeof residencyEligible[owner.id] === "boolean" ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
+                    <div><b>Is this owner a U.S. citizen or legal permanent resident?</b><span>Select Yes or No. If Yes, identify the exact status below.</span></div>
+                    <YesNo
+                      label="U.S. citizen or legal permanent resident"
+                      value={residencyEligible[owner.id]}
+                      onChange={(value) => {
+                        setResidencyEligible((state) => ({ ...state, [owner.id]: value }));
+                        if (!value) updateOwner(owner.id, { residency_status: "other" });
+                        else if (answer?.residency_status === "other") updateOwner(owner.id, { residency_status: undefined });
+                      }}
+                    />
+                  </div>
+                  {residencyEligible[owner.id] === true && (
+                    <label className={answer?.residency_status && answer.residency_status !== "other" ? "eligibilityQuestion complete eligibilityFollowup" : "eligibilityQuestion invalid eligibilityFollowup"}>
+                      <div><b>Which status applies?</b><span>The routing engine preserves this distinction.</span></div>
+                      <select className="field" value={answer?.residency_status === "other" ? "" : answer?.residency_status ?? ""} onChange={(event) => updateOwner(owner.id, { residency_status: event.target.value as OwnerAnswers["residency_status"] })}>
+                        <option value="">Select status</option><option value="citizen">U.S. citizen</option><option value="legal_permanent_resident">Legal permanent resident</option>
+                      </select>
+                    </label>
+                  )}
                   {([
                     ["credit_660_or_higher", "Is the owner's estimated credit at least 660?", "iSoftPull will verify a tier later; do not enter a raw score."],
                     ["foreclosure_within_3_years", "Foreclosure within the past 3 years?", "A disclosed event may block only one route."],
@@ -289,21 +338,47 @@ export default function EligibilityCheckpoint({
                   ] as const).map(([key, title, help]) => (
                     <div key={key} className={typeof answer?.[key] === "boolean" ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
                       <div><b>{title}</b><span>{help}</span></div>
-                      <YesNo value={answer?.[key]} onChange={(value) => setAnswers((state) => ({ ...state, [owner.id]: { ...(state[owner.id] ?? {}), [key]: value } }))} />
+                      <YesNo label={title} value={answer?.[key]} onChange={(value) => updateOwner(owner.id, { [key]: value })} />
                     </div>
                   ))}
-                  <label className={answer?.bankruptcy_timing ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
-                    <div><b>Bankruptcy history</b><span>Select the most recent timing.</span></div>
-                    <select className="field" value={answer?.bankruptcy_timing ?? ""} onChange={(event) => setAnswers((state) => ({ ...state, [owner.id]: { ...(state[owner.id] ?? {}), bankruptcy_timing: event.target.value as OwnerAnswers["bankruptcy_timing"] } }))}>
-                      <option value="">Select</option><option value="none">None</option><option value="within_3_years">Within 3 years</option><option value="4_to_7_years">4-7 years ago</option><option value="more_than_7_years">More than 7 years ago</option>
-                    </select>
-                  </label>
-                  <label className={answer?.felony_timing ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
-                    <div><b>Felony history</b><span>Select the most recent timing.</span></div>
-                    <select className="field" value={answer?.felony_timing ?? ""} onChange={(event) => setAnswers((state) => ({ ...state, [owner.id]: { ...(state[owner.id] ?? {}), felony_timing: event.target.value as OwnerAnswers["felony_timing"] } }))}>
-                      <option value="">Select</option><option value="none">None</option><option value="within_10_years">Within 10 years</option><option value="more_than_10_years">More than 10 years ago</option>
-                    </select>
-                  </label>
+                  <div className={typeof bankruptcyHistory[owner.id] === "boolean" ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
+                    <div><b>Has this owner ever filed for bankruptcy?</b><span>Select Yes or No. Timing is requested only when needed.</span></div>
+                    <YesNo
+                      label="Bankruptcy history"
+                      value={bankruptcyHistory[owner.id]}
+                      onChange={(value) => {
+                        setBankruptcyHistory((state) => ({ ...state, [owner.id]: value }));
+                        updateOwner(owner.id, { bankruptcy_timing: value ? undefined : "none" });
+                      }}
+                    />
+                  </div>
+                  {bankruptcyHistory[owner.id] === true && (
+                    <label className={answer?.bankruptcy_timing && answer.bankruptcy_timing !== "none" ? "eligibilityQuestion complete eligibilityFollowup" : "eligibilityQuestion invalid eligibilityFollowup"}>
+                      <div><b>When was the most recent bankruptcy?</b><span>The timing can affect each program differently.</span></div>
+                      <select className="field" value={answer?.bankruptcy_timing === "none" ? "" : answer?.bankruptcy_timing ?? ""} onChange={(event) => updateOwner(owner.id, { bankruptcy_timing: event.target.value as OwnerAnswers["bankruptcy_timing"] })}>
+                        <option value="">Select timing</option><option value="within_3_years">Within 3 years</option><option value="4_to_7_years">4-7 years ago</option><option value="more_than_7_years">More than 7 years ago</option>
+                      </select>
+                    </label>
+                  )}
+                  <div className={typeof felonyHistory[owner.id] === "boolean" ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
+                    <div><b>Does this owner have a felony conviction?</b><span>Select Yes or No. Timing is requested only when needed.</span></div>
+                    <YesNo
+                      label="Felony history"
+                      value={felonyHistory[owner.id]}
+                      onChange={(value) => {
+                        setFelonyHistory((state) => ({ ...state, [owner.id]: value }));
+                        updateOwner(owner.id, { felony_timing: value ? undefined : "none" });
+                      }}
+                    />
+                  </div>
+                  {felonyHistory[owner.id] === true && (
+                    <label className={answer?.felony_timing && answer.felony_timing !== "none" ? "eligibilityQuestion complete eligibilityFollowup" : "eligibilityQuestion invalid eligibilityFollowup"}>
+                      <div><b>When was the most recent felony conviction?</b><span>The timing can affect each program differently.</span></div>
+                      <select className="field" value={answer?.felony_timing === "none" ? "" : answer?.felony_timing ?? ""} onChange={(event) => updateOwner(owner.id, { felony_timing: event.target.value as OwnerAnswers["felony_timing"] })}>
+                        <option value="">Select timing</option><option value="within_10_years">Within 10 years</option><option value="more_than_10_years">More than 10 years ago</option>
+                      </select>
+                    </label>
+                  )}
                 </>
               )}
 
@@ -316,7 +391,7 @@ export default function EligibilityCheckpoint({
                       {group.questions.filter(({ showWhen }) => !showWhen || showWhen(fileAnswers)).map(({ key, title, help }) => (
                         <div key={key} className={typeof fileAnswers[key] === "boolean" ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
                           <div><b>{title}</b><span>{help}</span></div>
-                          <YesNo value={fileAnswers[key]} onChange={(value) => setFileAnswers((state) => ({ ...state, [key]: value }))} />
+                          <YesNo label={title} value={fileAnswers[key]} onChange={(value) => setFileAnswers((state) => ({ ...state, [key]: value }))} />
                         </div>
                       ))}
                     </section>
