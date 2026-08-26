@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Factory, Plus, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
 
 export type TaxonomyEntry = {
@@ -13,6 +13,13 @@ export type TaxonomyEntry = {
   label: string;
   parent_id: string | null;
   status: "official" | "approved" | "pending";
+  path?: Array<{
+    id: string;
+    level: 2 | 3 | 6;
+    code: string | null;
+    label: string;
+    parent_id: string | null;
+  }>;
 };
 
 export type ProductFinderTaxonomyValue = {
@@ -41,136 +48,18 @@ const EMPTY: ProductFinderTaxonomyValue = {
   taxonomy_status: "unclassified",
 };
 
-function TaxonomyCombobox({
-  label,
-  placeholder,
-  level,
-  parentId,
-  value,
-  disabled,
-  locale,
-  onSelect,
-}: {
-  label: string;
-  placeholder: string;
-  level: 2 | 3 | 6;
-  parentId?: string | null;
-  value: TaxonomyEntry | null;
-  disabled?: boolean;
-  locale: "en" | "es";
-  onSelect: (entry: TaxonomyEntry | null) => void;
-}) {
-  const { getToken } = useAuth();
-  const root = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [addingCustom, setAddingCustom] = useState(false);
-  const [customLabel, setCustomLabel] = useState("");
-  const [customCode, setCustomCode] = useState("");
-  const search = query.trim();
-  const rows = useQuery({
-    queryKey: ["field-desk-taxonomy", level, parentId ?? null, search],
-    enabled: !disabled && (level === 2 || Boolean(parentId)),
-    queryFn: async () => {
-      const params = new URLSearchParams({ level: String(level), page_size: "100" });
-      if (parentId) params.set("parent_id", parentId);
-      if (search) params.set("q", search);
-      return api<{ items: TaxonomyEntry[] }>(`/application-profiles/taxonomy/search?${params}`, {
-        authToken: (await getToken()) ?? undefined,
-      });
-    },
-  });
-  const contribute = useMutation({
-    mutationFn: async () => api<TaxonomyEntry>("/dealer-os/product-finder/taxonomy/contributions", {
-      method: "POST",
-      authToken: (await getToken()) ?? undefined,
-      body: JSON.stringify({
-        level,
-        label: customLabel.trim(),
-        code: level === 6 ? customCode.trim() : null,
-        parent_id: parentId || null,
-      }),
-    }),
-    onSuccess: (entry) => {
-      onSelect(entry);
-      setAddingCustom(false);
-      setCustomLabel("");
-      setCustomCode("");
-      setOpen(false);
-    },
-  });
+function entriesFromValue(value: ProductFinderTaxonomyValue): TaxonomyEntry[] {
+  const status = value.taxonomy_status === "pending" ? "pending" : "official";
+  const rows: TaxonomyEntry[] = [];
+  if (value.industry_entry_id) rows.push({ id: value.industry_entry_id, level: 2, code: value.industry || null, label: value.industry_label, parent_id: null, status });
+  if (value.subindustry_entry_id) rows.push({ id: value.subindustry_entry_id, level: 3, code: value.subindustry || null, label: value.subindustry_label, parent_id: value.industry_entry_id, status });
+  if (value.activity_entry_id) rows.push({ id: value.activity_entry_id, level: 6, code: value.naics_code || null, label: value.naics_label, parent_id: value.subindustry_entry_id, status });
+  return rows;
+}
 
-  useEffect(() => {
-    const close = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, []);
-
-  useEffect(() => {
-    setQuery("");
-    setOpen(false);
-  }, [parentId]);
-
-  return (
-    <div className="taxonomyField" ref={root}>
-      <label className="lbl">{label}</label>
-      <button
-        type="button"
-        className="taxonomyTrigger"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span>{value ? `${value.code ? `${value.code} · ` : ""}${value.label}` : placeholder}</span>
-        {value ? (
-          <X
-            size={15}
-            aria-label={`Clear ${label}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect(null);
-            }}
-          />
-        ) : <ChevronDown size={16} />}
-      </button>
-      {open && !disabled && (
-        <div className="taxonomyMenu">
-          <div className="taxonomySearch"><Search size={15} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or NAICS code" /></div>
-          <div className="taxonomyOptions" role="listbox">
-            {rows.isLoading && <div className="taxonomyEmpty">Searching classifications…</div>}
-            {!rows.isLoading && !(rows.data?.items.length) && <div className="taxonomyEmpty">No matching classification.</div>}
-            {(rows.data?.items ?? []).map((entry) => (
-              <button
-                type="button"
-                role="option"
-                aria-selected={entry.id === value?.id}
-                key={entry.id}
-                onClick={() => { onSelect(entry); setQuery(""); setOpen(false); }}
-              >
-                <span><b>{entry.code || "Custom"}</b><small>{entry.label}</small></span>
-                {entry.id === value?.id && <Check size={16} />}
-              </button>
-            ))}
-          </div>
-          {!addingCustom ? (
-            <button type="button" className="taxonomyCustomAction" onClick={() => setAddingCustom(true)}>
-              <Plus size={15} /> {locale === "es" ? "Sugerir una clasificacion" : "Suggest a custom classification"}
-            </button>
-          ) : (
-            <div className="taxonomyCustomForm">
-              <input value={customLabel} onChange={(event) => setCustomLabel(event.target.value)} placeholder={locale === "es" ? "Nombre de la actividad" : "Classification name"} />
-              {level === 6 && <input value={customCode} inputMode="numeric" maxLength={6} onChange={(event) => setCustomCode(event.target.value.replace(/\D/g, ""))} placeholder={locale === "es" ? "Codigo NAICS de 6 digitos" : "6-digit NAICS code"} />}
-              {contribute.isError && <small>{contribute.error instanceof Error ? contribute.error.message : "Unable to save classification."}</small>}
-              <div><button type="button" onClick={() => setAddingCustom(false)}>{locale === "es" ? "Cancelar" : "Cancel"}</button><button type="button" disabled={customLabel.trim().length < 2 || (level === 6 && customCode.length !== 6) || contribute.isPending} onClick={() => contribute.mutate()}>{contribute.isPending ? "Saving…" : locale === "es" ? "Guardar sugerencia" : "Save suggestion"}</button></div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+function resultPath(entry: TaxonomyEntry): TaxonomyEntry[] {
+  if (!entry.path?.length) return [entry];
+  return entry.path.map((item) => ({ ...item, status: item.id === entry.id ? entry.status : "official" }));
 }
 
 export default function ProductFinderTaxonomy({
@@ -182,111 +71,173 @@ export default function ProductFinderTaxonomy({
   onChange: (value: ProductFinderTaxonomyValue) => void;
   locale: "en" | "es";
 }) {
-  const [industryEntry, setIndustryEntry] = useState<TaxonomyEntry | null>(null);
-  const [subindustryEntry, setSubindustryEntry] = useState<TaxonomyEntry | null>(null);
-  const [activityEntry, setActivityEntry] = useState<TaxonomyEntry | null>(null);
-  const labels = locale === "es" ? {
-    category: "Categoria de industria",
-    subcategory: "Subcategoria",
-    activity: "NAICS / actividad comercial",
-    chooseCategory: "Seleccione una categoria",
-    chooseSubcategory: "Seleccione primero una categoria",
-    chooseActivity: "Seleccione primero una subcategoria",
-    final: "Clasificacion seleccionada",
+  const { getToken } = useAuth();
+  const dialog = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [path, setPath] = useState<TaxonomyEntry[]>(() => entriesFromValue(value));
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customLabel, setCustomLabel] = useState("");
+  const [customCode, setCustomCode] = useState("");
+  const text = locale === "es" ? {
+    label: "Industria y actividad NAICS", placeholder: "Seleccione la actividad comercial",
+    title: "Buscar actividad comercial", help: "Explore por categoria o busque por nombre, actividad o codigo NAICS.",
+    root: "Todas las industrias", search: "Buscar industria, actividad o codigo NAICS",
+    category: "Categoria", subcategory: "Subcategoria", activity: "Actividad NAICS de 6 digitos",
+    empty: "No se encontraron clasificaciones.", custom: "Sugerir una clasificacion",
+    customName: "Nombre de la clasificacion", customCode: "Codigo NAICS de 6 digitos",
+    cancel: "Cancelar", save: "Guardar sugerencia", selected: "Seleccion actual", clear: "Borrar",
+    confirm: "Confirmar actividad", choose: "Seleccione una actividad de 6 digitos para continuar.",
   } : {
-    category: "Industry category",
-    subcategory: "Industry subcategory",
-    activity: "NAICS / business activity",
-    chooseCategory: "Select a category",
-    chooseSubcategory: "Select a category first",
-    chooseActivity: "Select a subcategory first",
-    final: "Selected classification",
+    label: "Industry and NAICS activity", placeholder: "Choose the business activity",
+    title: "Find the business activity", help: "Drill down by category or search by industry name, activity, or NAICS code.",
+    root: "All industries", search: "Search industry, activity, or NAICS code",
+    category: "Category", subcategory: "Subcategory", activity: "Six-digit NAICS activity",
+    empty: "No matching classifications.", custom: "Suggest a custom classification",
+    customName: "Classification name", customCode: "Six-digit NAICS code",
+    cancel: "Cancel", save: "Save suggestion", selected: "Current selection", clear: "Clear",
+    confirm: "Confirm activity", choose: "Choose a six-digit activity to continue.",
   };
 
   useEffect(() => {
-    const status = value.taxonomy_status === "pending" ? "pending" : "official";
-    setIndustryEntry(value.industry_entry_id ? {
-      id: value.industry_entry_id,
-      level: 2,
-      code: value.industry || null,
-      label: value.industry_label,
-      parent_id: null,
-      status,
-    } : null);
-    setSubindustryEntry(value.subindustry_entry_id ? {
-      id: value.subindustry_entry_id,
-      level: 3,
-      code: value.subindustry || null,
-      label: value.subindustry_label,
-      parent_id: value.industry_entry_id,
-      status,
-    } : null);
-    setActivityEntry(value.activity_entry_id ? {
-      id: value.activity_entry_id,
-      level: 6,
-      code: value.naics_code || null,
-      label: value.naics_label,
-      parent_id: value.subindustry_entry_id,
-      status,
-    } : null);
-  }, [
-    value.activity_entry_id,
-    value.industry,
-    value.industry_entry_id,
-    value.industry_label,
-    value.naics_code,
-    value.naics_label,
-    value.subindustry,
-    value.subindustry_entry_id,
-    value.subindustry_label,
-    value.taxonomy_status,
-  ]);
+    if (!open) setPath(entriesFromValue(value));
+  }, [open, value]);
 
-  const selectIndustry = (entry: TaxonomyEntry | null) => {
-    setIndustryEntry(entry);
-    setSubindustryEntry(null);
-    setActivityEntry(null);
-    onChange({
-      ...EMPTY,
-      industry_entry_id: entry?.id ?? null,
-      industry: entry?.code ?? "",
-      industry_label: entry?.label ?? "",
-      taxonomy_status: entry?.status === "pending" ? "pending" : "unclassified",
-    });
+  useEffect(() => {
+    if (!open) return;
+    const prior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.setTimeout(() => searchInput.current?.focus(), 0);
+    return () => { document.body.style.overflow = prior; };
+  }, [open]);
+
+  const search = query.trim();
+  const currentLevel: 2 | 3 | 6 = path.length === 0 ? 2 : path.length === 1 ? 3 : 6;
+  const parentId = currentLevel === 2 ? null : path[path.length - 1]?.id ?? null;
+  const results = useQuery({
+    queryKey: ["field-desk-taxonomy-drilldown", currentLevel, parentId, search],
+    enabled: open,
+    queryFn: async () => {
+      const params = new URLSearchParams({ page_size: "100" });
+      if (search) params.set("q", search);
+      else {
+        params.set("level", String(currentLevel));
+        if (parentId) params.set("parent_id", parentId);
+      }
+      return api<{ items: TaxonomyEntry[] }>(`/application-profiles/taxonomy/search?${params}`, { authToken: (await getToken()) ?? undefined });
+    },
+  });
+  const rows = results.data?.items ?? [];
+  const selectedActivity = path.find((entry) => entry.level === 6) ?? null;
+  const heading = currentLevel === 2 ? text.category : currentLevel === 3 ? text.subcategory : text.activity;
+
+  const contribution = useMutation({
+    mutationFn: async () => api<TaxonomyEntry>("/dealer-os/product-finder/taxonomy/contributions", {
+      method: "POST",
+      authToken: (await getToken()) ?? undefined,
+      body: JSON.stringify({ level: currentLevel, label: customLabel.trim(), code: currentLevel === 6 ? customCode.trim() : null, parent_id: parentId }),
+    }),
+    onSuccess: (entry) => {
+      setPath([...path.filter((item) => item.level < entry.level), entry]);
+      setCustomOpen(false); setCustomLabel(""); setCustomCode(""); setQuery("");
+    },
+  });
+
+  const choose = (entry: TaxonomyEntry) => {
+    setPath(search ? resultPath(entry) : [...path.filter((item) => item.level < entry.level), entry]);
+    setQuery(""); setActiveIndex(0);
   };
-  const selectSubindustry = (entry: TaxonomyEntry | null) => {
-    setSubindustryEntry(entry);
-    setActivityEntry(null);
+
+  const confirm = () => {
+    const industry = path.find((entry) => entry.level === 2);
+    const subindustry = path.find((entry) => entry.level === 3);
+    const activity = path.find((entry) => entry.level === 6);
+    if (!industry || !subindustry || !activity?.code) return;
     onChange({
-      ...value,
-      subindustry_entry_id: entry?.id ?? null,
-      subindustry: entry?.code ?? "",
-      subindustry_label: entry?.label ?? "",
-      activity_entry_id: null,
-      naics_code: "",
-      naics_label: "",
-      taxonomy_status: entry?.status === "pending" || industryEntry?.status === "pending" ? "pending" : "unclassified",
+      industry_entry_id: industry.id, industry: industry.code ?? "", industry_label: industry.label,
+      subindustry_entry_id: subindustry.id, subindustry: subindustry.code ?? "", subindustry_label: subindustry.label,
+      activity_entry_id: activity.id, naics_code: activity.code, naics_label: activity.label,
+      taxonomy_status: path.some((entry) => entry.status === "pending") ? "pending" : "official",
     });
+    setOpen(false);
   };
-  const selectActivity = (entry: TaxonomyEntry | null) => {
-    setActivityEntry(entry);
-    onChange({
-      ...value,
-      activity_entry_id: entry?.id ?? null,
-      naics_code: entry?.code ?? "",
-      naics_label: entry?.label ?? "",
-      taxonomy_status: entry
-        ? [industryEntry, subindustryEntry, entry].some((item) => item?.status === "pending") ? "pending" : "official"
-        : "unclassified",
-    });
+
+  const keyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") { event.preventDefault(); setOpen(false); return; }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => Math.max(0, Math.min(rows.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))));
+    }
+    if (event.key === "Enter" && document.activeElement === searchInput.current && rows[activeIndex]) { event.preventDefault(); choose(rows[activeIndex]); }
+    if (event.key === "Tab" && dialog.current) {
+      const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])"));
+      if (!focusable.length) return;
+      const first = focusable[0]; const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
   };
+
+  const currentLabel = value.naics_code ? `${value.naics_code} · ${value.naics_label}` : text.placeholder;
+  const pathLabel = useMemo(() => path.map((entry) => `${entry.code ? `${entry.code} · ` : ""}${entry.label}`).join(" / "), [path]);
 
   return (
-    <div className="taxonomyCascade full">
-      <TaxonomyCombobox label={labels.category} placeholder={labels.chooseCategory} level={2} value={industryEntry} locale={locale} onSelect={selectIndustry} />
-      <TaxonomyCombobox label={labels.subcategory} placeholder={labels.chooseSubcategory} level={3} parentId={industryEntry?.id} value={subindustryEntry} disabled={!industryEntry} locale={locale} onSelect={selectSubindustry} />
-      <TaxonomyCombobox label={labels.activity} placeholder={labels.chooseActivity} level={6} parentId={subindustryEntry?.id} value={activityEntry} disabled={!subindustryEntry} locale={locale} onSelect={selectActivity} />
-      {value.naics_code && <div className="taxonomySelection"><Check size={16} /><span><small>{labels.final}</small><b>{value.naics_code} · {value.naics_label}</b></span></div>}
+    <div className="taxonomyDrilldown full">
+      <label className="lbl">{text.label}</label>
+      <button type="button" className="taxonomyDrilldownTrigger" onClick={() => setOpen(true)}>
+        <span className="taxonomyTriggerIcon"><Factory size={19} /></span>
+        <span><b>{currentLabel}</b><small>{value.naics_code ? `${value.industry_label} / ${value.subindustry_label}` : text.help}</small></span>
+        <ChevronRight size={19} />
+      </button>
+      {open && (
+        <div className="taxonomyOverlay" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+          <div ref={dialog} className="taxonomyDialog" role="dialog" aria-modal="true" aria-labelledby="taxonomy-dialog-title" onKeyDown={keyDown}>
+            <header className="taxonomyDialogHeader">
+              <div><span className="lbl">NAICS classification</span><h2 id="taxonomy-dialog-title">{text.title}</h2><p>{text.help}</p></div>
+              <button type="button" className="iconAction" aria-label="Close NAICS finder" onClick={() => setOpen(false)}><X size={20} /></button>
+            </header>
+            <div className="taxonomyStickyTools">
+              <div className="taxonomyGlobalSearch"><Search size={18} /><input ref={searchInput} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} placeholder={text.search} /></div>
+              <nav className="taxonomyBreadcrumb" aria-label="Classification path">
+                <button type="button" onClick={() => { setPath([]); setQuery(""); }}><Factory size={15} /> {text.root}</button>
+                {path.filter((entry) => entry.level < 6).map((entry) => <span key={entry.id}><ChevronRight size={14} /><button type="button" onClick={() => { setPath(path.filter((item) => item.level <= entry.level)); setQuery(""); }}>{entry.code || entry.label}</button></span>)}
+              </nav>
+            </div>
+            <main className="taxonomyDialogBody">
+              <div className="taxonomyLevelHeading">
+                {path.length > 0 && <button type="button" aria-label="Back one classification level" onClick={() => { setPath((current) => current.slice(0, -1)); setQuery(""); }}><ArrowLeft size={18} /></button>}
+                <div><span>{search ? "Search results" : `Step ${currentLevel === 2 ? 1 : currentLevel === 3 ? 2 : 3} of 3`}</span><h3>{search ? text.search : heading}</h3></div>
+              </div>
+              <div className="taxonomyDrillRows" role="listbox" aria-label={heading}>
+                {results.isLoading && <div className="taxonomyEmpty">Searching classifications…</div>}
+                {!results.isLoading && !rows.length && <div className="taxonomyEmpty">{text.empty}</div>}
+                {rows.map((entry, index) => (
+                  <button type="button" role="option" aria-selected={entry.id === selectedActivity?.id} className={index === activeIndex ? "active" : undefined} key={entry.id} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(entry)}>
+                    <span className="taxonomyCodeBadge">{entry.code || "NEW"}</span>
+                    <span><b>{entry.label}</b>{search && entry.path?.length ? <small>{entry.path.map((item) => item.label).join(" / ")}</small> : null}</span>
+                    {entry.level === 6 ? <Check size={18} /> : <ChevronRight size={19} />}
+                  </button>
+                ))}
+              </div>
+              {!customOpen ? <button type="button" className="taxonomyCustomAction" onClick={() => setCustomOpen(true)}><Plus size={16} /> {text.custom}</button> : (
+                <div className="taxonomyCustomForm">
+                  <input value={customLabel} onChange={(event) => setCustomLabel(event.target.value)} placeholder={text.customName} />
+                  {currentLevel === 6 && <input value={customCode} inputMode="numeric" maxLength={6} onChange={(event) => setCustomCode(event.target.value.replace(/\D/g, ""))} placeholder={text.customCode} />}
+                  {contribution.isError && <small>{contribution.error instanceof Error ? contribution.error.message : "Unable to save classification."}</small>}
+                  <div><button type="button" onClick={() => setCustomOpen(false)}>{text.cancel}</button><button type="button" disabled={customLabel.trim().length < 2 || (currentLevel === 6 && customCode.length !== 6) || contribution.isPending} onClick={() => contribution.mutate()}>{text.save}</button></div>
+                </div>
+              )}
+            </main>
+            <footer className="taxonomyDialogFooter">
+              <div><span>{text.selected}</span><b>{selectedActivity ? pathLabel : text.choose}</b></div>
+              {value.activity_entry_id && <button type="button" className="btn" onClick={() => { onChange(EMPTY); setPath([]); setOpen(false); }}>{text.clear}</button>}
+              <button type="button" className="btn pri" disabled={!selectedActivity?.code || path.length < 3} onClick={confirm}><Check size={17} /> {text.confirm}</button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

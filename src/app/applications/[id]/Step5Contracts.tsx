@@ -19,7 +19,17 @@ import {
   UserRound,
 } from "lucide-react";
 import RequestPanel from "@/components/RequestPanel";
+import ProgramSelect, {
+  GENERAL_PROGRAM_KEY,
+  GENERAL_PROGRAM_NAME,
+} from "@/components/ProgramSelect";
 import { api } from "@/lib/api";
+import {
+  appointmentRsvpClass,
+  appointmentRsvpLabel,
+  appointmentRsvpTone,
+  type RepAppointment,
+} from "@/lib/appointments";
 import {
   type ApplicationProfileData,
   type SubmissionReadiness,
@@ -38,6 +48,7 @@ type Owner = {
   full_name: string;
   ownership_pct: number | null;
   email: string | null;
+  phone: string | null;
   is_primary: boolean;
   credit_required: boolean;
   credit_complete: boolean;
@@ -145,6 +156,13 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const [fundedAmount, setFundedAmount] = useState("");
   const [roomResult, setRoomResult] = useState<SendResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [selectedReviewSlot, setSelectedReviewSlot] = useState("");
+  const [reviewInviteeName, setReviewInviteeName] = useState("");
+  const [reviewInviteeEmail, setReviewInviteeEmail] = useState("");
+  const [reviewInviteePhone, setReviewInviteePhone] = useState("");
+  const [reviewProgramKey, setReviewProgramKey] = useState(GENERAL_PROGRAM_KEY);
+  const [reviewProgramName, setReviewProgramName] = useState(GENERAL_PROGRAM_NAME);
+  const [reviewNotes, setReviewNotes] = useState("");
 
   const authenticated = async <T,>(path: string, init?: RequestInit) =>
     api<T>(path, { ...init, authToken: (await getToken()) ?? undefined });
@@ -171,6 +189,10 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
       `/dealer-os/dealers/${dealerId}/underwriting-review-preferences`,
     ),
   });
+  const appointments = useQuery({
+    queryKey: ["appointments", dealerId],
+    queryFn: () => authenticated<RepAppointment[]>(`/dealer-os/dealers/${dealerId}/appointments`),
+  });
   const templates = useQuery({
     queryKey: ["contract-templates"],
     queryFn: () => authenticated<Template[]>("/dealer-os/contract-templates"),
@@ -191,6 +213,9 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const requiredOwners = (owners.data ?? []).filter((owner) => owner.credit_required);
   const completedOwners = requiredOwners.filter((owner) => owner.credit_complete).length;
   const primaryOwner = (owners.data ?? []).find((owner) => owner.is_primary);
+  const reviewAppointment = reviewPreference?.appointment_id
+    ? (appointments.data ?? []).find((appointment) => appointment.id === reviewPreference.appointment_id) ?? null
+    : null;
   const financial = profile.data;
   const dscr = useMemo(() => {
     const cash = financial?.annual_cash_flow_available_for_debt;
@@ -208,6 +233,18 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   useEffect(() => {
     setReviewNote(readiness.data?.human_review_note ?? "");
   }, [readiness.data?.human_review_note]);
+
+  useEffect(() => {
+    if (!dealer || !primaryOwner) return;
+    setReviewInviteeName((current) => current || primaryOwner.full_name || dealer.name);
+    setReviewInviteeEmail((current) => current || primaryOwner.email || dealer.email || "");
+    setReviewInviteePhone((current) => current || primaryOwner.phone || dealer.phone || "");
+    setReviewNotes((current) => current || `Underwriting review for ${dealer.name}.`);
+  }, [dealer, primaryOwner]);
+
+  useEffect(() => {
+    if (reviewPreference?.selected_slot_at) setSelectedReviewSlot(reviewPreference.selected_slot_at);
+  }, [reviewPreference?.selected_slot_at]);
 
   const generate = useMutation({
     mutationFn: () => authenticated<GenerateResult>(
@@ -282,6 +319,36 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     ),
     onSuccess: (result) => qc.setQueryData(["dealer", dealerId], result.dealer),
   });
+  const bookReview = useMutation({
+    mutationFn: () => authenticated<RepAppointment>(
+      `/dealer-os/dealers/${dealerId}/underwriting-review-preferences/${reviewPreference?.id}/book`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          starts_at: selectedReviewSlot,
+          invitee_name: reviewInviteeName.trim(),
+          invitee_email: reviewInviteeEmail.trim(),
+          invitee_phone: reviewInviteePhone.trim() || null,
+          program_key: reviewProgramKey,
+          program_name: reviewProgramName,
+          requested_amount: dealer?.funding_goal ? money(dealer.funding_goal) : null,
+          full_address: [
+            dealer?.address,
+            [dealer?.city, dealer?.state, dealer?.zip].filter(Boolean).join(" "),
+          ].filter(Boolean).join(", ") || null,
+          notes: reviewNotes.trim() || null,
+          transactional_sms_consent: false,
+        }),
+      },
+    ),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["underwriting-review-preferences", dealerId] }),
+        qc.invalidateQueries({ queryKey: ["appointments", dealerId] }),
+        qc.invalidateQueries({ queryKey: ["rep-appointments"] }),
+      ]);
+    },
+  });
 
   useEffect(() => {
     if (generated?.download_url) window.open(generated.download_url, "_blank", "noopener,noreferrer");
@@ -303,7 +370,8 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
       ? "c-bad"
       : "c-warn";
   const actionError = review.error ?? generate.error ?? send.error ?? download.error
-    ?? rotateRoom.error ?? finalize.error ?? startHandoff.error ?? convertAudit.error;
+    ?? rotateRoom.error ?? finalize.error ?? startHandoff.error ?? convertAudit.error
+    ?? bookReview.error;
 
   return (
     <>
@@ -346,12 +414,39 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
             </SummarySection>
             <SummarySection title="Client review windows" icon={<CalendarClock size={17} />}>
               {(reviewPreference?.slots ?? []).map((slot, index) => (
-                <div className="kv" key={slot.starts_at}>
-                  <span>Option {index + 1}</span><b>{slot.date_label} · {slot.label}</b>
+                <div
+                  className={`reviewProposal ${selectedReviewSlot === slot.starts_at ? "selected" : ""} ${
+                    reviewPreference?.selected_slot_at === slot.starts_at && reviewAppointment
+                      ? appointmentRsvpClass(reviewAppointment)
+                      : ""
+                  }`}
+                  key={slot.starts_at}
+                >
+                  <button
+                    type="button"
+                    disabled={!isSuperAdmin || Boolean(reviewAppointment && reviewAppointment.client_rsvp_status !== "declined")}
+                    onClick={() => setSelectedReviewSlot(slot.starts_at)}
+                  >
+                    <span>Option {index + 1}</span><b>{slot.date_label} · {slot.label}</b>
+                    <small>
+                      {reviewPreference?.selected_slot_at === slot.starts_at && reviewAppointment
+                        ? appointmentRsvpLabel(reviewAppointment)
+                        : reviewPreference?.selected_slot_at
+                          ? "Not selected"
+                          : "Proposed - does not reserve this time"}
+                    </small>
+                  </button>
                 </div>
               ))}
               {!reviewPreference && <span className="sub">No active three-window preference.</span>}
               {reviewPreference && <div className="sub mt">{reviewPreference.timezone}</div>}
+              {reviewAppointment && (
+                <div className="mt">
+                  <span className={`cellchip ${appointmentRsvpTone(reviewAppointment)}`}>
+                    {appointmentRsvpLabel(reviewAppointment)}
+                  </span>
+                </div>
+              )}
             </SummarySection>
             <SummarySection title="Submitting agent" icon={<UserRound size={17} />}>
               <div className="kv"><span>Name</span><b>{dealer?.submitting_agent_name || "Unassigned"}</b></div>
@@ -375,6 +470,38 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
               <button type="button" className="btn pri" disabled={review.isPending || !readiness.data?.package_ready} onClick={() => review.mutate("fundable")}><CheckCircle2 size={16} /> Mark fundable</button>
               <button type="button" className="btn" disabled={review.isPending} onClick={() => review.mutate("pending")}>Return to pending</button>
               <button type="button" className="btn danger" disabled={review.isPending || !reviewNote.trim()} onClick={() => review.mutate("not_fundable")}>Mark not fundable</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSuperAdmin && reviewPreference && (!reviewAppointment || reviewAppointment.client_rsvp_status === "declined") && (
+        <div className="panel">
+          <div className="panel-h"><CalendarClock size={17} /> Send underwriting-review invitation</div>
+          <div className="panel-b" style={{ display: "grid", gap: 12 }}>
+            <div className="note">
+              The three client proposals are not calendar holds. The selected time is checked against Franco&apos;s live calendar again before it is reserved.
+            </div>
+            {reviewAppointment?.client_rsvp_status === "declined" && (
+              <div className="warnline">The client declined the prior invitation. Select a different proposed window and send a new invitation.</div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+              <label><span className="lbl">Client name</span><input className="field" value={reviewInviteeName} onChange={(event) => setReviewInviteeName(event.target.value)} /></label>
+              <label><span className="lbl">Client email</span><input className="field" type="email" value={reviewInviteeEmail} onChange={(event) => setReviewInviteeEmail(event.target.value)} /></label>
+              <label><span className="lbl">Client phone</span><input className="field" type="tel" value={reviewInviteePhone} onChange={(event) => setReviewInviteePhone(event.target.value)} /></label>
+              <label><span className="lbl">Program</span><ProgramSelect programKey={reviewProgramKey} programName={reviewProgramName} onChange={(selection) => { setReviewProgramKey(selection.key); setReviewProgramName(selection.name); }} /></label>
+            </div>
+            <label><span className="lbl">Appointment notes</span><textarea className="field" rows={3} value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} /></label>
+            <div className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <span className="sub">{selectedReviewSlot ? "One invitation will be created for the selected option." : "Select one of the three options above."}</span>
+              <button
+                type="button"
+                className="btn pri"
+                disabled={!selectedReviewSlot || !reviewInviteeName.trim() || !reviewInviteeEmail.trim() || bookReview.isPending}
+                onClick={() => bookReview.mutate()}
+              >
+                <Mail size={16} /> {bookReview.isPending ? "Checking calendar…" : "Send invitation"}
+              </button>
             </div>
           </div>
         </div>

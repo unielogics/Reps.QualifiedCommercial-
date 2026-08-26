@@ -8,7 +8,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import BookingDrawer from "@/components/BookingDrawer";
 import AppointmentEditorDrawer from "@/components/AppointmentEditorDrawer";
-import { appointmentOutcomeLabel, type AppointmentStatus, type RepAppointment as Appointment } from "@/lib/appointments";
+import {
+  appointmentOutcomeLabel,
+  appointmentRsvpClass,
+  appointmentRsvpLabel,
+  appointmentRsvpTone,
+  type AppointmentStatus,
+  type RepAppointment as Appointment,
+} from "@/lib/appointments";
 
 type CalendarDay = {
   key: string;
@@ -64,13 +71,6 @@ function kindLabel(kind: string): string {
   if (kind === "program_intro") return "Program intro";
   if (kind === "underwriting_review") return "Underwriting review";
   return "Callback";
-}
-
-function statusClass(status: AppointmentStatus): string {
-  if (status === "done") return "c-ok";
-  if (status === "cancelled") return "c-bad";
-  if (status === "pending") return "c-warn";
-  return "c-acc";
 }
 
 function buildMonth(anchor: Date, appointments: Appointment[]): CalendarDay[] {
@@ -257,7 +257,7 @@ export default function RepCalendarPage() {
                 <span className="repCalNum num">{day.date.getDate()}</span>
                 <span className="repCalEvents">
                   {day.appointments.slice(0, 3).map((appt) => (
-                    <span key={appt.id} className={`repCalEvent ${appt.status}`}>
+                    <span key={appt.id} className={`repCalEvent ${appointmentRsvpClass(appt)}`}>
                       <b className="num">{timeLabel(appt.starts_at)}</b>
                       {appt.invitee_name}
                     </span>
@@ -364,7 +364,7 @@ function AppointmentCard({
   const isCancelled = appointment.status === "cancelled";
 
   return (
-    <article className={`repApptCard ${appointment.status}`}>
+    <article className={`repApptCard ${appointment.status} ${appointmentRsvpClass(appointment)}`}>
       <div className="repApptTime">
         <b className="num">{timeLabel(appointment.starts_at)}</b>
         <span>{appointment.duration_min} min</span>
@@ -372,7 +372,7 @@ function AppointmentCard({
       <div className="repApptBody">
         <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
           <button type="button" className="linky" onClick={() => onOpen("details")}><b>{appointment.title}</b></button>
-          <span className={`cellchip ${statusClass(appointment.status)}`}>{appointment.status}</span>
+          <span className={`cellchip ${appointmentRsvpTone(appointment)}`}>{appointmentRsvpLabel(appointment)}</span>
           {appointment.outcome && <span className={`cellchip ${appointment.outcome === "converted" ? "c-ok" : appointment.outcome === "not_converted" ? "c-bad" : "c-warn"}`}>{appointmentOutcomeLabel(appointment.outcome)}</span>}
         </div>
         <div className="sub">
@@ -391,7 +391,7 @@ function AppointmentCard({
             </button>
           )}
           {isDone && !isCancelled ? (
-            <button type="button" className="btn sm" disabled={busy} onClick={() => onStatus("confirmed")}>
+            <button type="button" className="btn sm" disabled={busy} onClick={() => onStatus("pending")}>
               Reopen
             </button>
           ) : null}

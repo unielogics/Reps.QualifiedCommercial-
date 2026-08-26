@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import type { RepAppointment } from "@/lib/appointments";
+import { appointmentRsvpLabel, appointmentRsvpTone, type RepAppointment } from "@/lib/appointments";
 import BusinessAddressFields from "./BusinessAddressFields";
 import Drawer from "./Drawer";
+import ProgramSelect, { GENERAL_PROGRAM_KEY, GENERAL_PROGRAM_NAME } from "./ProgramSelect";
 
 type AddressParts = { address: string; city: string; state: string; zip: string };
 
@@ -56,7 +57,8 @@ export default function AppointmentEditorDrawer({
   const [email, setEmail] = useState(appointment.invitee_email ?? "");
   const [phone, setPhone] = useState(appointment.invitee_phone ?? "");
   const [company, setCompany] = useState(appointment.company ?? "");
-  const [program, setProgram] = useState(appointment.program_name ?? "");
+  const [programKey, setProgramKey] = useState(appointment.program_key ?? GENERAL_PROGRAM_KEY);
+  const [program, setProgram] = useState(appointment.program_name ?? GENERAL_PROGRAM_NAME);
   const [amount, setAmount] = useState(appointment.requested_amount ?? "");
   const [notes, setNotes] = useState(appointment.notes ?? "");
   const [joinUrl, setJoinUrl] = useState(appointment.join_url ?? "");
@@ -88,6 +90,7 @@ export default function AppointmentEditorDrawer({
         invitee_email: email.trim() || null,
         invitee_phone: phone.trim() || null,
         company: company.trim() || null,
+        program_key: programKey,
         program_name: program.trim() || null,
         requested_amount: amount.trim() || null,
         full_address: joinAddress(address),
@@ -110,7 +113,7 @@ export default function AppointmentEditorDrawer({
 
   const statusRows = [
     ["Google sync", appointment.google_sync_status],
-    ["Client confirmation", appointment.confirmation_email_status],
+    ["Client RSVP", appointmentRsvpLabel(appointment)],
     ["Email reminder", appointment.email_reminder_status],
     ["SMS confirmation", appointment.confirmation_sms_status],
     ["SMS reminder", appointment.sms_reminder_status],
@@ -129,7 +132,7 @@ export default function AppointmentEditorDrawer({
                 <div className="sub">{new Date(appointment.starts_at).toLocaleString()} · {appointment.duration_min} minutes · {appointment.timezone}</div>
               </div>
               <span className="sp" />
-              <span className={`cellchip ${appointment.status === "cancelled" ? "c-bad" : "c-ok"}`}>{appointment.status}</span>
+              <span className={`cellchip ${appointmentRsvpTone(appointment)}`}>{appointmentRsvpLabel(appointment)}</span>
             </div>
             <div className="panel-b" style={{ display: "grid", gap: 10 }}>
               <Detail label="Client" value={appointment.invitee_name} />
@@ -184,7 +187,7 @@ export default function AppointmentEditorDrawer({
                 <label><span className="lbl">Email</span><input className="field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
                 <label><span className="lbl">Phone</span><input className="field" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
                 <label><span className="lbl">Company</span><input className="field" value={company} onChange={(e) => setCompany(e.target.value)} /></label>
-                <label><span className="lbl">Program</span><input className="field" value={program} onChange={(e) => setProgram(e.target.value)} /></label>
+                <label><span className="lbl">Program</span><ProgramSelect programKey={programKey} programName={program} onChange={(selection) => { setProgramKey(selection.key); setProgram(selection.name); }} /></label>
                 <label><span className="lbl">Requested amount</span><input className="field" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
               </div>
               <BusinessAddressFields

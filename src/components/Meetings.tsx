@@ -4,18 +4,13 @@ import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import {
+  appointmentRsvpClass,
+  appointmentRsvpLabel,
+  appointmentRsvpTone,
+  type RepAppointment,
+} from "@/lib/appointments";
 import BookingDrawer from "./BookingDrawer";
-
-type Appointment = {
-  id: string;
-  kind: string;
-  title: string;
-  starts_at: string;
-  duration_min: number;
-  invitee_name: string;
-  join_url: string | null;
-  status: string;
-};
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -33,7 +28,7 @@ export default function Meetings({ dealerId }: { dealerId: string }) {
   const list = useQuery({
     queryKey: ["appointments", dealerId],
     queryFn: async () =>
-      api<Appointment[]>(`/dealer-os/dealers/${dealerId}/appointments`, {
+      api<RepAppointment[]>(`/dealer-os/dealers/${dealerId}/appointments`, {
         authToken: (await getToken()) ?? undefined,
       }),
   });
@@ -57,11 +52,11 @@ export default function Meetings({ dealerId }: { dealerId: string }) {
             <span className="sub">No callbacks, intros, or underwriting reviews booked yet.</span>
           )}
           {upcoming.map((r) => (
-            <div key={r.id} style={{ marginBottom: 10 }}>
+            <div key={r.id} className={`meetingRow ${appointmentRsvpClass(r)}`} style={{ marginBottom: 10 }}>
               <div className="row" style={{ gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
                 <b style={{ fontSize: 14 }}>{r.title}</b>
                 <span className="cellchip c-acc">{r.kind.replace(/_/g, " ")}</span>
-                <span className="cellchip c-ok">{r.status}</span>
+                <span className={`cellchip ${appointmentRsvpTone(r)}`}>{appointmentRsvpLabel(r)}</span>
               </div>
               <span className="sub">
                 {when(r.starts_at)} · {r.duration_min} min · {r.invitee_name}

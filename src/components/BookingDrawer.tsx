@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type { CalendarSlotDay } from "@/lib/repWorkflows";
 import BusinessAddressFields from "./BusinessAddressFields";
 import Drawer from "./Drawer";
+import ProgramSelect, { GENERAL_PROGRAM_KEY, GENERAL_PROGRAM_NAME } from "./ProgramSelect";
 
 type FileRow = {
   id: string;
@@ -81,7 +82,8 @@ export default function BookingDrawer({
   const [inviteeEmail, setInviteeEmail] = useState(initialEmail ?? "");
   const [inviteePhone, setInviteePhone] = useState(initialPhone ?? "");
   const [notes, setNotes] = useState("");
-  const [programName, setProgramName] = useState("");
+  const [programKey, setProgramKey] = useState(GENERAL_PROGRAM_KEY);
+  const [programName, setProgramName] = useState(GENERAL_PROGRAM_NAME);
   const [requestedAmount, setRequestedAmount] = useState("");
   const [address, setAddress] = useState<AddressParts>({ address: "", city: "", state: "", zip: "" });
   const [smsConsent, setSmsConsent] = useState(false);
@@ -130,6 +132,7 @@ export default function BookingDrawer({
           invitee_email: inviteeEmail.trim() || null,
           invitee_phone: inviteePhone.trim() || null,
           notes: notes.trim() || null,
+          program_key: programKey,
           program_name: programName.trim() || null,
           requested_amount: requestedAmount.trim() || null,
           full_address: [
@@ -199,7 +202,6 @@ export default function BookingDrawer({
                     if (!inviteeEmail.trim() && file.email) setInviteeEmail(file.email);
                     if (!inviteePhone.trim() && file.phone) setInviteePhone(file.phone);
                     if (!company.trim()) setCompany(file.name);
-                    if (!programName.trim() && file.funding_purpose) setProgramName(file.funding_purpose.replaceAll("_", " "));
                     if (!requestedAmount.trim() && file.funding_goal) {
                       setRequestedAmount(
                         new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
@@ -270,7 +272,14 @@ export default function BookingDrawer({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
             <div>
               <label className="lbl">Program to discuss</label>
-              <input className="field" value={programName} onChange={(e) => setProgramName(e.target.value)} placeholder="EZ Term, MicroCap, DSCR..." />
+              <ProgramSelect
+                programKey={programKey}
+                programName={programName}
+                onChange={(selection) => {
+                  setProgramKey(selection.key);
+                  setProgramName(selection.name);
+                }}
+              />
             </div>
             <div>
               <label className="lbl">Interested amount</label>
