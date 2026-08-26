@@ -3,10 +3,13 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarDays, Paperclip, UserRound, X } from "lucide-react";
 import { api } from "@/lib/api";
 import BookingDrawer from "@/components/BookingDrawer";
 import ContactShareDrawer from "@/components/ContactShareDrawer";
 import InboxComposeModal from "@/components/InboxComposeModal";
+
+type ActionContext = "global" | "thread" | null;
 
 type Thread = {
   id: string;
@@ -50,8 +53,9 @@ export default function InboxPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [compose, setCompose] = useState(false);
-  const [booking, setBooking] = useState(false);
-  const [share, setShare] = useState(false);
+  const [bookingContext, setBookingContext] = useState<ActionContext>(null);
+  const [shareContext, setShareContext] = useState<ActionContext>(null);
+  const [attachmentOpen, setAttachmentOpen] = useState(false);
   const threads = useQuery({
     queryKey: ["inbox-threads"],
     queryFn: async () =>
@@ -59,7 +63,7 @@ export default function InboxPage() {
   });
   const selected = useMemo(() => {
     const rows = threads.data ?? [];
-    return rows.find((t) => t.id === selectedId) ?? rows[0] ?? null;
+    return rows.find((t) => t.id === selectedId) ?? null;
   }, [threads.data, selectedId]);
   const messages = useQuery({
     queryKey: ["inbox-messages", selected?.id],
@@ -83,7 +87,7 @@ export default function InboxPage() {
     },
   });
   const rows = threads.data ?? [];
-  const seed = selected
+  const threadSeed = selected
     ? {
         dealer_id: selected.dealer_id,
         contact_name: selected.contact_name,
@@ -92,6 +96,8 @@ export default function InboxPage() {
         company: selected.company,
       }
     : null;
+  const bookingSeed = bookingContext === "thread" ? threadSeed : null;
+  const shareSeed = shareContext === "thread" ? threadSeed : null;
 
   return (
     <>
@@ -104,10 +110,10 @@ export default function InboxPage() {
         <button type="button" className="btn pri" onClick={() => setCompose(true)}>
           New
         </button>
-        <button type="button" className="btn" onClick={() => setBooking(true)}>
+        <button type="button" className="btn" onClick={() => setBookingContext("global")}>
           Book appointment
         </button>
-        <button type="button" className="btn" onClick={() => setShare(true)}>
+        <button type="button" className="btn" onClick={() => setShareContext("global")}>
           Send business card
         </button>
       </div>
@@ -131,7 +137,10 @@ export default function InboxPage() {
                   type="button"
                   className={`rung${selected?.id === thread.id ? " cur" : ""}`}
                   style={{ textAlign: "left", font: "inherit", width: "100%" }}
-                  onClick={() => setSelectedId(thread.id)}
+                  onClick={() => {
+                    setSelectedId((current) => current === thread.id ? null : thread.id);
+                    setAttachmentOpen(false);
+                  }}
                 >
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <b style={{ display: "block", fontSize: 13.5 }}>{thread.contact_name ?? thread.subject}</b>
@@ -152,14 +161,18 @@ export default function InboxPage() {
               <span style={{ flex: 1 }} />
               {selected && <span className="cellchip c-acc">{selected.channel}</span>}
               {selected && (
-                <>
-                  <button type="button" className="btn sm" onClick={() => setBooking(true)}>
-                    Book
-                  </button>
-                  <button type="button" className="btn sm" onClick={() => setShare(true)}>
-                    Card
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className="conversationClose"
+                  aria-label="Close conversation"
+                  title="Close conversation"
+                  onClick={() => {
+                    setSelectedId(null);
+                    setAttachmentOpen(false);
+                  }}
+                >
+                  <X size={17} />
+                </button>
               )}
             </div>
             <div className="panel-b">
@@ -194,6 +207,46 @@ export default function InboxPage() {
                     />
                     {send.isError && <div className="note">{send.error instanceof Error ? send.error.message : "That reply did not send."}</div>}
                     <div className="composer-row">
+                      <div className="popwrap composerAttachment">
+                        <button
+                          type="button"
+                          className="composerAttachmentButton"
+                          aria-label="Add a conversation action"
+                          title="Add an action"
+                          aria-expanded={attachmentOpen}
+                          onClick={() => setAttachmentOpen((current) => !current)}
+                        >
+                          <Paperclip size={18} />
+                        </button>
+                        {attachmentOpen && (
+                          <div className="popmenu composerActionMenu" role="menu">
+                            <button
+                              type="button"
+                              className="mi composerAction"
+                              role="menuitem"
+                              onClick={() => {
+                                setAttachmentOpen(false);
+                                setShareContext("thread");
+                              }}
+                            >
+                              <UserRound size={17} />
+                              <span>Send business card<small>Use this conversation's contact.</small></span>
+                            </button>
+                            <button
+                              type="button"
+                              className="mi composerAction"
+                              role="menuitem"
+                              onClick={() => {
+                                setAttachmentOpen(false);
+                                setBookingContext("thread");
+                              }}
+                            >
+                              <CalendarDays size={17} />
+                              <span>Book appointment<small>Use this conversation's contact.</small></span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button type="button" className="btn pri" disabled={!draft.trim() || send.isPending} onClick={() => send.mutate()}>
                         {send.isPending ? "Sending..." : selected.channel === "sms" ? "Send SMS" : "Send email"}
                       </button>
@@ -209,30 +262,30 @@ export default function InboxPage() {
 
       {compose && (
         <InboxComposeModal
-          seed={seed}
+          seed={null}
           onClose={() => setCompose(false)}
           onSent={(threadId) => {
             if (threadId) setSelectedId(threadId);
           }}
         />
       )}
-      {booking && (
+      {bookingContext && (
         <BookingDrawer
-          initialDealerId={seed?.dealer_id ?? null}
-          initialName={seed?.contact_name ?? null}
-          initialEmail={seed?.contact_email ?? null}
-          initialPhone={seed?.contact_phone ?? null}
-          onClose={() => setBooking(false)}
+          initialDealerId={bookingSeed?.dealer_id ?? null}
+          initialName={bookingSeed?.contact_name ?? null}
+          initialEmail={bookingSeed?.contact_email ?? null}
+          initialPhone={bookingSeed?.contact_phone ?? null}
+          onClose={() => setBookingContext(null)}
         />
       )}
-      {share && (
+      {shareContext && (
         <ContactShareDrawer
-          initialDealerId={seed?.dealer_id ?? null}
-          initialName={seed?.contact_name ?? null}
-          initialCompany={seed?.company ?? null}
-          initialEmail={seed?.contact_email ?? null}
-          initialPhone={seed?.contact_phone ?? null}
-          onClose={() => setShare(false)}
+          initialDealerId={shareSeed?.dealer_id ?? null}
+          initialName={shareSeed?.contact_name ?? null}
+          initialCompany={shareSeed?.company ?? null}
+          initialEmail={shareSeed?.contact_email ?? null}
+          initialPhone={shareSeed?.contact_phone ?? null}
+          onClose={() => setShareContext(null)}
         />
       )}
     </>
