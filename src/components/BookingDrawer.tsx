@@ -160,7 +160,13 @@ export default function BookingDrawer({
   );
 
   return (
-    <Drawer title="Book appointment" width={980} onClose={onClose}>
+    <Drawer
+      title="Book appointment"
+      width={980}
+      onClose={onClose}
+      variant="workspace"
+      dismissOnBackdrop={false}
+    >
       <div className="panel">
         <div className="panel-h">Appointment details</div>
         <div className="panel-b" style={{ display: "grid", gap: 14 }}>

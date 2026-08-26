@@ -240,6 +240,26 @@ a { color: var(--accent); }
 .modalBody { padding: 16px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
 .modalClose { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
 .modalClose:hover { background: var(--sunken2); color: var(--ink); }
+.modalOverlay.modalWorkspace {
+  inset: 0 0 0 242px;
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
+  background: var(--surface);
+}
+.app.rail .modalOverlay.modalWorkspace { left: 76px; }
+.modalWorkspace .modalDialog {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.modalWorkspace .modalHead { padding-inline: clamp(16px, 2.4vw, 34px); }
+.modalWorkspace .modalBody { flex: 1; padding: clamp(14px, 2vw, 28px); }
+.modalWorkspace .modalBody > .panel { width: min(1320px, 100%); margin-inline: auto; }
 .archiveDialog { width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--sh2); overflow: hidden; display: flex; flex-direction: column; }
 .bookingCalendar { display: grid; grid-template-columns: 190px minmax(0, 1fr) 220px; gap: 12px; align-items: stretch; }
 .slotRail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -273,6 +293,15 @@ a { color: var(--accent); }
   .bookingCalendar { grid-template-columns: 1fr; }
   .slotRail { flex-direction: row; overflow-x: auto; padding-bottom: 2px; }
   .slotRail button { min-width: 150px; flex: 0 0 auto; }
+}
+
+@media (max-width: 760px) {
+  .modalOverlay.modalWorkspace,
+  .app.rail .modalOverlay.modalWorkspace {
+    left: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+  .modalWorkspace .modalDialog { min-height: 0; }
 }
 
 /* ---------- tables ---------- */

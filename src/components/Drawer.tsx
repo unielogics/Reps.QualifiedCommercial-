@@ -9,6 +9,8 @@ export default function Drawer({
   width = 960,
   onMinimize,
   minimized = false,
+  variant = "modal",
+  dismissOnBackdrop = true,
 }: {
   title: string;
   onClose: () => void;
@@ -16,6 +18,8 @@ export default function Drawer({
   width?: number;
   onMinimize?: () => void;
   minimized?: boolean;
+  variant?: "modal" | "workspace";
+  dismissOnBackdrop?: boolean;
 }) {
   useEffect(() => {
     if (minimized) return;
@@ -33,9 +37,9 @@ export default function Drawer({
 
   return (
     <div
-      className={`modalOverlay${minimized ? " minimized" : ""}`}
+      className={`modalOverlay${variant === "workspace" ? " modalWorkspace" : ""}${minimized ? " minimized" : ""}`}
       role="presentation"
-      onClick={onClose}
+      onClick={dismissOnBackdrop ? onClose : undefined}
       style={{
         "--modal-w": `${width}px`,
       } as CSSProperties}
@@ -43,7 +47,7 @@ export default function Drawer({
       <section
         className="modalDialog"
         role="dialog"
-        aria-modal="true"
+        aria-modal={variant === "modal"}
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
       >
