@@ -18,6 +18,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useCase } from "@/lib/useCase";
 import { api } from "@/lib/api";
 import { type SubmissionReadiness } from "@/lib/applicationReadiness";
+import {
+  activeUnderwritingReviewPreference,
+  type UnderwritingReviewPreference,
+} from "@/lib/underwritingReview";
 import { removeWorkspaceTab, upsertWorkspaceTab } from "@/lib/applicationWorkspace";
 import StepRail, { GATED_FROM } from "@/components/StepRail";
 import Conversation from "@/components/Conversation";
@@ -51,6 +55,14 @@ export default function ApplicationPage() {
       authToken: (await getToken()) ?? undefined,
     }),
   });
+  const reviewPreferences = useQuery({
+    queryKey: ["underwriting-review-preferences", id],
+    enabled: unlocked,
+    queryFn: async () => api<UnderwritingReviewPreference[]>(
+      `/dealer-os/dealers/${id}/underwriting-review-preferences`,
+      { authToken: (await getToken()) ?? undefined },
+    ),
+  });
   // Clamp rather than trust: a hand-typed ?step=9 should land on the sequence,
   // and ?step=4 on a locked file should land on the step that is actually next.
   const step = Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : 1;
@@ -70,13 +82,16 @@ export default function ApplicationPage() {
       && verification.pre_screen_complete,
   );
   const formsReady = Boolean(readiness.data?.ready);
+  const reviewTimesReady = Boolean(activeUnderwritingReviewPreference(reviewPreferences.data));
   const effective = step >= 2 && !intakeReady
     ? 1
     : step >= GATED_FROM && !unlocked
       ? 2
-      : step === 5 && !formsReady
-        ? 4
-        : step;
+      : step >= 4 && !reviewTimesReady
+        ? 3
+        : step === 5 && !formsReady
+          ? 4
+          : step;
 
   const go = useCallback(
     (n: number) => router.push(`/applications/${id}?step=${n}`, { scroll: false }),
@@ -134,6 +149,7 @@ export default function ApplicationPage() {
           step={effective}
           unlocked={unlocked}
           intakeReady={intakeReady}
+          reviewTimesReady={reviewTimesReady}
           formsReady={formsReady}
           gateLabel={unlocked ? "Unlocked by verification" : "Locked until verification returns"}
           onGo={go}

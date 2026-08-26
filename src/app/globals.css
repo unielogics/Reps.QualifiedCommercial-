@@ -878,6 +878,61 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .eligibilityRowAction.complete { border-color: rgba(3, 152, 85, .3); background: var(--ok-tint); color: var(--ok); }
 .validationBanner { padding: 11px 13px; border: 1px solid rgba(180, 35, 24, .35); border-radius: 8px; background: var(--danger-tint); color: var(--danger); font-size: 12px; }
 
+/* Unnumbered client-review checkpoint between the financial profile and package. */
+.stepCheckpoint { display: flex; align-items: center; gap: 7px; margin: 2px 0; color: var(--warn); }
+.stepCheckpoint span { height: 1px; flex: 1; background: currentColor; opacity: .32; }
+.stepCheckpoint b { font: 700 10px/1.2 var(--fb); white-space: nowrap; }
+.stepCheckpoint.complete { color: var(--ok); }
+.reviewWindowDialog { --modal-w: 920px; }
+.reviewWindowHead { align-items: flex-start; padding: 18px 20px; }
+.reviewWindowHead > div { min-width: 0; }
+.reviewWindowHead h2 { margin: 3px 0 4px; font: 760 clamp(21px, 2vw, 28px)/1.08 var(--fh); letter-spacing: 0; }
+.reviewWindowHead p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.reviewWindowHead .iconAction { margin-left: auto; flex: 0 0 auto; }
+.reviewWindowIcon { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: var(--accent); color: #fff; }
+.reviewWindowBody { display: grid; gap: 16px; padding: 18px 20px; }
+.reviewWindowPolicy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid rgba(27, 75, 158, .2); border-radius: 8px; background: var(--accent-100); color: var(--ink2); }
+.reviewWindowPolicy div { display: inline-flex; align-items: center; gap: 7px; margin-right: 3px; color: var(--accent); }
+.reviewWindowPolicy span { padding: 3px 8px; border-left: 1px solid rgba(27, 75, 158, .2); color: var(--muted); font-size: 11px; }
+.reviewWindowSelection { display: grid; gap: 10px; }
+.reviewWindowSectionTitle { display: flex; align-items: flex-end; gap: 12px; }
+.reviewWindowSectionTitle > div { display: grid; gap: 2px; }
+.reviewWindowSectionTitle > div b { font: 720 16px/1.2 var(--fh); }
+.reviewWindowSectionTitle > button { margin-left: auto; }
+.reviewWindowChoices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.reviewWindowChoices article { min-height: 86px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; gap: 8px; padding: 11px; border: 1px dashed var(--line2); border-radius: 8px; background: var(--sunken2); }
+.reviewWindowChoices article.filled { border-style: solid; border-color: rgba(3, 152, 85, .32); background: var(--ok-tint); }
+.reviewWindowChoices article > span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-weight: 750; font-size: 11px; }
+.reviewWindowChoices article.filled > span { background: var(--ok); border-color: var(--ok); color: #fff; }
+.reviewWindowChoices article div { min-width: 0; display: grid; gap: 2px; }
+.reviewWindowChoices article small { color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.reviewWindowChoices article b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 690 12.5px/1.2 var(--fh); }
+.reviewWindowChoices article p { margin: 0; color: var(--muted); font-size: 11px; }
+.reviewWindowChoices article > button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.reviewWindowChoices article > button:hover { background: var(--surface); color: var(--danger); }
+.reviewWindowCalendar { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 12px; min-height: 220px; }
+.reviewWindowDays { display: flex; flex-direction: column; gap: 7px; }
+.reviewWindowDays button { min-height: 48px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); text-align: left; cursor: pointer; }
+.reviewWindowDays button b, .reviewWindowDays button span { display: block; }
+.reviewWindowDays button b { font: 680 12px/1.25 var(--fh); }
+.reviewWindowDays button span { margin-top: 2px; color: var(--muted); font-size: 10.5px; }
+.reviewWindowDays button.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+.reviewWindowDays button.active span { color: rgba(255,255,255,.75); }
+.reviewWindowTimes { align-content: start; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.reviewWindowTimes button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); font-weight: 680; cursor: pointer; }
+.reviewWindowTimes button:hover, .reviewWindowTimes button.selected { border-color: var(--accent); background: var(--accent); color: #fff; }
+.reviewWindowState { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); color: var(--muted); font-size: 12px; }
+.reviewWindowState.error { border-color: rgba(180, 35, 24, .35); background: var(--danger-tint); color: var(--danger); }
+.reviewWindowFooter { display: flex; align-items: center; gap: 9px; padding: 13px 20px; border-top: 1px solid var(--line); background: var(--surface); }
+.reviewWindowFooter > div { display: grid; gap: 2px; }
+.reviewWindowFooter > div b { font-size: 11.5px; }
+.reviewWindowFooter > div span { color: var(--muted); font-size: 10.5px; }
+.reviewWindowSaved { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid rgba(3, 152, 85, .28); border-radius: 8px; background: var(--ok-tint); }
+.reviewWindowSaved > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; background: var(--ok); color: #fff; }
+.reviewWindowSaved div { min-width: 0; }
+.reviewWindowSaved div b { font: 700 12.5px/1.25 var(--fh); }
+.reviewWindowSaved div p { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10.5px; }
+
 @media (max-width: 1050px) {
   .productRail { grid-auto-columns: minmax(300px, 45%); }
   .contactGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -940,6 +995,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .bookletDisclosure { align-items: stretch; flex-direction: column; padding: 18px; }
   .eligibilityQuestion { grid-template-columns: 1fr; }
   .eligibilityFooter { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .reviewWindowHead { padding: 14px 12px; }
+  .reviewWindowHead p { display: none; }
+  .reviewWindowIcon { width: 38px; height: 38px; }
+  .reviewWindowBody { padding: 12px; gap: 12px; }
+  .reviewWindowPolicy { gap: 5px; }
+  .reviewWindowPolicy span { border-left: 0; padding: 2px 5px; }
+  .reviewWindowSectionTitle { align-items: center; }
+  .reviewWindowChoices { grid-template-columns: 1fr; }
+  .reviewWindowChoices article { min-height: 68px; }
+  .reviewWindowCalendar { grid-template-columns: 1fr; min-height: 0; }
+  .reviewWindowDays { flex-direction: row; overflow-x: auto; padding-bottom: 2px; }
+  .reviewWindowDays button { min-width: 154px; flex: 0 0 auto; }
+  .reviewWindowTimes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reviewWindowFooter { position: sticky; bottom: 0; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .reviewWindowFooter > div { width: 100%; }
+  .reviewWindowFooter .btn { flex: 1; }
+  .reviewWindowSaved { grid-template-columns: 34px minmax(0, 1fr); }
+  .reviewWindowSaved .btn { grid-column: 1 / -1; }
 }
 
 /* Product Finder taxonomy, collateral, pricing illustrations, and rep identity. */

@@ -33,6 +33,7 @@ export default function StepRail({
   step,
   unlocked,
   intakeReady,
+  reviewTimesReady,
   formsReady,
   gateLabel,
   onGo,
@@ -40,6 +41,7 @@ export default function StepRail({
   step: number;
   unlocked: boolean;
   intakeReady: boolean;
+  reviewTimesReady: boolean;
   formsReady: boolean;
   gateLabel: string;
   onGo: (n: number) => void;
@@ -53,7 +55,10 @@ export default function StepRail({
       </div>
       <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {STEPS.map((s) => {
-          const locked = (s.n === 2 && !intakeReady) || (s.n >= GATED_FROM && !unlocked) || (s.n === 5 && !formsReady);
+          const locked = (s.n === 2 && !intakeReady)
+            || (s.n >= GATED_FROM && !unlocked)
+            || (s.n >= 4 && !reviewTimesReady)
+            || (s.n === 5 && !formsReady);
           const cur = s.n === step;
           const done = s.n < step && !locked;
           return (
@@ -96,12 +101,25 @@ export default function StepRail({
                   />
                 </div>
               )}
+              {s.n === 4 && (
+                <div className={`stepCheckpoint${reviewTimesReady ? " complete" : ""}`}>
+                  <span />
+                  <b>{reviewTimesReady ? "3 review windows saved" : "Choose 3 review windows"}</b>
+                  <span />
+                </div>
+              )}
               <button
                 type="button"
                 className={`rung${cur ? " cur" : ""}${done ? " done" : ""}`}
                 disabled={locked}
                 onClick={() => !locked && onGo(s.n)}
-                title={s.n === 2 && !intakeReady ? "Complete all required Step 1 fields" : s.n === 5 && !formsReady ? "Complete Step 4 evidence and human review before releasing the application" : locked ? gateLabel : undefined}
+                title={s.n === 2 && !intakeReady
+                  ? "Complete all required Step 1 fields"
+                  : s.n >= 4 && !reviewTimesReady
+                    ? "Choose three client review windows at the end of Step 3"
+                    : s.n === 5 && !formsReady
+                      ? "Complete Step 4 evidence and human review before releasing the application"
+                      : locked ? gateLabel : undefined}
                 style={{
                   textAlign: "left",
                   font: "inherit",

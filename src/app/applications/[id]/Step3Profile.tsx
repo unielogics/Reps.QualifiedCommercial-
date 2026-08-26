@@ -14,12 +14,19 @@
 // a business owner is worse than a rep quoting none, so those columns stay out
 // until the numbers are real.
 
+import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { CalendarClock } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import {
+  activeUnderwritingReviewPreference,
+  type UnderwritingReviewPreference,
+} from "@/lib/underwritingReview";
 import StepActions from "@/components/StepActions";
+import UnderwritingSlots from "@/components/UnderwritingSlots";
 
 type Period = {
   period: string;
@@ -158,6 +165,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const router = useRouter();
   const { decision } = useCase(dealerId);
+  const [reviewWindowsOpen, setReviewWindowsOpen] = useState(false);
 
   const periods = useQuery({
     queryKey: ["periods", dealerId],
@@ -182,6 +190,15 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         authToken: (await getToken()) ?? undefined,
       }),
   });
+  const reviewPreferences = useQuery({
+    queryKey: ["underwriting-review-preferences", dealerId],
+    queryFn: async () =>
+      api<UnderwritingReviewPreference[]>(
+        `/dealer-os/dealers/${dealerId}/underwriting-review-preferences`,
+        { authToken: (await getToken()) ?? undefined },
+      ),
+  });
+  const activeReviewPreference = activeUnderwritingReviewPreference(reviewPreferences.data);
 
   const m = health.data?.snapshot?.metrics ?? {};
   // Business-level rows only, newest six, oldest first so the chart reads left
@@ -428,12 +445,36 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
+      {activeReviewPreference && (
+        <div className="reviewWindowSaved">
+          <span><CalendarClock size={18} /></span>
+          <div>
+            <b>Three client review windows saved</b>
+            <p>{activeReviewPreference.slots.map((slot) => `${slot.date_label} · ${slot.label}`).join("  |  ")}</p>
+          </div>
+          <button type="button" className="btn sm" onClick={() => setReviewWindowsOpen(true)}>Edit windows</button>
+        </div>
+      )}
+
       <StepActions
-        ready
-        message="The verified financial profile is ready for the lender-application fields."
-        buttonLabel="Continue to Step 4"
-        onContinue={() => router.push(`/applications/${dealerId}?step=4`)}
+        ready={!reviewPreferences.isLoading}
+        message={activeReviewPreference
+          ? "The verified financial profile and client review windows are ready."
+          : "Before Step 4, choose three weekday windows when the desk can review the file with the client."}
+        buttonLabel={activeReviewPreference ? "Continue to Step 4" : "Choose three review windows"}
+        onContinue={() => activeReviewPreference
+          ? router.push(`/applications/${dealerId}?step=4`)
+          : setReviewWindowsOpen(true)}
       />
+
+      {reviewWindowsOpen && (
+        <UnderwritingSlots
+          dealerId={dealerId}
+          existing={activeReviewPreference}
+          onClose={() => setReviewWindowsOpen(false)}
+          onComplete={() => router.push(`/applications/${dealerId}?step=4`)}
+        />
+      )}
     </>
   );
 }
