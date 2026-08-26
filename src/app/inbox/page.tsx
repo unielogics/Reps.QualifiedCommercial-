@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Paperclip, UserRound, X } from "lucide-react";
@@ -49,6 +50,7 @@ function when(iso: string | null): string {
 
 export default function InboxPage() {
   const { getToken } = useAuth();
+  const searchParams = useSearchParams();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -87,6 +89,14 @@ export default function InboxPage() {
     },
   });
   const rows = threads.data ?? [];
+
+  useEffect(() => {
+    const requested = searchParams.get("thread");
+    if (!requested || !threads.data?.some((thread) => thread.id === requested)) return;
+    setSelectedId(requested);
+    setAttachmentOpen(false);
+  }, [searchParams, threads.data]);
+
   const threadSeed = selected
     ? {
         dealer_id: selected.dealer_id,

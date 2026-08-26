@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 import ActionHub from "./ActionHub";
+import GlobalSearch from "./GlobalSearch";
 import MfaBanner from "./MfaBanner";
 import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
 
@@ -291,6 +292,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <b>{activeSection}</b>
           </div>
           <div className="sp" />
+          <GlobalSearch />
           {now && (
             <Link href="/calendar" className="topclock" aria-label="Open calendar">
               <span>{formatTopDate(now)}</span>

@@ -110,8 +110,14 @@ export default function RepCalendarPage() {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const searchParams = useSearchParams();
-  const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState(() => startOfLocalDay(new Date()));
+  const initialDate = useMemo(() => {
+    const requestedDate = searchParams.get("date");
+    if (!requestedDate || !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) return new Date();
+    const parsed = new Date(`${requestedDate}T12:00:00`);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  }, [searchParams]);
+  const [month, setMonth] = useState(() => new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(() => startOfLocalDay(initialDate));
   const [bookingOpen, setBookingOpen] = useState(false);
   const [includeCancelled, setIncludeCancelled] = useState(() => searchParams.get("include_cancelled") === "1");
   const [activeAppointment, setActiveAppointment] = useState<{ row: Appointment; mode: "details" | "edit" | "reschedule" } | null>(null);
@@ -162,8 +168,19 @@ export default function RepCalendarPage() {
   });
 
   useEffect(() => {
+    const requestedDate = searchParams.get("date");
+    if (!requestedDate || !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) return;
+    const date = new Date(`${requestedDate}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return;
+    if (month.getFullYear() !== date.getFullYear() || month.getMonth() !== date.getMonth()) {
+      setMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+    }
+    if (!sameLocalDay(selectedDate, date)) setSelectedDate(startOfLocalDay(date));
+  }, [month, searchParams, selectedDate]);
+
+  useEffect(() => {
     const requested = searchParams.get("appointment");
-    if (!requested || activeAppointment || !appointments.data) return;
+    if (!requested || activeAppointment?.row.id === requested || !appointments.data) return;
     const row = appointments.data.find((item) => item.id === requested);
     if (row) {
       setActiveAppointment({ row, mode: "details" });
