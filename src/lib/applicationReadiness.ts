@@ -32,9 +32,13 @@ export type SubmissionReadinessItem = {
 
 export type SubmissionReadiness = {
   ready: boolean;
+  package_ready: boolean;
   route_key: string | null;
   route_label: string | null;
   human_review_status: "pending" | "fundable" | "not_fundable";
+  human_review_note: string | null;
+  human_reviewed_at: string | null;
+  human_reviewed_by_user_id: string | null;
   rules_version: string | null;
   items: SubmissionReadinessItem[];
   counts: Record<string, number>;

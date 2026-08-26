@@ -22,8 +22,8 @@ export const STEPS: Step[] = [
   { n: 1, title: "Applicant intake", blurb: "Entity, principals, request" },
   { n: 2, title: "Verification", blurb: "Bank link · credit authorization" },
   { n: 3, title: "Financial profile", blurb: "Metrics, credit band, capacity" },
-  { n: 4, title: "Underwriting package", blurb: "Route evidence · human review" },
-  { n: 5, title: "Application and execution", blurb: "QC master PDF · signature" },
+  { n: 4, title: "Underwriting package", blurb: "Route evidence · calculations" },
+  { n: 5, title: "Desk review and execution", blurb: "Summary · decision · signature" },
 ];
 
 /** Steps at or beyond this index need both authorizations back. */
@@ -34,7 +34,7 @@ export default function StepRail({
   unlocked,
   intakeReady,
   reviewTimesReady,
-  formsReady,
+  packageReady,
   gateLabel,
   onGo,
 }: {
@@ -42,7 +42,7 @@ export default function StepRail({
   unlocked: boolean;
   intakeReady: boolean;
   reviewTimesReady: boolean;
-  formsReady: boolean;
+  packageReady: boolean;
   gateLabel: string;
   onGo: (n: number) => void;
 }) {
@@ -58,7 +58,7 @@ export default function StepRail({
           const locked = (s.n === 2 && !intakeReady)
             || (s.n >= GATED_FROM && !unlocked)
             || (s.n >= 4 && !reviewTimesReady)
-            || (s.n === 5 && !formsReady);
+            || (s.n === 5 && !packageReady);
           const cur = s.n === step;
           const done = s.n < step && !locked;
           return (
@@ -117,8 +117,8 @@ export default function StepRail({
                   ? "Complete all required Step 1 fields"
                   : s.n >= 4 && !reviewTimesReady
                     ? "Choose three client review windows at the end of Step 3"
-                    : s.n === 5 && !formsReady
-                      ? "Complete Step 4 evidence and human review before releasing the application"
+                    : s.n === 5 && !packageReady
+                      ? "Complete the Step 4 evidence package before desk review"
                       : locked ? gateLabel : undefined}
                 style={{
                   textAlign: "left",

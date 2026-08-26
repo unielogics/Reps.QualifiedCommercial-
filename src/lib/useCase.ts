@@ -84,8 +84,17 @@ export type Dealer = {
   naics_code: string | null;
   naics_label: string | null;
   status: string;
+  owner_user_id: string | null;
+  submitting_agent_name: string | null;
+  submitting_agent_email: string | null;
+  bucket_id: string | null;
+  bucket_name: string | null;
+  handoff_intake_id: string | null;
+  audit_client_since: string | null;
   started_on: string | null;
   funding_goal: number | null;
+  client_requested_amount: number | null;
+  funded_amount: number | null;
   funding_purpose: string | null;
   use_of_proceeds: Array<{ label: string; amount: number }> | null;
   use_of_proceeds_note: string | null;

@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, FileCheck2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, FileCheck2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useMe } from "@/lib/useMe";
 import StepActions from "@/components/StepActions";
 import {
   type ApplicationProfileData,
@@ -24,8 +23,6 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
-  const { isSuperAdmin } = useMe();
-  const [reviewNote, setReviewNote] = useState("");
   const [financialDraft, setFinancialDraft] = useState({
     annual_sales: "",
     annual_cash_flow_available_for_debt: "",
@@ -87,24 +84,14 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
     }
   };
 
-  const review = useMutation({
-    mutationFn: async (status: "fundable" | "not_fundable" | "pending") => api<SubmissionReadiness>(
-      `/dealer-os/dealers/${dealerId}/submission-readiness/human-review`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ status, note: reviewNote.trim() || null }),
-        authToken: (await getToken()) ?? undefined,
-      },
-    ),
-    onSuccess: (data) => {
-      qc.setQueryData(["submission-readiness", dealerId], data);
-      setReviewNote("");
-    },
-  });
-
   const data = readiness.data;
-  const openItems = data?.items.filter((item) => item.status === "missing" || item.status === "supplemental") ?? [];
-  const stepReady = Boolean(data?.ready);
+  const packageItems = data?.items.filter(
+    (item) => item.requirement !== "Human-reviewed fundable path",
+  ) ?? [];
+  const openItems = packageItems.filter(
+    (item) => item.status === "missing" || item.status === "supplemental",
+  );
+  const stepReady = Boolean(data?.package_ready);
 
   return (
     <>
@@ -112,12 +99,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         <div className="panel-h">
           Step 4 · Underwriting package
           <span className="sp" />
-          <span className={`cellchip ${data?.ready ? "c-ok" : data?.human_review_status === "not_fundable" ? "c-bad" : "c-warn"}`}>
-            {data?.ready
-              ? "Approved for application release"
-              : data?.human_review_status === "not_fundable"
-                ? "Not fundable"
-                : "Conditions remain"}
+          <span className={`cellchip ${data?.package_ready ? "c-ok" : "c-warn"}`}>
+            {data?.package_ready ? "Package complete" : "Conditions remain"}
           </span>
         </div>
         <div className="panel-b">
@@ -153,7 +136,7 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {(data?.items ?? []).map((item) => {
+                {packageItems.map((item) => {
                   const state = STATUS[item.status] ?? STATUS.missing;
                   return (
                     <tr key={`${item.route}:${item.requirement}`}>
@@ -210,44 +193,14 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         </div>
       )}
 
-      <div className="panel">
-        <div className="panel-h"><ShieldCheck size={17} /> Human underwriting decision</div>
-        <div className="panel-b">
-          <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span className={`cellchip ${data?.human_review_status === "fundable" ? "c-ok" : data?.human_review_status === "not_fundable" ? "c-bad" : "c-warn"}`}>
-              {(data?.human_review_status ?? "pending").replace(/_/g, " ")}
-            </span>
-            <span className="sub">
-              Step 5 remains locked until a super admin records a fundable route and every
-              source requirement is complete.
-            </span>
-          </div>
-          {isSuperAdmin && (
-            <>
-              <textarea className="field mt" style={{ width: "100%" }} rows={3} placeholder="Decision note, remaining conditions, or reason the current file is not fundable" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
-              <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="btn pri" disabled={review.isPending} onClick={() => review.mutate("fundable")}><CheckCircle2 size={16} /> Mark fundable</button>
-                <button type="button" className="btn" disabled={review.isPending} onClick={() => review.mutate("pending")}>Return to pending</button>
-                <button type="button" className="btn" disabled={review.isPending || !reviewNote.trim()} onClick={() => review.mutate("not_fundable")}>Mark not fundable</button>
-              </div>
-            </>
-          )}
-          {(review.isError || patchProfile.isError) && (
-            <div className="note mt">{(review.error ?? patchProfile.error) instanceof Error ? (review.error ?? patchProfile.error)?.message : "That update did not save."}</div>
-          )}
-        </div>
-      </div>
-
       <StepActions
         ready={stepReady}
         message={stepReady
-          ? "The evidence package and human review are complete. Generate the QC master application in Step 5."
-          : data?.human_review_status === "not_fundable"
-            ? "The current file is not approved for application release."
-            : `${openItems.length || 1} release condition${openItems.length === 1 ? "" : "s"} remain.`}
+          ? "The evidence package is complete. Continue to Step 5 for desk review, agreements, and execution."
+          : `${openItems.length || 1} package condition${openItems.length === 1 ? "" : "s"} remain.`}
         buttonLabel="Continue to Step 5"
         onContinue={() => router.push(`/applications/${dealerId}?step=5`)}
-        pending={readiness.isLoading || patchProfile.isPending || review.isPending}
+        pending={readiness.isLoading || patchProfile.isPending}
       />
     </>
   );

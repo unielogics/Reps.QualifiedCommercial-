@@ -81,7 +81,7 @@ export default function ApplicationPage() {
       && verification.required_credit_owner_count > 0
       && verification.pre_screen_complete,
   );
-  const formsReady = Boolean(readiness.data?.ready);
+  const packageReady = Boolean(readiness.data?.package_ready);
   const reviewTimesReady = Boolean(activeUnderwritingReviewPreference(reviewPreferences.data));
   const effective = step >= 2 && !intakeReady
     ? 1
@@ -89,7 +89,7 @@ export default function ApplicationPage() {
       ? 2
       : step >= 4 && !reviewTimesReady
         ? 3
-        : step === 5 && !formsReady
+        : step === 5 && !packageReady
           ? 4
           : step;
 
@@ -150,7 +150,7 @@ export default function ApplicationPage() {
           unlocked={unlocked}
           intakeReady={intakeReady}
           reviewTimesReady={reviewTimesReady}
-          formsReady={formsReady}
+          packageReady={packageReady}
           gateLabel={unlocked ? "Unlocked by verification" : "Locked until verification returns"}
           onGo={go}
         />
