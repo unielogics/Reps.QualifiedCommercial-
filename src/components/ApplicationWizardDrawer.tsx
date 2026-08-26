@@ -15,7 +15,14 @@ const STEPS = [
 export default function ApplicationWizardDrawer({ onClose, onMinimize, minimized = false }: { onClose: () => void; onMinimize?: () => void; minimized?: boolean }) {
   const router = useRouter();
   return (
-    <Drawer title="Open application" width={1360} onClose={onClose} onMinimize={onMinimize} minimized={minimized}>
+    <Drawer
+      title="Open application"
+      onClose={onClose}
+      onMinimize={onMinimize}
+      minimized={minimized}
+      variant="workspace"
+      dismissOnBackdrop={false}
+    >
       <div className="wizardModalGrid">
         <div className="wizardRail">
           <div className="panel">
