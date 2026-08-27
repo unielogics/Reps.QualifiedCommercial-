@@ -16,6 +16,7 @@ import ActionHub from "./ActionHub";
 import GlobalSearch from "./GlobalSearch";
 import MfaBanner from "./MfaBanner";
 import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
+import SystemStatusMenu from "./SystemStatusMenu";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 const FUNDING_URL = process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
@@ -111,7 +112,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [rail, setRail] = useState(true);
   const [now, setNow] = useState<Date | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const { name, email, isRep, isTeam, isResolving } = useMe();
+  const { name, email, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
   const { getToken } = useAuth();
 
   // One grouped query for every file, not the per-file endpoint in a loop: a
@@ -306,6 +307,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <a href={AUDIT_URL}>Audit</a>
             </div>
           )}
+          {isSuperAdmin && <SystemStatusMenu />}
           <div className="popwrap">
             <button
               type="button"

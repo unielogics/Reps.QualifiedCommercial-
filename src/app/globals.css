@@ -232,6 +232,36 @@ a { color: var(--accent); }
 .popmenu .mi:disabled { opacity: 0.55; cursor: default; }
 .popmenu .mi small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 1px; white-space: normal; }
 .notificationMenu { width: min(360px, calc(100vw - 24px)); max-height: min(480px, calc(100vh - 90px)); overflow-y: auto; }
+.systemStatusTrigger { position: relative; width: 42px; min-width: 42px; padding: 0; color: var(--ink2); }
+.systemStatusTrigger > svg { width: 18px; height: 18px; }
+.systemStatusIndicator { position: absolute; right: 6px; top: 6px; width: 8px; height: 8px; border: 2px solid var(--surface); border-radius: 50%; background: var(--warn); }
+.systemStatusIndicator.ready { background: var(--ok); }
+.systemStatusIndicator.attention { background: var(--danger); }
+.systemStatusIndicator.checking { background: var(--warn); }
+.systemStatusMenu { width: min(410px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 86px)); overflow-y: auto; padding: 8px; }
+.systemStatusHead { display: flex; align-items: center; gap: 12px; padding: 7px 7px 10px; border-bottom: 1px solid var(--line); }
+.systemStatusHead > div { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.systemStatusHead b { font-size: 13px; }
+.systemStatusHead small { color: var(--muted); font-size: 11px; }
+.systemStatusRefresh { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.systemStatusRefresh:hover { background: var(--sunken); color: var(--ink); }
+.systemStatusRefresh:disabled { cursor: default; opacity: .55; }
+.systemStatusRefresh svg { width: 16px; height: 16px; }
+.systemStatusRow { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 9px; align-items: start; padding: 10px 7px; border-bottom: 1px solid var(--line); }
+.systemStatusRow:last-child { border-bottom: 0; }
+.systemStatusIcon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 7px; background: var(--danger-tint); color: var(--danger); }
+.systemStatusIcon.ready { background: var(--ok-tint); color: var(--ok); }
+.systemStatusIcon svg { width: 16px; height: 16px; }
+.systemStatusRow > div { min-width: 0; display: grid; gap: 4px; }
+.systemStatusName { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.systemStatusName b { color: var(--ink); font-size: 12.5px; }
+.systemStatusName em { overflow: hidden; color: var(--muted); font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.systemStatusRow small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.systemStatusState { min-height: 76px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; color: var(--muted); font-size: 11.5px; text-align: center; }
+.systemStatusState.error { color: var(--danger); }
+.systemStatusState svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.systemStatusSpin { animation: systemStatusSpin 800ms linear infinite; }
+@keyframes systemStatusSpin { to { transform: rotate(360deg); } }
 .consoleSwitch { min-height: 38px; align-items: center; }
 .consoleSwitch a, .consoleSwitch span { min-height: 32px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 750; }
 .consoleSwitch .on { background: var(--surface); color: var(--accent); box-shadow: var(--sh1); }
@@ -462,8 +492,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 
 /* ---------- portfolio and application workspace ---------- */
 .portfolioHeading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; }
-.portfolioControls { display: grid; grid-template-columns: minmax(260px, 1.6fr) repeat(4, minmax(150px, .7fr)) auto; gap: 8px; align-items: center; }
+.portfolioControls { display: grid; grid-template-columns: minmax(190px, .9fr) minmax(230px, 1.25fr) repeat(3, minmax(126px, .7fr)) minmax(138px, .7fr); gap: 8px; align-items: center; }
+.portfolioControls.withArchive { grid-template-columns: minmax(190px, .9fr) minmax(230px, 1.25fr) repeat(4, minmax(126px, .7fr)) minmax(138px, .7fr); }
 .portfolioSearch { min-width: 0; }
+.portfolioSort { width: 100%; white-space: nowrap; }
 .ownerSummary { max-width: 220px; overflow-wrap: anywhere; }
 .paginationRow { min-height: 58px; padding: 10px 14px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .iconAction { width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); display: inline-grid; place-items: center; cursor: pointer; font: 700 22px/1 var(--fh); }
@@ -485,14 +517,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .addressGrid { display: grid; grid-template-columns: minmax(220px, 1.5fr) minmax(150px, 1fr) 100px 110px; gap: 10px; }
 .addressSuggestions { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 90; max-height: 280px; overflow-y: auto; }
 .addressSearchMessage { position: absolute; z-index: 89; top: calc(100% + 6px); left: 0; right: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); color: var(--muted); font-size: 11.5px; }
-.integrationStrip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.integrationStrip > div { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
-.integrationStrip b { font-size: 12.5px; }
-.integrationStrip span:last-child { margin-left: auto; color: var(--muted); font-size: 11.5px; text-align: right; }
-.providerDot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); flex: 0 0 auto; }
-.providerDot.ready { background: var(--ok); }
-.providerDot.blocked { background: var(--danger); }
-
 @media (max-width: 1200px) {
   .portfolioControls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .portfolioSearch { grid-column: span 2; }
@@ -507,7 +531,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .addressGrid > div:first-child { grid-column: 1 / -1; }
   .workspaceDock, .app.rail .workspaceDock { left: 0; bottom: 68px; }
   .applicationToolbar { position: sticky; top: 57px; z-index: 17; }
-  .integrationStrip { grid-template-columns: 1fr; }
 }
 
 /* ---------- layout utilities ---------- */

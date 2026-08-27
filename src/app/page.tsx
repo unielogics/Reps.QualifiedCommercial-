@@ -20,12 +20,6 @@ type Row = {
 };
 type Page = { items: Row[]; total: number; limit: number; offset: number };
 type UnreadSummary = { total: number; per_file: Record<string, number> };
-type IntegrationStatus = {
-  isoftpull: { configured: boolean; environment: string; endpoint: string | null; detail: string };
-  plaid: { configured: boolean; environment: string; endpoint: string | null; detail: string };
-  sms: { configured: boolean; environment: string; endpoint: string | null; detail: string };
-  address: { configured: boolean; environment: string; endpoint: string | null; detail: string };
-};
 
 function money(value: number | null) {
   return value === null ? "—" : `$${Math.round(value).toLocaleString()}`;
@@ -87,10 +81,6 @@ export default function Portfolio() {
     queryKey: ["unread-summary"], enabled: isRep || isTeam, staleTime: 30_000,
     queryFn: async () => api<UnreadSummary>("/dealer-os/unread-summary", { authToken: (await getToken()) ?? undefined }),
   });
-  const integrations = useQuery({
-    queryKey: ["dealer-integrations-status"], enabled: isSuperAdmin,
-    queryFn: async () => api<IntegrationStatus>("/dealer-os/integrations/status", { authToken: (await getToken()) ?? undefined }),
-  });
   const archiveMutation = useMutation({
     mutationFn: async ({ id, restore }: { id: string; restore: boolean }) => api(`/dealer-os/dealers/${id}/${restore ? "restore" : "archive"}`, {
       method: "POST", authToken: (await getToken()) ?? undefined,
@@ -112,7 +102,7 @@ export default function Portfolio() {
         <button type="button" className="btn pri" onClick={() => { setCreating(true); setCreatingMinimized(false); }}>Open new application</button>
       </div>
 
-      <div className="portfolioControls mt">
+      <div className={`portfolioControls mt${isSuperAdmin ? " withArchive" : ""}`}>
         <div className="seg productMode" role="tablist" aria-label="Application lifecycle">
           <button type="button" className={lifecycle === "active" ? "on" : ""} onClick={() => setLifecycle("active")}>Applications</button>
           <button type="button" className={lifecycle === "draft" ? "on" : ""} onClick={() => setLifecycle("draft")}>Drafts</button>
@@ -130,15 +120,8 @@ export default function Portfolio() {
         {isSuperAdmin && <select className="field" aria-label="Archive status" value={archive} onChange={(event) => setArchive(event.target.value)}>
           <option value="active">Active files</option><option value="archived">Archived files</option><option value="all">All files</option>
         </select>}
-        <button type="button" className="btn" onClick={() => setSortDir((value) => value === "desc" ? "asc" : "desc")}>Updated {sortDir === "desc" ? "newest ↓" : "oldest ↑"}</button>
+        <button type="button" className="btn portfolioSort" onClick={() => setSortDir((value) => value === "desc" ? "asc" : "desc")}>Updated {sortDir === "desc" ? "newest ↓" : "oldest ↑"}</button>
       </div>
-
-      {isSuperAdmin && integrations.data && <div className="integrationStrip mt">
-        <div><span className={`providerDot ${integrations.data.isoftpull.configured ? "ready" : "blocked"}`} /><b>iSoftPull</b><span>{integrations.data.isoftpull.detail}</span></div>
-        <div><span className={`providerDot ${integrations.data.plaid.configured && integrations.data.plaid.environment === "production" ? "ready" : "blocked"}`} /><b>Plaid · {integrations.data.plaid.environment}</b><span>{integrations.data.plaid.detail}</span></div>
-        <div><span className={`providerDot ${integrations.data.sms.configured ? "ready" : "blocked"}`} /><b>SMS · {integrations.data.sms.environment}</b><span>{integrations.data.sms.detail}</span></div>
-        <div><span className={`providerDot ${integrations.data.address.configured ? "ready" : "blocked"}`} /><b>Address · {integrations.data.address.environment}</b><span>{integrations.data.address.detail}</span></div>
-      </div>}
 
       <div className="panel mt">
         <div className="tblwrap">
