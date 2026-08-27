@@ -32,6 +32,17 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
     annual_cash_flow_available_for_debt: "",
     monthly_debt_payments: "",
   });
+  const [formDraft, setFormDraft] = useState({
+    guaranty_type: "",
+    office_space: "",
+    business_stage: "existing",
+    existing_mca_balance: "",
+    existing_sba_balance: "",
+    active_ucc_filings: "",
+    affiliate_businesses: "",
+    send_welcome_email: "yes",
+    signer_title: "",
+  });
 
   const profile = useQuery({
     queryKey: ["application-profile", dealerId],
@@ -79,12 +90,42 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
     profile.data?.monthly_debt_payments,
   ]);
 
+  useEffect(() => {
+    if (!profile.data) return;
+    setFormDraft({
+      guaranty_type: profile.data.guaranty_type ?? "",
+      office_space: profile.data.office_space ?? "",
+      business_stage: profile.data.business_stage ?? "existing",
+      existing_mca_balance: profile.data.existing_mca_balance?.toString() ?? "",
+      existing_sba_balance: profile.data.existing_sba_balance?.toString() ?? "",
+      active_ucc_filings: profile.data.active_ucc_filings?.toString() ?? "",
+      affiliate_businesses: profile.data.affiliate_businesses === true ? "yes" : profile.data.affiliate_businesses === false ? "no" : "",
+      send_welcome_email: profile.data.send_welcome_email === false ? "no" : "yes",
+      signer_title: profile.data.signer_title ?? "",
+    });
+  }, [profile.data]);
+
   const commitFinancial = async (field: keyof typeof financialDraft) => {
     const raw = financialDraft[field].trim();
     try {
       await patchProfile.mutateAsync({ [field]: raw ? Number(raw) : null });
     } catch {
       // The mutation error remains visible below; keep the draft so the rep can retry.
+    }
+  };
+
+  const commitForm = async (field: keyof typeof formDraft) => {
+    const raw = formDraft[field].trim();
+    let value: string | number | boolean | null = raw || null;
+    if (["existing_mca_balance", "existing_sba_balance", "active_ucc_filings"].includes(field)) {
+      value = raw ? Number(raw) : null;
+    } else if (field === "affiliate_businesses" || field === "send_welcome_email") {
+      value = raw ? raw === "yes" : null;
+    }
+    try {
+      await patchProfile.mutateAsync({ [field]: value });
+    } catch {
+      // Keep the entered value visible so the rep can correct and retry it.
     }
   };
 
@@ -186,6 +227,28 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
+      <div className="panel">
+        <div className="panel-h">Program application source fields</div>
+        <div className="panel-b">
+          <p className="sub" style={{ marginTop: 0, lineHeight: 1.55 }}>
+            These values populate the configured program PDF. Use <b>N/A</b> only when the
+            source form allows it. The client sees this exact information before signing.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            <label><span className="lbl">Guaranty type</span><select className={`field${formDraft.guaranty_type ? "" : " field-invalid"}`} value={formDraft.guaranty_type} onChange={(event) => { setFormDraft((current) => ({ ...current, guaranty_type: event.target.value })); void patchProfile.mutateAsync({ guaranty_type: event.target.value || null }).catch(() => undefined); }}><option value="">Select</option><option value="personal">Personal</option><option value="business">Business only</option><option value="limited">Limited</option></select></label>
+            <label><span className="lbl">Office / operating space</span><input className="field" value={formDraft.office_space} placeholder="Owned, leased, home office, or N/A" onChange={(event) => setFormDraft((current) => ({ ...current, office_space: event.target.value }))} onBlur={() => void commitForm("office_space")} /></label>
+            <label><span className="lbl">Business stage</span><select className="field" value={formDraft.business_stage} onChange={(event) => { setFormDraft((current) => ({ ...current, business_stage: event.target.value })); void patchProfile.mutateAsync({ business_stage: event.target.value }).catch(() => undefined); }}><option value="startup">Startup</option><option value="existing">Existing business</option><option value="acquisition">Acquisition</option></select></label>
+            <label><span className="lbl">Authorized signer title</span><input className={`field${formDraft.signer_title.trim() ? "" : " field-invalid"}`} value={formDraft.signer_title} placeholder="Owner, President, Managing Member" onChange={(event) => setFormDraft((current) => ({ ...current, signer_title: event.target.value }))} onBlur={() => void commitForm("signer_title")} /></label>
+            <label><span className="lbl">Outstanding MCA balance</span><input className={`field${formDraft.existing_mca_balance.trim() ? "" : " field-invalid"}`} type="number" min="0" inputMode="decimal" placeholder="Enter 0 when none" value={formDraft.existing_mca_balance} onChange={(event) => setFormDraft((current) => ({ ...current, existing_mca_balance: event.target.value }))} onBlur={() => void commitForm("existing_mca_balance")} /></label>
+            <label><span className="lbl">Outstanding SBA balance</span><input className={`field${formDraft.existing_sba_balance.trim() ? "" : " field-invalid"}`} type="number" min="0" inputMode="decimal" placeholder="Enter 0 when none" value={formDraft.existing_sba_balance} onChange={(event) => setFormDraft((current) => ({ ...current, existing_sba_balance: event.target.value }))} onBlur={() => void commitForm("existing_sba_balance")} /></label>
+            <label><span className="lbl">Active UCC filings</span><input className="field" type="number" min="0" step="1" inputMode="numeric" value={formDraft.active_ucc_filings} onChange={(event) => setFormDraft((current) => ({ ...current, active_ucc_filings: event.target.value }))} onBlur={() => void commitForm("active_ucc_filings")} /></label>
+            <label><span className="lbl">Affiliate businesses</span><select className="field" value={formDraft.affiliate_businesses} onChange={(event) => { setFormDraft((current) => ({ ...current, affiliate_businesses: event.target.value })); void patchProfile.mutateAsync({ affiliate_businesses: event.target.value ? event.target.value === "yes" : null }).catch(() => undefined); }}><option value="">Select</option><option value="no">No</option><option value="yes">Yes</option></select></label>
+            <label><span className="lbl">Program welcome email</span><select className="field" value={formDraft.send_welcome_email} onChange={(event) => { setFormDraft((current) => ({ ...current, send_welcome_email: event.target.value })); void patchProfile.mutateAsync({ send_welcome_email: event.target.value === "yes" }).catch(() => undefined); }}><option value="yes">Yes</option><option value="no">No</option></select></label>
+          </div>
+          {patchProfile.error && <div className="warnline mt">{patchProfile.error instanceof Error ? patchProfile.error.message : "Source fields could not be saved."}</div>}
+        </div>
+      </div>
+
       {openItems.length > 0 && (
         <div className="panel panel-invalid">
           <div className="panel-h"><AlertTriangle size={17} /> Conditions before release</div>
@@ -201,6 +264,8 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         dealerId={dealerId}
         packageReady={stepReady}
         blockers={openItems.map((item) => item.requirement)}
+        routeKey={data?.route_key}
+        isSuperAdmin={isSuperAdmin}
         onStatusChange={setApplicationStatus}
       />
 
@@ -210,7 +275,7 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
           message={!stepReady
             ? `${openItems.length || 1} package condition${openItems.length === 1 ? "" : "s"} remain.`
             : applicationStatus !== "executed"
-              ? "The package is complete. The primary signer must execute the QC application before final desk review."
+              ? "The package is complete. The primary signer must execute the configured program application before final desk review."
               : "The agent workflow and signed application are complete. Continue to the super-admin desk review."
           }
           buttonLabel="Continue to Step 5"
@@ -225,7 +290,7 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
           </div>
           <p className="sub" style={{ marginBottom: 0 }}>
             {applicationStatus === "executed"
-              ? "The signed application has been delivered to the client and the file is ready for super-admin review in Step 5."
+              ? "The signed program application has been delivered to the client and the file is ready for super-admin review in Step 5."
               : "Generate and send the application above. Step 5 is reserved for the super-admin decision, status, funding amount, and file destination."}
           </p>
         </div>

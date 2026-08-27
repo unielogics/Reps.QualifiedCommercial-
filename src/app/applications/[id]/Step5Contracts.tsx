@@ -65,6 +65,20 @@ type CaseDoc = {
   signature_sha256: string | null;
 };
 
+type ContractEnvelope = {
+  id: string;
+  title: string;
+  package_version: number;
+  program_key: string;
+  status: string;
+  signer_name: string | null;
+  signer_title: string | null;
+  completed_at: string | null;
+  bundle_sha256: string | null;
+  bundle_download_url: string | null;
+  documents: Array<{ id: string; title: string; status: string; executed_sha256: string | null }>;
+};
+
 type SendResult = {
   url: string;
   passcode: string | null;
@@ -180,6 +194,13 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     queryKey: ["case-contracts", dealerId],
     queryFn: () => authenticated<CaseDoc[]>(`/dealer-os/dealers/${dealerId}/contracts`),
   });
+  const envelopes = useQuery({
+    queryKey: ["contract-envelopes", dealerId],
+    queryFn: () => authenticated<ContractEnvelope[]>(
+      `/dealer-os/dealers/${dealerId}/contract-envelopes`,
+    ),
+    refetchInterval: 15_000,
+  });
   const handoff = useQuery({
     queryKey: ["dealer-handoff", dealerId],
     enabled: isSuperAdmin,
@@ -187,6 +208,9 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   });
 
   const caseDoc = caseDocs.data?.find((item) => item.template_key === MASTER_KEY);
+  const packageEnvelope = envelopes.data?.find((item) => item.status === "executed")
+    ?? envelopes.data?.find((item) => item.status !== "void")
+    ?? null;
   const reviewPreference = activeUnderwritingReviewPreference(reviewPreferences.data);
   const requiredOwners = (owners.data ?? []).filter((owner) => owner.credit_required);
   const completedOwners = requiredOwners.filter((owner) => owner.credit_complete).length;
@@ -315,7 +339,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     window.setTimeout(() => setCopied((current) => current === label ? null : current), 1800);
   };
 
-  const executed = caseDoc?.status === "executed";
+  const executed = packageEnvelope?.status === "executed" || caseDoc?.status === "executed";
   const decisionTone = readiness.data?.human_review_status === "fundable"
     ? "c-ok"
     : readiness.data?.human_review_status === "not_fundable"
@@ -362,6 +386,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
             <SummarySection title="Step 4 · Package" icon={<CheckCircle2 size={17} />}>
               <div className="kv"><span>Route</span><b>{readiness.data?.route_label || "Awaiting route"}</b></div>
               <div className="kv"><span>Evidence package</span><b>{readiness.data?.package_ready ? "Complete" : "Conditions remain"}</b></div>
+              <div className="kv"><span>Signing package</span><b>{packageEnvelope ? `${packageEnvelope.title} · ${packageEnvelope.status.replace(/_/g, " ")}` : "Not generated"}</b></div>
               <div className="kv"><span>Rules</span><b>{readiness.data?.rules_version || "—"}</b></div>
             </SummarySection>
             <SummarySection title="Client review windows" icon={<CalendarClock size={17} />}>
@@ -467,18 +492,18 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
               <thead><tr><th>Stage</th><th>Record</th><th>Who completes it</th><th>Purpose</th></tr></thead>
               <tbody>
                 <tr><td>Step 2</td><td><b>FCRA / iSoftPull consent</b></td><td>Every 20%+ owner</td><td>Independent authorization for that owner’s soft credit inquiry. This is not the financing application.</td></tr>
-                <tr><td>Step 4</td><td><b>QC Business Financing Application and Certifications</b></td><td>Primary owner or authorized representative</td><td>Certifies the business, ownership, request, disclosures, and evidence summary before the file reaches desk review.</td></tr>
+                <tr><td>Step 4</td><td><b>Configured program application package</b></td><td>Primary owner or authorized representative</td><td>Reviews every populated program form, acknowledges each required document, and applies one electronic signature to the listed package.</td></tr>
                 <tr><td>Step 5</td><td><b>No new client signature</b></td><td>Super admin</td><td>Reviews the executed application, records the decision and status, manages the bucket, and completes the file disposition.</td></tr>
               </tbody>
             </table>
           </div>
-          <p className="sub mt">Product-specific SBA, state, or downstream forms remain separate requested artifacts. They are not silently recreated or bundled into the QC master application.</p>
+          <p className="sub mt">The active package is controlled by the versioned Forms and Packages configuration. Executed documents remain immutable even if a later package version is published.</p>
         </div>
       </div>
 
       <div className="panel">
         <div className="panel-h">
-          QC master application
+          Program application package
           <span className="sp" />
           <span className={`cellchip ${executed ? "c-ok" : "c-warn"}`}>
             {executed ? "Executed" : "Step 4 execution required"}
@@ -487,22 +512,22 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
         <div className="panel-b">
           <p className="sub" style={{ marginTop: 0 }}>
             Generation, joint review, and signature delivery are completed in Step 4. Step 5 keeps
-            the executed lender-neutral application available for super-admin review without creating
-            a second signing path.
+            the exact executed program forms available for super-admin review without creating a
+            second signing path.
           </p>
           {!executed && (
             <div className="warnline">
               Return to Step 4 and complete the primary signer&apos;s execution before final desk review.
             </div>
           )}
-          {executed && caseDoc?.filled_sha256 && (
+          {executed && (packageEnvelope?.bundle_download_url || caseDoc?.filled_sha256) && (
             <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate()}>
-                <Download size={16} /> {download.isPending ? "Opening…" : "View executed agreement"}
-              </button>
+              {packageEnvelope?.bundle_download_url
+                ? <a className="btn" href={packageEnvelope.bundle_download_url} target="_blank" rel="noreferrer"><Download size={16} /> View executed package</a>
+                : <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate()}><Download size={16} /> {download.isPending ? "Opening…" : "View legacy executed agreement"}</button>}
             </div>
           )}
-          {executed && <div className="note mt"><b>Executed by {caseDoc.signer_name || "the authorized representative"}</b><div className="sub">{caseDoc.signer_title || "Title recorded in certificate"} · {when(caseDoc.signed_at)} · Signature SHA-256 {caseDoc.signature_sha256 ? `${caseDoc.signature_sha256.slice(0, 16)}…` : "in certificate"}</div></div>}
+          {executed && <div className="note mt"><b>Executed by {packageEnvelope?.signer_name || caseDoc?.signer_name || "the authorized representative"}</b><div className="sub">{packageEnvelope?.signer_title || caseDoc?.signer_title || "Title recorded in certificate"} · {when(packageEnvelope?.completed_at || caseDoc?.signed_at)} · Package SHA-256 {packageEnvelope?.bundle_sha256 ? `${packageEnvelope.bundle_sha256.slice(0, 16)}…` : caseDoc?.signature_sha256 ? `${caseDoc.signature_sha256.slice(0, 16)}…` : "in certificate"}</div></div>}
         </div>
       </div>
 

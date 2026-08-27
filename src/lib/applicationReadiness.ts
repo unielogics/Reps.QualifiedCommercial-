@@ -10,6 +10,14 @@ export type ApplicationProfileData = {
   annual_sales: number | null;
   annual_cash_flow_available_for_debt: number | null;
   monthly_debt_payments: number | null;
+  guaranty_type: string | null;
+  office_space: string | null;
+  business_stage: string | null;
+  existing_mca_balance: number | null;
+  existing_sba_balance: number | null;
+  active_ucc_filings: number | null;
+  affiliate_businesses: boolean | null;
+  send_welcome_email: boolean | null;
   signer_title: string | null;
   landlord_mortgagee: string | null;
   guarantor_home_address: string | null;

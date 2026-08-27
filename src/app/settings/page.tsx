@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, ExternalLink, Pencil, Save, ShieldCheck, UserRound, X } from "lucide-react";
+import { Camera, ExternalLink, Files, Pencil, Save, ShieldCheck, UserRound, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 
@@ -165,7 +165,7 @@ export default function FieldDeskSettingsPage() {
 
   const cardName = form.display_name || "Your name";
   return <div className="settingsPage">
-    <header className="hd"><div><span className="eyebrow">Field Desk identity</span><h2>Settings</h2><p className="lede">Manage the profile used by Inbox business cards, booking links, and client presentations.</p></div><button className="btn pri" disabled={save.isPending || uploading} onClick={() => save.mutate(form)}><Save size={17} /> {save.isPending ? "Saving…" : "Save profile"}</button></header>
+    <header className="hd"><div><span className="eyebrow">Field Desk identity</span><h2>Settings</h2><p className="lede">Manage the profile used by Inbox business cards, booking links, and client presentations.</p></div><div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{isSuperAdmin && <a className="btn" href="/settings/forms"><Files size={17} /> Forms and Packages</a>}<button className="btn pri" disabled={save.isPending || uploading} onClick={() => save.mutate(form)}><Save size={17} /> {save.isPending ? "Saving…" : "Save profile"}</button></div></header>
     <div className="settingsLayout mt">
       <section className="panel settingsFormPanel"><div className="panelTitle"><div><h3>Business-card profile</h3><span>Visible only when you share your card.</span></div></div><div className="settingsForm">
         <div className="headshotEditor"><label className={`headshotButton${uploading ? " isDisabled" : ""}`} htmlFor="profile-headshot-input" aria-label="Choose agent headshot">{profile.data?.headshot_url ? <img src={profile.data.headshot_url} alt={cardName} /> : <UserRound size={34} />}<span><Camera size={15} /></span></label><div><b>Agent headshot</b><p>JPEG, PNG, or WebP. Square photos work best.</p><label className={`btn settingsFileTrigger${uploading ? " isDisabled" : ""}`} htmlFor="profile-headshot-input">{uploading ? "Uploading…" : "Choose photo"}</label></div><input ref={fileInput} id="profile-headshot-input" className="nativeFileInput" type="file" disabled={uploading} accept="image/*,.jpg,.jpeg,.png,.webp" onChange={(event) => event.target.files?.[0] && void uploadHeadshot(event.target.files[0])} /></div>

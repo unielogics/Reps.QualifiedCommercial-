@@ -63,11 +63,11 @@ export default function ApplicationPage() {
       { authToken: (await getToken()) ?? undefined },
     ),
   });
-  const caseDocs = useQuery({
-    queryKey: ["case-contracts", id],
+  const contractEnvelopes = useQuery({
+    queryKey: ["contract-envelopes", id],
     enabled: unlocked,
-    queryFn: async () => api<Array<{ template_key: string; status: string }>>(
-      `/dealer-os/dealers/${id}/contracts`,
+    queryFn: async () => api<Array<{ status: string }>>(
+      `/dealer-os/dealers/${id}/contract-envelopes`,
       { authToken: (await getToken()) ?? undefined },
     ),
     refetchInterval: 15_000,
@@ -91,8 +91,8 @@ export default function ApplicationPage() {
       && verification.pre_screen_complete,
   );
   const packageReady = Boolean(readiness.data?.package_ready);
-  const applicationExecuted = Boolean(caseDocs.data?.some(
-    (document) => document.template_key === "qc_business_financing_application" && document.status === "executed",
+  const applicationExecuted = Boolean(contractEnvelopes.data?.some(
+    (envelope) => envelope.status === "executed",
   ));
   const reviewTimesReady = Boolean(activeUnderwritingReviewPreference(reviewPreferences.data));
   const effective = step >= 2 && !intakeReady
