@@ -301,6 +301,62 @@ a { color: var(--accent); }
 .modalWorkspace .modalHead { padding-inline: clamp(16px, 2.4vw, 34px); }
 .modalWorkspace .modalBody { flex: 1; padding: clamp(14px, 2vw, 28px); }
 .modalWorkspace .modalBody > .panel { width: min(1320px, 100%); margin-inline: auto; }
+.modalWorkspace .modalBody.agreementReviewBody { padding: 0; overflow: hidden; display: flex; }
+.agreementReviewWorkspace {
+  min-width: 0; min-height: 0; flex: 1; display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto; background: var(--sunken2);
+}
+.agreementReviewToolbar {
+  display: flex; align-items: center; gap: 16px; padding: 12px clamp(16px, 2vw, 28px);
+  border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.agreementReviewIdentity { min-width: 280px; display: flex; align-items: center; gap: 12px; }
+.agreementReviewIdentity > div { min-width: 0; display: grid; gap: 2px; }
+.agreementReviewIdentity b { font-family: var(--fh); font-size: 14px; line-height: 1.25; }
+.agreementReviewIdentity small { color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+.agreementReviewIcon { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 8px; background: var(--accent-100); color: var(--accent); }
+.agreementReviewActions { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.agreementPdfStage { min-width: 0; min-height: 0; padding: 12px clamp(12px, 2vw, 24px); }
+.agreementPdfFrame { width: 100%; height: 100%; min-height: 420px; display: block; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--sh1); }
+.agreementPdfMobileFallback { display: none; }
+.agreementReviewFooter {
+  display: grid; grid-template-columns: minmax(230px, auto) minmax(320px, 1fr); align-items: center; gap: 12px;
+  padding: 10px clamp(16px, 2vw, 28px); border-top: 1px solid var(--line); background: var(--surface);
+}
+.agreementReviewHash, .agreementReviewInstruction { display: flex; align-items: center; gap: 9px; color: var(--muted); }
+.agreementReviewHash > span { display: grid; gap: 2px; }
+.agreementReviewHash b, .agreementReviewInstruction b { color: var(--ink); font-size: 12px; }
+.agreementReviewHash small, .agreementDeliveryState small { color: var(--muted); font-size: 10.8px; }
+.agreementDeliveryState { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.agreementDeliveryState > div { min-width: 220px; display: grid; gap: 2px; margin-right: auto; }
+.agreementDeliveryState b { color: var(--ok); font-size: 12px; }
+.agreementReviewError { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 1120px) {
+  .agreementReviewToolbar { align-items: flex-start; }
+  .agreementReviewActions .cellchip { display: none; }
+  .agreementReviewActions .btn { min-width: 44px; }
+}
+@media (max-width: 820px) {
+  .agreementReviewToolbar { display: grid; }
+  .agreementReviewActions { margin-left: 0; justify-content: stretch; }
+  .agreementReviewActions .btn { flex: 1; }
+  .agreementReviewFooter { grid-template-columns: 1fr; }
+  .agreementDeliveryState { justify-content: flex-start; }
+}
+@media (max-width: 620px) {
+  .agreementReviewIdentity { min-width: 0; }
+  .agreementReviewIdentity small { display: none; }
+  .agreementReviewActions a.btn { display: none; }
+  .agreementReviewActions button.btn { width: 100%; }
+  .agreementPdfFrame { display: none; }
+  .agreementPdfStage { display: grid; place-items: center; }
+  .agreementPdfMobileFallback {
+    width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: 8px; padding: 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  }
+  .agreementPdfMobileFallback span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .agreementReviewHash { display: none; }
+}
 .archiveDialog { width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--sh2); overflow: hidden; display: flex; flex-direction: column; }
 .bookingCalendar { display: grid; grid-template-columns: 190px minmax(0, 1fr) 220px; gap: 12px; align-items: stretch; }
 .slotRail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

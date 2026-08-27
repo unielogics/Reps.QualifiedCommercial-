@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Copy, Download, FileSignature, Mail } from "lucide-react";
+import { CheckCircle2, Copy, Download, FileSignature } from "lucide-react";
 import { api } from "@/lib/api";
+import AgreementReviewWorkspace from "./AgreementReviewWorkspace";
 
 export const MASTER_APPLICATION_KEY = "qc_business_financing_application";
 
@@ -76,6 +77,8 @@ export default function ApplicationSigningPanel({
   const [generated, setGenerated] = useState<GenerateResult | null>(null);
   const [sendResult, setSendResult] = useState<SendResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
+  const [reviewSha256, setReviewSha256] = useState<string | null>(null);
 
   const authenticated = async <T,>(path: string, init?: RequestInit) =>
     api<T>(path, { ...init, authToken: (await getToken()) ?? undefined });
@@ -110,7 +113,10 @@ export default function ApplicationSigningPanel({
     onSuccess: (result) => {
       setGenerated(result);
       void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
-      if (result.download_url) window.open(result.download_url, "_blank", "noopener,noreferrer");
+      if (result.download_url) {
+        setReviewUrl(result.download_url);
+        setReviewSha256(result.sha256);
+      }
     },
   });
   const send = useMutation({
@@ -123,11 +129,18 @@ export default function ApplicationSigningPanel({
       void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
     },
   });
-  const download = useMutation({
-    mutationFn: () => authenticated<{ url: string }>(
+  const preview = useMutation({
+    mutationFn: () => authenticated<{ url: string; sha256: string | null; status: string }>(
       `/dealer-os/dealers/${dealerId}/contracts/${MASTER_APPLICATION_KEY}/url`,
     ),
-    onSuccess: (result) => window.open(result.url, "_blank", "noopener,noreferrer"),
+    onSuccess: (result) => {
+      if (executed) {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      setReviewUrl(result.url);
+      setReviewSha256(result.sha256);
+    },
   });
 
   const copy = async (key: string, value: string | null | undefined) => {
@@ -136,7 +149,7 @@ export default function ApplicationSigningPanel({
     setCopied(key);
     window.setTimeout(() => setCopied((current) => current === key ? null : current), 1800);
   };
-  const error = generate.error ?? send.error ?? download.error;
+  const error = generate.error ?? send.error ?? preview.error;
 
   return (
     <div className={`panel${!packageReady && !executed ? " panel-invalid" : ""}`}>
@@ -169,13 +182,8 @@ export default function ApplicationSigningPanel({
             </button>
           )}
           {caseDoc?.filled_sha256 && (
-            <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate()}>
-              <Download size={16} /> {executed ? "View executed PDF" : "Review populated PDF"}
-            </button>
-          )}
-          {caseDoc?.filled_sha256 && !executed && (
-            <button type="button" className="btn pri" disabled={!canPrepare || send.isPending} onClick={() => send.mutate()}>
-              <Mail size={16} /> {send.isPending ? "Sending..." : outForSignature ? "Resend signature email" : "Email primary signer"}
+            <button type="button" className={executed ? "btn" : "btn pri"} disabled={preview.isPending} onClick={() => preview.mutate()}>
+              <Download size={16} /> {preview.isPending ? "Opening..." : executed ? "Download executed PDF" : outForSignature ? "Review sent application" : "Review and send"}
             </button>
           )}
         </div>
@@ -214,6 +222,21 @@ export default function ApplicationSigningPanel({
           <div className="warnline mt">{error instanceof Error ? error.message : "The application action did not complete."}</div>
         )}
       </div>
+      {reviewUrl && !executed && (
+        <AgreementReviewWorkspace
+          url={reviewUrl}
+          sha256={reviewSha256 ?? caseDoc?.filled_sha256 ?? null}
+          outForSignature={outForSignature}
+          sendResult={sendResult}
+          sendPending={send.isPending}
+          canSend={canPrepare}
+          error={send.error}
+          copied={copied}
+          onSend={() => send.mutate()}
+          onCopy={(key, value) => void copy(key, value)}
+          onClose={() => setReviewUrl(null)}
+        />
+      )}
     </div>
   );
 }

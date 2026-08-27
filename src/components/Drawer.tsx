@@ -11,6 +11,7 @@ export default function Drawer({
   minimized = false,
   variant = "modal",
   dismissOnBackdrop = true,
+  bodyClassName,
 }: {
   title: string;
   onClose: () => void;
@@ -20,6 +21,7 @@ export default function Drawer({
   minimized?: boolean;
   variant?: "modal" | "workspace";
   dismissOnBackdrop?: boolean;
+  bodyClassName?: string;
 }) {
   useEffect(() => {
     if (minimized) return;
@@ -67,7 +69,7 @@ export default function Drawer({
             </svg>
           </button>
         </div>
-        <div className="modalBody">{children}</div>
+        <div className={`modalBody${bodyClassName ? ` ${bodyClassName}` : ""}`}>{children}</div>
       </section>
     </div>
   );
