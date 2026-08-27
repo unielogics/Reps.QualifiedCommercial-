@@ -65,22 +65,6 @@ type CaseDoc = {
   signature_sha256: string | null;
 };
 
-type GenerateResult = {
-  status: string;
-  placed: Record<string, string>;
-  missing_data: string[];
-  overlay_problems: string[];
-  sha256: string;
-  download_url: string | null;
-};
-
-type Template = {
-  key: string;
-  title: string;
-  revision: number;
-  active: boolean;
-};
-
 type SendResult = {
   url: string;
   passcode: string | null;
@@ -150,7 +134,6 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const qc = useQueryClient();
   const { dealer, verification } = useCase(dealerId);
   const { isSuperAdmin } = useMe();
-  const [generated, setGenerated] = useState<GenerateResult | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [statusDraft, setStatusDraft] = useState("active");
   const [fundedAmount, setFundedAmount] = useState("");
@@ -193,10 +176,6 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     queryKey: ["appointments", dealerId],
     queryFn: () => authenticated<RepAppointment[]>(`/dealer-os/dealers/${dealerId}/appointments`),
   });
-  const templates = useQuery({
-    queryKey: ["contract-templates"],
-    queryFn: () => authenticated<Template[]>("/dealer-os/contract-templates"),
-  });
   const caseDocs = useQuery({
     queryKey: ["case-contracts", dealerId],
     queryFn: () => authenticated<CaseDoc[]>(`/dealer-os/dealers/${dealerId}/contracts`),
@@ -207,7 +186,6 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     queryFn: () => authenticated<Handoff>(`/dealer-os/dealers/${dealerId}/handoff`),
   });
 
-  const template = templates.data?.find((item) => item.key === MASTER_KEY && item.active);
   const caseDoc = caseDocs.data?.find((item) => item.template_key === MASTER_KEY);
   const reviewPreference = activeUnderwritingReviewPreference(reviewPreferences.data);
   const requiredOwners = (owners.data ?? []).filter((owner) => owner.credit_required);
@@ -246,26 +224,6 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     if (reviewPreference?.selected_slot_at) setSelectedReviewSlot(reviewPreference.selected_slot_at);
   }, [reviewPreference?.selected_slot_at]);
 
-  const generate = useMutation({
-    mutationFn: () => authenticated<GenerateResult>(
-      `/dealer-os/dealers/${dealerId}/contracts/${MASTER_KEY}/generate`,
-      { method: "POST" },
-    ),
-    onSuccess: (result) => {
-      setGenerated(result);
-      void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
-    },
-  });
-  const send = useMutation({
-    mutationFn: () => authenticated<SendResult>(
-      `/dealer-os/dealers/${dealerId}/contracts/${MASTER_KEY}/send-signature`,
-      { method: "POST", body: JSON.stringify({ channel: "email" }) },
-    ),
-    onSuccess: (result) => {
-      setRoomResult(result);
-      void qc.invalidateQueries({ queryKey: ["case-contracts", dealerId] });
-    },
-  });
   const download = useMutation({
     mutationFn: () => authenticated<{ url: string }>(
       `/dealer-os/dealers/${dealerId}/contracts/${MASTER_KEY}/url`,
@@ -350,10 +308,6 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     },
   });
 
-  useEffect(() => {
-    if (generated?.download_url) window.open(generated.download_url, "_blank", "noopener,noreferrer");
-  }, [generated?.download_url]);
-
   const copy = async (label: string, value: string | null | undefined) => {
     if (!value) return;
     await navigator.clipboard.writeText(value);
@@ -361,15 +315,13 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     window.setTimeout(() => setCopied((current) => current === label ? null : current), 1800);
   };
 
-  const releaseReady = Boolean(readiness.data?.package_ready && template);
   const executed = caseDoc?.status === "executed";
-  const outForSignature = caseDoc?.status === "out_for_signature";
   const decisionTone = readiness.data?.human_review_status === "fundable"
     ? "c-ok"
     : readiness.data?.human_review_status === "not_fundable"
       ? "c-bad"
       : "c-warn";
-  const actionError = review.error ?? generate.error ?? send.error ?? download.error
+  const actionError = review.error ?? download.error
     ?? rotateRoom.error ?? finalize.error ?? startHandoff.error ?? convertAudit.error
     ?? bookReview.error;
 
@@ -528,20 +480,28 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
         <div className="panel-h">
           QC master application
           <span className="sp" />
-          <span className={`cellchip ${executed ? "c-ok" : releaseReady ? "c-acc" : "c-warn"}`}>
-            {executed ? "Executed" : outForSignature ? "Awaiting signature" : releaseReady ? "Ready to generate" : "Step 4 package required"}
+          <span className={`cellchip ${executed ? "c-ok" : "c-warn"}`}>
+            {executed ? "Executed" : "Step 4 execution required"}
           </span>
         </div>
         <div className="panel-b">
-          <p className="sub" style={{ marginTop: 0 }}>The populated lender-neutral PDF excludes SSNs, raw credit scores, and downstream lender identity. After execution, the customer receives the signed PDF by email and the secure room retains a download copy. An email failure never invalidates a signature.</p>
-          {!releaseReady && !executed && <div className="warnline">Complete the Step 4 evidence package before generation or delivery.</div>}
-          <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="btn pri" disabled={!releaseReady || generate.isPending || outForSignature || executed} onClick={() => generate.mutate()}><FileSignature size={16} /> {generate.isPending ? "Generating PDF…" : caseDoc?.filled_sha256 ? "Regenerate application" : "Generate application"}</button>
-            {caseDoc?.filled_sha256 && <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate()}><Download size={16} /> {executed ? "View executed agreement" : "View populated agreement"}</button>}
-            {caseDoc?.filled_sha256 && !executed && <button type="button" className="btn pri" disabled={!releaseReady || send.isPending} onClick={() => send.mutate()}><Mail size={16} /> {send.isPending ? "Sending…" : outForSignature ? "Resend signature email" : "Email primary signer"}</button>}
-          </div>
-          {generated && <div className="note mt"><b>PDF generated.</b> SHA-256 <span className="num">{generated.sha256.slice(0, 16)}…</span>{generated.missing_data.length ? ` · Awaiting: ${generated.missing_data.join(" · ")}` : ""}</div>}
-          {send.isSuccess && <div className="note mt"><b>{send.data.emailed ? "Signature email sent." : "Signature room ready."}</b>{send.data.detail ? ` ${send.data.detail}` : ""}</div>}
+          <p className="sub" style={{ marginTop: 0 }}>
+            Generation, joint review, and signature delivery are completed in Step 4. Step 5 keeps
+            the executed lender-neutral application available for super-admin review without creating
+            a second signing path.
+          </p>
+          {!executed && (
+            <div className="warnline">
+              Return to Step 4 and complete the primary signer&apos;s execution before final desk review.
+            </div>
+          )}
+          {executed && caseDoc?.filled_sha256 && (
+            <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate()}>
+                <Download size={16} /> {download.isPending ? "Opening…" : "View executed agreement"}
+              </button>
+            </div>
+          )}
           {executed && <div className="note mt"><b>Executed by {caseDoc.signer_name || "the authorized representative"}</b><div className="sub">{caseDoc.signer_title || "Title recorded in certificate"} · {when(caseDoc.signed_at)} · Signature SHA-256 {caseDoc.signature_sha256 ? `${caseDoc.signature_sha256.slice(0, 16)}…` : "in certificate"}</div></div>}
         </div>
       </div>
