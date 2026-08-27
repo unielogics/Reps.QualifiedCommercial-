@@ -26,6 +26,17 @@ export type ApplicationProfileData = {
   term_requested_months: number | null;
   collateral_description: string | null;
   use_of_proceeds_text: string | null;
+  field_provenance?: Record<string, {
+    source?: string;
+    label?: string;
+    document_ids?: string[];
+    extracted_at?: string;
+  }>;
+  field_confirmations?: Record<string, {
+    confirmed_at?: string;
+    confirmed_by_user_id?: string;
+    value?: unknown;
+  }>;
   human_review_status?: "pending" | "fundable" | "not_fundable";
   human_review_note?: string | null;
 };

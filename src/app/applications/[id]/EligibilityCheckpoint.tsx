@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, ShieldCheck, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { api } from "@/lib/api";
 
 export type EligibilityOwner = {
@@ -73,49 +73,6 @@ export type PreScreen = {
   routing_history?: Array<Record<string, unknown>>;
 };
 
-type FileQuestion = {
-  key: keyof FileAnswers;
-  title: string;
-  help: string;
-  showWhen?: (answers: FileAnswers) => boolean;
-};
-
-const FILE_QUESTION_GROUPS: Array<{ title: string; questions: FileQuestion[] }> = [
-  {
-    title: "Use of funds",
-    questions: [
-      { key: "refinance_debt", title: "Will any portion of the proceeds refinance debt?", help: "A yes answer removes working-capital-only paths but does not stop the application." },
-    ],
-  },
-  {
-    title: "Tax, judgments, and civil actions",
-    questions: [
-      { key: "open_tax_liens", title: "Does the business or any required owner have an open tax lien?", help: "An open lien is different from an ordinary tax balance being paid as agreed." },
-      { key: "tax_liability_over_10000", title: "Is any outstanding tax liability above $10,000?", help: "The system will ask whether it is on a current payment plan." },
-      { key: "tax_payment_plan_current", title: "Is that tax liability on a current payment plan and being paid as agreed?", help: "Required only when an outstanding tax liability exceeds $10,000.", showWhen: (answers) => answers.tax_liability_over_10000 === true },
-      { key: "open_judgments", title: "Is there an open judgment against the business or a required owner?", help: "Disclose the obligation even if a payment arrangement is being discussed." },
-      { key: "open_civil_actions_as_defendant", title: "Is the business or a required owner currently a defendant in a civil action?", help: "This is separate from criminal charges." },
-      { key: "civil_action_financial_institution_within_10_years", title: "Within 10 years, has a financial institution brought a civil action against the business or a required owner?", help: "Used only for the applicable direct path." },
-      { key: "judgment_over_2000_within_12_months", title: "Was a judgment above $2,000 filed within the past 12 months?", help: "This is an exact 3-5 year term threshold." },
-      { key: "judgment_over_50000_within_7_years", title: "Was a judgment of $50,000 or more filed within the past 7 years?", help: "If yes, confirm whether it was released or placed on a current plan." },
-      { key: "aggregate_liens_judgments_over_25000_within_7_years", title: "Did aggregate tax liens and judgments reach $25,000 or more within the past 7 years?", help: "If yes, confirm whether they were released or placed on a current plan." },
-      { key: "term_obligations_released_or_on_plan", title: "Are those disclosed liens or judgments released or on a current payment plan?", help: "Required only when either 7-year threshold is met.", showWhen: (answers) => answers.judgment_over_50000_within_7_years === true || answers.aggregate_liens_judgments_over_25000_within_7_years === true },
-    ],
-  },
-  {
-    title: "Restricted business activity",
-    questions: [
-      { key: "speculative_real_estate_flipping", title: "Is the primary business speculative real-estate flipping?", help: "Real-estate ownership alone is not this activity." },
-      { key: "gambling_or_bail_bonds", title: "Does the business operate gambling or bail-bond services?", help: "Answer for the operating business seeking financing." },
-      { key: "lending_investment_crypto_mlm", title: "Is the business a lender, investment, crypto, or multi-level-marketing operation?", help: "This is a business-model question, not a question about holding investments personally." },
-      { key: "nonprofit_or_government", title: "Is the applicant a nonprofit or government entity?", help: "Select no for ordinary for-profit entities." },
-      { key: "marijuana_or_firearms", title: "Is the business marijuana- or firearm-related?", help: "Include the primary sale or production of these products." },
-      { key: "prurient_business", title: "Is the business adult-oriented or prurient in nature?", help: "This is used only for program eligibility." },
-      { key: "auto_or_title_asset_sales", title: "Does the business sell auto/title assets as its primary activity?", help: "The exact NAICS classification is evaluated separately as well." },
-    ],
-  },
-];
-
 function ownerComplete(answer: OwnerAnswers | undefined): boolean {
   return Boolean(
     answer?.residency_status
@@ -130,12 +87,6 @@ function ownerComplete(answer: OwnerAnswers | undefined): boolean {
       && typeof answer.active_legal_charges === "boolean"
       && typeof answer.ofac_match === "boolean",
   );
-}
-
-function fileComplete(answer: FileAnswers): boolean {
-  return FILE_QUESTION_GROUPS.every(({ questions }) => questions.every(
-    ({ key, showWhen }) => Boolean(showWhen && !showWhen(answer)) || typeof answer[key] === "boolean",
-  ));
 }
 
 function YesNo({
@@ -177,7 +128,6 @@ export default function EligibilityCheckpoint({
   const requiredOwners = useMemo(() => owners.filter((owner) => owner.credit_required), [owners]);
   const [stage, setStage] = useState(0);
   const [answers, setAnswers] = useState<Record<string, OwnerAnswers>>({});
-  const [fileAnswers, setFileAnswers] = useState<FileAnswers>({});
   const [residencyEligible, setResidencyEligible] = useState<Record<string, boolean | undefined>>({});
   const [bankruptcyHistory, setBankruptcyHistory] = useState<Record<string, boolean | undefined>>({});
   const [felonyHistory, setFelonyHistory] = useState<Record<string, boolean | undefined>>({});
@@ -195,7 +145,6 @@ export default function EligibilityCheckpoint({
   useEffect(() => {
     if (!open || !query.data) return;
     setAnswers(query.data.owner_answers ?? {});
-    setFileAnswers(query.data.file_answers ?? {});
     setResidencyEligible(Object.fromEntries(Object.entries(query.data.owner_answers ?? {}).map(
       ([ownerId, ownerAnswer]) => [
         ownerId,
@@ -218,7 +167,7 @@ export default function EligibilityCheckpoint({
       ? requiredOwners.findIndex((owner) => owner.id === initialOwnerId)
       : requiredOwners.findIndex((owner) => !query.data?.completed_owner_ids.includes(owner.id));
     setStage(preferred >= 0 ? preferred : requiredOwners.length);
-    setShowSummary(Boolean(query.data.complete && continueAfterComplete));
+    setShowSummary(Boolean(query.data.complete || requiredOwners.length === 0));
     setError("");
   }, [continueAfterComplete, initialOwnerId, open, query.data, requiredOwners]);
 
@@ -240,7 +189,6 @@ export default function EligibilityCheckpoint({
   if (!open) return null;
   const owner = stage < requiredOwners.length ? requiredOwners[stage] : null;
   const answer = owner ? (answers[owner.id] ?? {}) : undefined;
-  const onBusiness = stage === requiredOwners.length;
   const updateOwner = (ownerId: string, patch: Partial<OwnerAnswers>) => {
     setAnswers((state) => ({
       ...state,
@@ -256,15 +204,14 @@ export default function EligibilityCheckpoint({
           setError("Answer every highlighted owner question before continuing.");
           return;
         }
-        await save.mutateAsync({ owner_id: owner.id, owner_answers: answer });
-        setStage((current) => current + 1);
+        const result = await save.mutateAsync({ owner_id: owner.id, owner_answers: answer });
+        if (stage + 1 >= requiredOwners.length) {
+          setShowSummary(true);
+        } else {
+          setStage((current) => current + 1);
+        }
         return;
       }
-      if (!fileComplete(fileAnswers)) {
-        setError("Answer every business-model question before reviewing the result.");
-        return;
-      }
-      await save.mutateAsync({ file_answers: fileAnswers });
       setShowSummary(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "The eligibility answers could not be saved.");
@@ -295,9 +242,6 @@ export default function EligibilityCheckpoint({
                     {ownerComplete(answers[item.id]) ? <Check size={14} /> : index + 1}
                   </button>
                 ))}
-                <button type="button" className={onBusiness ? "active" : fileComplete(fileAnswers) ? "complete" : ""} onClick={() => setStage(requiredOwners.length)} title="Business eligibility">
-                  {fileComplete(fileAnswers) ? <Check size={14} /> : "B"}
-                </button>
               </div>
 
               {owner && (
@@ -382,22 +326,6 @@ export default function EligibilityCheckpoint({
                 </>
               )}
 
-              {onBusiness && (
-                <>
-                  <div className="eligibilityOwnerHead"><div><span className="eyebrow">File-level questions</span><h3>Business model and use of funds</h3></div><ShieldCheck size={22} /></div>
-                  {FILE_QUESTION_GROUPS.map((group) => (
-                    <section className="eligibilityQuestionGroup" key={group.title}>
-                      <h4>{group.title}</h4>
-                      {group.questions.filter(({ showWhen }) => !showWhen || showWhen(fileAnswers)).map(({ key, title, help }) => (
-                        <div key={key} className={typeof fileAnswers[key] === "boolean" ? "eligibilityQuestion complete" : "eligibilityQuestion invalid"}>
-                          <div><b>{title}</b><span>{help}</span></div>
-                          <YesNo label={title} value={fileAnswers[key]} onChange={(value) => setFileAnswers((state) => ({ ...state, [key]: value }))} />
-                        </div>
-                      ))}
-                    </section>
-                  ))}
-                </>
-              )}
               {error && <div className="warnline">{error}</div>}
             </>
           ) : (
@@ -424,7 +352,7 @@ export default function EligibilityCheckpoint({
             <>
               <button type="button" className="btn" disabled={stage === 0} onClick={() => setStage((current) => Math.max(0, current - 1))}><ChevronLeft size={16} /> Previous</button>
               <span className="sp" />
-              <button type="button" className="btn pri" disabled={save.isPending} onClick={() => void next()}>{save.isPending ? "Saving…" : onBusiness ? "Review result" : "Save and continue"} <ChevronRight size={16} /></button>
+              <button type="button" className="btn pri" disabled={save.isPending} onClick={() => void next()}>{save.isPending ? "Saving…" : "Save and continue"} <ChevronRight size={16} /></button>
             </>
           ) : (
             <>

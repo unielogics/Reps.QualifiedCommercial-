@@ -23,7 +23,7 @@ import {
   type UnderwritingReviewPreference,
 } from "@/lib/underwritingReview";
 import { removeWorkspaceTab, upsertWorkspaceTab } from "@/lib/applicationWorkspace";
-import StepRail, { GATED_FROM } from "@/components/StepRail";
+import StepRail from "@/components/StepRail";
 import Conversation from "@/components/Conversation";
 import Meetings from "@/components/Meetings";
 import { useMe } from "@/lib/useMe";
@@ -100,13 +100,9 @@ export default function ApplicationPage() {
     ? (step === 5 && !isSuperAdmin ? 4 : step)
     : step >= 2 && !intakeReady
       ? 1
-      : step >= GATED_FROM && !unlocked
-        ? 2
-        : step >= 4 && !reviewTimesReady
-          ? 3
-          : step === 5 && (!packageReady || !applicationExecuted || !isSuperAdmin)
-            ? 4
-            : step;
+      : step === 5 && !isSuperAdmin
+        ? 4
+        : step;
 
   const go = useCallback(
     (n: number) => router.push(`/applications/${id}?step=${n}`, { scroll: false }),

@@ -34,7 +34,6 @@ export default function StepRail({
   unlocked,
   intakeReady,
   reviewTimesReady,
-  packageReady,
   applicationExecuted,
   canOpenStep5,
   reviewMode,
@@ -61,10 +60,7 @@ export default function StepRail({
       </div>
       <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {STEPS.map((s) => {
-          const processLocked = (s.n === 2 && !intakeReady)
-            || (s.n >= GATED_FROM && !unlocked)
-            || (s.n >= 4 && !reviewTimesReady)
-            || (s.n === 5 && (!packageReady || !applicationExecuted));
+          const processLocked = s.n === 2 && !intakeReady;
           const locked = (reviewMode ? false : processLocked)
             || (s.n === 5 && !canOpenStep5);
           const cur = s.n === step;
@@ -130,13 +126,7 @@ export default function StepRail({
                 onClick={() => !locked && onGo(s.n)}
                 title={s.n === 2 && !intakeReady
                   ? "Complete all required Step 1 fields"
-                  : s.n >= 4 && !reviewTimesReady
-                    ? "Choose three client review windows at the end of Step 3"
-                    : s.n === 5 && !packageReady
-                      ? "Complete the Step 4 evidence package before desk review"
-                      : s.n === 5 && !applicationExecuted
-                        ? "The primary signer must execute the QC application at the end of Step 4"
-                        : s.n === 5 && !canOpenStep5
+                  : s.n === 5 && !canOpenStep5
                           ? "Step 5 is reserved for the super admin"
                       : locked ? gateLabel : undefined}
                 style={{

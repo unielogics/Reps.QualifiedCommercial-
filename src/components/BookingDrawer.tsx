@@ -42,6 +42,13 @@ const KINDS = [
   { key: "underwriting_review", label: "Underwriting review" },
 ] as const;
 
+const UNDERWRITING_DOCUMENTS = [
+  { key: "ytd_profit_and_loss", label: "Current YTD profit and loss", help: "Current year through the latest closed month." },
+  { key: "debt_schedule", label: "Current business debt schedule", help: "Lender, balance, and payment for each obligation." },
+  { key: "use_of_funds_support", label: "Use-of-funds support", help: "Invoices, estimates, payoff letters, or related support." },
+  { key: "entity_documents", label: "Business entity documents", help: "Formation, ownership, or signing-authority documents." },
+] as const;
+
 function groupSlots(slots: Slot[] | undefined): CalendarSlotDay[] {
   const days: CalendarSlotDay[] = [];
   for (const slot of slots ?? []) {
@@ -63,18 +70,20 @@ export default function BookingDrawer({
   initialName,
   initialEmail,
   initialPhone,
+  initialKind,
 }: {
   onClose: () => void;
   initialDealerId?: string | null;
   initialName?: string | null;
   initialEmail?: string | null;
   initialPhone?: string | null;
+  initialKind?: (typeof KINDS)[number]["key"];
 }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [sourceMode, setSourceMode] = useState<SourceMode>(initialDealerId ? "file" : "lead");
   const [dealerId, setDealerId] = useState(initialDealerId ?? "");
-  const [kind, setKind] = useState<(typeof KINDS)[number]["key"]>("callback");
+  const [kind, setKind] = useState<(typeof KINDS)[number]["key"]>(initialKind ?? "callback");
   const [startsAt, setStartsAt] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
   const [inviteeName, setInviteeName] = useState(initialName ?? "");
@@ -87,6 +96,7 @@ export default function BookingDrawer({
   const [requestedAmount, setRequestedAmount] = useState("");
   const [address, setAddress] = useState<AddressParts>({ address: "", city: "", state: "", zip: "" });
   const [smsConsent, setSmsConsent] = useState(false);
+  const [requestedDocumentKeys, setRequestedDocumentKeys] = useState<string[]>([]);
 
   const files = useQuery({
     queryKey: ["files"],
@@ -140,6 +150,7 @@ export default function BookingDrawer({
             [address.city.trim(), address.state.trim(), address.zip.trim()].filter(Boolean).join(" "),
           ].filter(Boolean).join(", ") || null,
           transactional_sms_consent: smsConsent,
+          requested_document_keys: kind === "underwriting_review" ? requestedDocumentKeys : [],
         }),
         authToken: (await getToken()) ?? undefined,
       }),
@@ -356,6 +367,34 @@ export default function BookingDrawer({
             <label className="lbl">Notes</label>
             <textarea className="field" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Agenda, callback reason, or program questions." />
           </div>
+
+          {kind === "underwriting_review" && sourceMode === "file" && dealerId ? (
+            <section className="bookingDocumentChecklist">
+              <div>
+                <b>Client-room document checklist</b>
+                <span className="sub">Booking automatically requests two years of business tax returns and two years of personal tax returns from every required 20%+ owner. Select any additional items needed for this review.</span>
+              </div>
+              <div className="bookingDocumentOptions">
+                {UNDERWRITING_DOCUMENTS.map((item) => {
+                  const checked = requestedDocumentKeys.includes(item.key);
+                  return (
+                    <label className={`pick${checked ? " selected" : ""}`} key={item.key}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => setRequestedDocumentKeys((current) => (
+                          event.target.checked
+                            ? [...new Set([...current, item.key])]
+                            : current.filter((key) => key !== item.key)
+                        ))}
+                      />
+                      <span><b>{item.label}</b><span className="sub">{item.help}</span></span>
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
           {inviteePhone.trim() ? (
             <label className="pick" style={{ alignItems: "flex-start" }}>

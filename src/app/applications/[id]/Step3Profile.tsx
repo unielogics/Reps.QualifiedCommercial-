@@ -27,25 +27,78 @@ import {
 } from "@/lib/underwritingReview";
 import StepActions from "@/components/StepActions";
 import UnderwritingSlots from "@/components/UnderwritingSlots";
+import { useUploadManager } from "@/components/UploadManager";
 
-type Period = {
+type NumericLike = number | string | null | undefined;
+
+type RawPeriod = {
   period: string;
+  deposits: NumericLike;
+  starting_balance: NumericLike;
+  ending_balance: NumericLike;
+  avg_daily_balance: NumericLike;
+  low_balance: NumericLike;
+  nsf_count: NumericLike;
+  account_id: string | null;
+};
+
+type Period = Omit<RawPeriod, "deposits" | "starting_balance" | "ending_balance" | "avg_daily_balance" | "low_balance" | "nsf_count"> & {
   deposits: number | null;
   starting_balance: number | null;
   ending_balance: number | null;
   avg_daily_balance: number | null;
   low_balance: number | null;
   nsf_count: number | null;
-  account_id: string | null;
 };
 
-type Health = { snapshot: { metrics: Record<string, number | null> } | null };
+type Health = { snapshot: { metrics: Record<string, unknown> } | null };
 
 type Coverage = {
-  received: number;
-  expected: number;
-  items?: Array<{ label: string; met: boolean; detail?: string | null }>;
+  statement_months: string[];
+  statement_target: number;
+  tax_years: number[];
+  tax_target: number;
+  has_pl: boolean;
+  has_debt_schedule: boolean;
+  open_doc_requests: number;
+  expected_months: string[];
+  missing_months: string[];
+  is_current: boolean;
 };
+
+function finiteNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value.replace(/[$,%x,]/gi, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function metricNumber(value: unknown, keys: string[] = ["current", "value", "amount"]): number | null {
+  const direct = finiteNumber(value);
+  if (direct !== null) return direct;
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    for (const key of keys) {
+      const nested = finiteNumber(object[key]);
+      if (nested !== null) return nested;
+    }
+  }
+  return null;
+}
+
+function normalizePeriod(row: RawPeriod): Period {
+  return {
+    ...row,
+    deposits: finiteNumber(row.deposits),
+    starting_balance: finiteNumber(row.starting_balance),
+    ending_balance: finiteNumber(row.ending_balance),
+    avg_daily_balance: finiteNumber(row.avg_daily_balance),
+    low_balance: finiteNumber(row.low_balance),
+    nsf_count: finiteNumber(row.nsf_count),
+  };
+}
 
 function money(n: number | null | undefined, compact = false): string {
   if (n === null || n === undefined) return "—";
@@ -247,12 +300,13 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const router = useRouter();
   const { decision } = useCase(dealerId);
+  const { uploads } = useUploadManager();
   const [reviewWindowsOpen, setReviewWindowsOpen] = useState(false);
 
   const periods = useQuery({
     queryKey: ["periods", dealerId],
     queryFn: async () =>
-      api<Period[]>(`/dealer-os/dealers/${dealerId}/periods`, {
+      api<RawPeriod[]>(`/dealer-os/dealers/${dealerId}/periods`, {
         authToken: (await getToken()) ?? undefined,
       }),
   });
@@ -281,14 +335,27 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
       ),
   });
   const activeReviewPreference = activeUnderwritingReviewPreference(reviewPreferences.data);
+  const activeUploads = uploads.filter(
+    (item) => item.dealerId === dealerId && ["queued", "uploading", "extracting"].includes(item.status),
+  );
 
   const m = health.data?.snapshot?.metrics ?? {};
   // Business-level rows only, newest six, oldest first so the chart reads left
   // to right the way a person would.
-  const rows = combinedBusinessPeriods(periods.data ?? []).slice(-6);
+  const rows = combinedBusinessPeriods((periods.data ?? []).map(normalizePeriod)).slice(-6);
+  const statementCount = coverage.data?.statement_months.length ?? rows.length;
+  const profileState = activeUploads.length
+    ? "Processing statements"
+    : periods.isError || health.isError
+      ? "Evidence needs attention"
+      : statementCount >= 6
+        ? "Six months verified"
+        : statementCount > 0
+          ? `${statementCount} of 6 months`
+          : "Awaiting evidence";
 
-  const dscr = m.dscr ?? null;
-  const adb = m.adb ?? null;
+  const dscr = metricNumber(m.dscr, ["current", "coverage", "value"]);
+  const adb = metricNumber(m.adb, ["current", "average", "value"]);
   const nsf = rows.reduce((a, r) => a + (r.nsf_count ?? 0), 0);
 
   const flags: Array<{ ok: boolean; text: string }> = [
@@ -308,7 +375,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         <div className="panel-h">
           Verified financial profile
           <span style={{ flex: 1 }} />
-          <span className="cellchip c-ok">Bank + credit verified</span>
+          <span className={`cellchip ${statementCount >= 6 && !activeUploads.length ? "c-ok" : periods.isError || health.isError ? "c-bad" : "c-warn"}`}>{profileState}</span>
         </div>
         <div className="panel-b">
           <div className="kpis">
@@ -333,7 +400,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
             </div>
             <div className="kpi">
               <span className="lbl">Coverage (DSCR)</span>
-              <b className="knum num">{dscr !== null ? `${dscr.toFixed(2)}×` : "—"}</b>
+              <b className="knum num">{dscr !== null ? `${dscr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}×` : "—"}</b>
               {dscr !== null && (
                 <span className={`gapchip ${dscr >= 1.25 ? "g-ok" : "g-warn"}`}>
                   {dscr >= 1.25 ? "Above 1.25×" : "Below 1.25×"}
@@ -351,7 +418,13 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
           <span className="sub">Source: verified statement evidence across connected accounts</span>
         </div>
         <div className="panel-b">
-          {periods.isLoading ? <span className="sub">Loading…</span> : <BalanceChart rows={rows} />}
+          {periods.isLoading ? (
+            <span className="sub">Loading verified financial periods…</span>
+          ) : periods.isError ? (
+            <div className="warnline">Financial periods could not be loaded. Retry the page or review failed files in the upload monitor.</div>
+          ) : (
+            <BalanceChart rows={rows} />
+          )}
         </div>
       </div>
 
@@ -364,7 +437,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
                 name="Debt service coverage"
                 sub="Trailing months observed"
                 pct={dscr !== null ? (dscr / 2) * 100 : null}
-                value={dscr !== null ? `${dscr.toFixed(2)}×` : "—"}
+                value={dscr !== null ? `${dscr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}×` : "—"}
               />
               <Meter
                 name="Average daily balance"
@@ -503,18 +576,22 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
               <span style={{ flex: 1 }} />
               {coverage.data && (
                 <span className="sub num">
-                  {coverage.data.received} of {coverage.data.expected} received
+                  {coverage.data.statement_months.length} of {coverage.data.statement_target} statement months
                 </span>
               )}
             </div>
             <div className="panel-b">
-              {(coverage.data?.items ?? []).slice(0, 8).map((it, i) => (
-                <div className="req" key={i}>
-                  <span className={`ic ${it.met ? "ok" : "no"}`}>{it.met ? "✓" : "!"}</span>
-                  {it.label}
+              {coverage.data && [
+                { label: "Six current bank-produced statement months", met: coverage.data.statement_months.length >= 6 },
+                { label: "Current-year profit and loss statement", met: coverage.data.has_pl },
+                { label: "Debt schedule", met: coverage.data.has_debt_schedule },
+              ].map((item) => (
+                <div className="req" key={item.label}>
+                  <span className={`ic ${item.met ? "ok" : "no"}`}>{item.met ? "✓" : "!"}</span>
+                  {item.label}
                 </div>
               ))}
-              {(coverage.data?.items ?? []).length === 0 && (
+              {!coverage.data && (
                 <span className="sub">
                   {coverage.isLoading ? "Loading…" : "No checklist on this file yet."}
                 </span>

@@ -17,6 +17,7 @@ import GlobalSearch from "./GlobalSearch";
 import MfaBanner from "./MfaBanner";
 import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
 import SystemStatusMenu from "./SystemStatusMenu";
+import { UploadStatusMenu } from "./UploadManager";
 
 const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
 const FUNDING_URL = process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
@@ -308,6 +309,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </div>
           )}
           {isSuperAdmin && <SystemStatusMenu />}
+          <UploadStatusMenu />
           <div className="popwrap">
             <button
               type="button"

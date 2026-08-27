@@ -18,11 +18,12 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, apiUpload } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflows";
 import Modal from "@/components/Modal";
 import StepActions from "@/components/StepActions";
+import { useUploadManager } from "@/components/UploadManager";
 
 type PlaidItem = {
   id: string;
@@ -72,20 +73,6 @@ type DeliveryRow = {
   status: string;
   at: string;
   detail: string;
-};
-
-type DocumentRead = {
-  id: string;
-  filename: string;
-  kind: string;
-  status: string;
-};
-
-type StatementUpload = {
-  id: string;
-  filename: string;
-  status: "queued" | "uploading" | "complete" | "failed";
-  error?: string;
 };
 
 function validEmail(value: string): boolean {
@@ -161,6 +148,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const router = useRouter();
   const qc = useQueryClient();
   const { dealer, verification } = useCase(dealerId);
+  const { uploads, enqueueStatements } = useUploadManager();
   const uploadInput = useRef<HTMLInputElement | null>(null);
   const [modal, setModal] = useState<null | "bank" | "upload" | "credit">(null);
   const [creditOwnerId, setCreditOwnerId] = useState<string | null>(null);
@@ -172,8 +160,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [deliveryEmail, setDeliveryEmail] = useState("");
   const [deliveryPhone, setDeliveryPhone] = useState("");
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
-  const [statementUploads, setStatementUploads] = useState<StatementUpload[]>([]);
   const authReady = isLoaded && Boolean(isSignedIn);
+  const statementUploads = uploads.filter((item) => item.dealerId === dealerId);
 
   // Rotation, not retrieval: the stored code is a hash and can never be shown
   // again, so "show me the code" always means "mint a new one". The old code
@@ -350,44 +338,6 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
     onError: (error) => setDeliveryError(error instanceof Error ? error.message : "The upload request could not be sent."),
   });
 
-  const uploadStatements = useMutation({
-    mutationFn: async (files: Array<{ id: string; file: File }>) => {
-      const uploaded: DocumentRead[] = [];
-      for (const item of files) {
-        setStatementUploads((current) => current.map((row) => row.id === item.id ? { ...row, status: "uploading", error: undefined } : row));
-        const form = new FormData();
-        form.append("file", item.file);
-        form.append("kind", "statement");
-        try {
-          let token = (await getToken()) ?? undefined;
-          let document: DocumentRead;
-          try {
-            document = await apiUpload<DocumentRead>(`/dealer-os/dealers/${dealerId}/documents`, form, { authToken: token });
-          } catch (error) {
-            if (!(error instanceof ApiError) || error.status !== 401) throw error;
-            token = (await getToken({ skipCache: true })) ?? undefined;
-            document = await apiUpload<DocumentRead>(`/dealer-os/dealers/${dealerId}/documents`, form, { authToken: token });
-          }
-          uploaded.push(document);
-          setStatementUploads((current) => current.map((row) => row.id === item.id ? { ...row, status: "complete" } : row));
-        } catch (error) {
-          setStatementUploads((current) => current.map((row) => row.id === item.id ? { ...row, status: "failed", error: error instanceof Error ? error.message : "Upload failed" } : row));
-        }
-      }
-      return uploaded;
-    },
-    onSuccess: (docs) => {
-      setSent(
-        docs.length === 1
-          ? `${docs[0]?.filename ?? "Statement"} uploaded and sent to extraction.`
-          : `${docs.length} statements uploaded and sent to extraction.`,
-      );
-      void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
-      void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
-      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
-    },
-  });
-
   const evidenceData = evidence.data;
   const bankSource = evidenceData?.bank_source ?? verification.bank_source;
   const statementMonths = evidenceData?.statement_months ?? verification.statement_months;
@@ -397,12 +347,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const handleFiles = (list: FileList | File[]) => {
     const files = Array.from(list).filter((file) => file.size > 0);
     if (!files.length) return;
-    const batch = files.map((file, index) => ({ id: `${Date.now()}-${index}-${file.name}-${file.size}`, file }));
-    setStatementUploads((current) => [
-      ...batch.map((item) => ({ id: item.id, filename: item.file.name, status: "queued" as const })),
-      ...current.filter((item) => item.status !== "complete"),
-    ]);
-    uploadStatements.mutate(batch);
+    enqueueStatements(dealerId, files, dealer?.legal_name ?? undefined);
+    setSent(`${files.length} file${files.length === 1 ? "" : "s"} queued. You can continue while extraction runs.`);
   };
 
   const bankTone = bankLinked ? "c-ok" : "c-warn";
@@ -618,6 +564,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                   <span>
                     {item.status === "uploading"
                       ? "Uploading"
+                      : item.status === "extracting"
+                        ? "Extracting"
                       : item.status === "complete"
                         ? "Added to file"
                         : item.status === "failed"
@@ -657,15 +605,6 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                 {requestUpload.error instanceof Error
                   ? requestUpload.error.message
                   : "Could not send the upload request."}
-              </div>
-            </div>
-          )}
-          {uploadStatements.isError && (
-            <div className="note">
-              <div>
-                {uploadStatements.error instanceof Error
-                  ? uploadStatements.error.message
-                  : "Could not upload those statements."}
               </div>
             </div>
           )}

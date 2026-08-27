@@ -262,6 +262,24 @@ a { color: var(--accent); }
 .systemStatusState svg { width: 17px; height: 17px; flex: 0 0 auto; }
 .systemStatusSpin { animation: systemStatusSpin 800ms linear infinite; }
 @keyframes systemStatusSpin { to { transform: rotate(360deg); } }
+.uploadStatusTrigger { position: relative; width: 42px; min-width: 42px; padding: 0; color: var(--ink2); }
+.uploadStatusTrigger > svg { width: 18px; height: 18px; }
+.uploadStatusIndicator { position: absolute; right: 6px; top: 6px; width: 8px; height: 8px; border: 2px solid var(--surface); border-radius: 50%; }
+.uploadStatusIndicator.ready { background: var(--ok); }
+.uploadStatusIndicator.working { background: var(--accent); }
+.uploadStatusIndicator.attention { background: var(--danger); }
+.uploadStatusMenu { width: min(440px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 86px)); overflow-y: auto; padding: 8px; }
+.uploadStatusRow { min-width: 0; display: grid; grid-template-columns: 9px minmax(0, 1fr) 34px; align-items: center; gap: 9px; padding: 9px 7px; border-bottom: 1px solid var(--line); }
+.uploadStatusRow:last-child { border-bottom: 0; }
+.uploadStatusRow > div { min-width: 0; display: grid; gap: 2px; }
+.uploadStatusRow b, .uploadStatusRow small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uploadStatusRow small { color: var(--muted); text-transform: capitalize; }
+.uploadStatusRow.uploading .uploadState, .uploadStatusRow.extracting .uploadState { background: var(--accent); box-shadow: 0 0 0 4px var(--accent-100); animation: uploadPulse 1s ease-in-out infinite; }
+.uploadStatusRow.complete .uploadState { background: var(--ok); }
+.uploadStatusRow.failed .uploadState { background: var(--danger); }
+.uploadStatusRow .iconButton { width: 32px; height: 32px; }
+.uploadStatusRow .iconButton svg { width: 15px; height: 15px; }
+.dangerText { color: var(--danger) !important; }
 .consoleSwitch { min-height: 38px; align-items: center; }
 .consoleSwitch a, .consoleSwitch span { min-height: 32px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 750; }
 .consoleSwitch .on { background: var(--surface); color: var(--accent); box-shadow: var(--sh1); }
@@ -1561,4 +1579,75 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .formsWorkflowGuide { grid-template-columns: 1fr; }
   .settingsFormsCallout { grid-template-columns: auto minmax(0, 1fr); }
   .settingsFormsCallout > span:last-child { grid-column: 2; }
+}
+
+/* Step 4 resolution, business underwriting, and debt workbench. */
+.step4Resolution { display: grid; gap: 18px; }
+.resolutionCompare { display: grid; grid-template-columns: minmax(0, 1fr) 38px minmax(0, 1fr); align-items: stretch; gap: 10px; }
+.resolutionSide { min-height: 142px; display: grid; align-content: center; gap: 7px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.resolutionSide.recommended { border-color: rgba(3, 152, 85, .34); background: var(--ok-tint); }
+.resolutionSide.recommended.pending { border-color: rgba(192, 126, 5, .4); background: var(--warn-tint); }
+.resolutionSide strong { font: 750 25px/1 var(--fh); }
+.resolutionSide small { color: var(--muted); line-height: 1.4; }
+.resolutionArrow { align-self: center; justify-self: center; color: var(--muted); }
+.recommendationDecision { display: grid; gap: 13px; padding: 16px; border: 1px solid rgba(192, 126, 5, .35); border-radius: 8px; background: var(--warn-tint); }
+.recommendationDecision ul { margin: 8px 0 0; padding-left: 20px; }
+.recommendationEdit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.recommendationActions, .blockedCompletionActions { display: flex; flex-wrap: wrap; gap: 9px; }
+.resolutionBlockers { display: grid; gap: 10px; }
+.resolutionBlocker { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; }
+.resolutionBlocker.hard { border-left-color: var(--danger); }
+.resolutionBlocker p { margin: 0; line-height: 1.5; }
+.resolutionBlocker dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.resolutionBlocker dl > div { padding: 10px; border-radius: 7px; background: var(--sunken2); }
+.resolutionBlocker dt { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.resolutionBlocker dd { margin: 4px 0 0; font-size: 12px; line-height: 1.4; }
+.exceptionRequest { display: grid; gap: 9px; justify-items: start; }
+.step4QuestionGroups, .step4QuestionList { display: grid; gap: 12px; }
+.step4QuestionGroup { display: grid; gap: 9px; }
+.step4QuestionGroup h4 { margin: 4px 0 0; font: 720 15px/1.2 var(--fh); }
+.step4Question { min-height: 72px; display: grid; grid-template-columns: minmax(0, 1fr) 230px; align-items: center; gap: 14px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 8px; }
+.step4Question.unanswered { border-color: rgba(180, 35, 24, .42); background: var(--danger-tint); }
+.step4Question > div:first-child { display: grid; gap: 4px; }
+.step4YesNo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.step4YesNo .btn { min-height: 50px; }
+.financialConfirmGrid, .step4SourceGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.financialConfirmField { min-width: 0; display: grid; align-content: start; gap: 7px; padding: 13px; border: 1px solid var(--line); border-radius: 8px; }
+.financialProvenance { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.debtSchedule { display: grid; gap: 12px; }
+.debtRowCard { display: grid; gap: 13px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.debtRowCard.new { border-style: dashed; border-color: var(--accent-400); }
+.debtFieldGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.debtFieldGrid label { min-width: 0; }
+.debtCollateral { grid-column: span 2; }
+.debtDscrToggle { min-height: 44px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.debtDscrToggle > span { display: grid; gap: 2px; }
+.debtDscrToggle small { color: var(--muted); }
+.bookingDocumentChecklist { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line2); background: var(--sunken); border-radius: 8px; }
+.bookingDocumentChecklist > div:first-child > .sub { display: block; margin-top: 4px; }
+.bookingDocumentOptions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bookingDocumentOptions .pick { min-height: 64px; margin: 0; background: var(--surface); }
+.bookingDocumentOptions .pick.selected { border-color: var(--accent); background: var(--accent-soft); }
+.bookingDocumentOptions .pick .sub { display: block; margin-top: 2px; }
+@media (max-width: 720px) { .bookingDocumentOptions { grid-template-columns: 1fr; } }
+.emptyStateCompact { min-height: 90px; display: grid; place-items: center; align-content: center; gap: 5px; border: 1px dashed var(--line2); border-radius: 8px; text-align: center; }
+.blockedCompletionPanel { border-color: rgba(192, 126, 5, .35); }
+
+@media (max-width: 1180px) {
+  .financialConfirmGrid, .step4SourceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .debtFieldGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .eligibilityDialog { width: 100%; max-width: none; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .eligibilityDialog .modalHeader { flex: 0 0 auto; }
+  .eligibilityBody { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 12px; }
+  .eligibilityYesNo button { min-height: 52px; }
+  .eligibilityFooter { flex: 0 0 auto; }
+}
+
+@media (max-width: 760px) {
+  .resolutionCompare { grid-template-columns: 1fr; }
+  .resolutionArrow { transform: rotate(90deg); }
+  .recommendationEdit, .resolutionBlocker dl, .financialConfirmGrid, .step4SourceGrid, .debtFieldGrid { grid-template-columns: 1fr; }
+  .step4Question { grid-template-columns: 1fr; }
+  .debtCollateral { grid-column: auto; }
+  .recommendationActions .btn, .blockedCompletionActions .btn { width: 100%; }
 }
