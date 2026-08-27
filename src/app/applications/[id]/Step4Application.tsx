@@ -2,17 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, FileCheck2 } from "lucide-react";
 import { api } from "@/lib/api";
 import ApplicationSigningPanel, { type MasterApplicationStatus } from "@/components/ApplicationSigningPanel";
-import StepActions from "@/components/StepActions";
 import {
   type ApplicationProfileData,
   type SubmissionReadiness,
 } from "@/lib/applicationReadiness";
-import { useMe } from "@/lib/useMe";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   complete: { label: "Complete", cls: "c-ok" },
@@ -23,9 +20,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 
 export default function Step4Application({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
-  const router = useRouter();
   const qc = useQueryClient();
-  const { isSuperAdmin } = useMe();
   const [applicationStatus, setApplicationStatus] = useState<MasterApplicationStatus>("not_generated");
   const [financialDraft, setFinancialDraft] = useState({
     annual_sales: "",
@@ -265,36 +260,20 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         packageReady={stepReady}
         blockers={openItems.map((item) => item.requirement)}
         routeKey={data?.route_key}
-        isSuperAdmin={isSuperAdmin}
         onStatusChange={setApplicationStatus}
       />
 
-      {isSuperAdmin ? (
-        <StepActions
-          ready={stepReady && applicationStatus === "executed"}
-          message={!stepReady
-            ? `${openItems.length || 1} package condition${openItems.length === 1 ? "" : "s"} remain.`
-            : applicationStatus !== "executed"
-              ? "The package is complete. The primary signer must execute the configured program application before final desk review."
-              : "The agent workflow and signed application are complete. Continue to the super-admin desk review."
-          }
-          buttonLabel="Continue to Step 5"
-          onContinue={() => router.push(`/applications/${dealerId}?step=5`)}
-          pending={readiness.isLoading || patchProfile.isPending}
-        />
-      ) : (
-        <div className={applicationStatus === "executed" ? "note" : "warnline"}>
-          <div className="row" style={{ gap: 8 }}>
-            {applicationStatus === "executed" && <CheckCircle2 size={18} />}
-            <b>{applicationStatus === "executed" ? "Agent workflow complete" : "Signature is the final agent checkpoint"}</b>
-          </div>
-          <p className="sub" style={{ marginBottom: 0 }}>
-            {applicationStatus === "executed"
-              ? "The signed program application has been delivered to the client and the file is ready for super-admin review in Step 5."
-              : "Generate and send the application above. Step 5 is reserved for the super-admin decision, status, funding amount, and file destination."}
-          </p>
+      <div className={applicationStatus === "executed" ? "note" : "warnline"}>
+        <div className="row" style={{ gap: 8 }}>
+          {applicationStatus === "executed" && <CheckCircle2 size={18} />}
+          <b>{applicationStatus === "executed" ? "Agent workflow complete" : "Signature is the final agent checkpoint"}</b>
         </div>
-      )}
+        <p className="sub" style={{ marginBottom: 0 }}>
+          {applicationStatus === "executed"
+            ? "The signed program application has been delivered to the client and the file is ready for super-admin review in Step 5."
+            : "Complete the route evidence, review the populated package with the client, and send it to the client’s own device for signature. Step 5 contains all super-admin decisions and file controls."}
+        </p>
+      </div>
     </>
   );
 }

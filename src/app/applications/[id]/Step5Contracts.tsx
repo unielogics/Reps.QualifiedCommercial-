@@ -19,6 +19,7 @@ import {
   UserRound,
 } from "lucide-react";
 import RequestPanel from "@/components/RequestPanel";
+import AdminContractPackageControls from "@/components/AdminContractPackageControls";
 import ProgramSelect, {
   GENERAL_PROGRAM_KEY,
   GENERAL_PROGRAM_NAME,
@@ -450,6 +451,10 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
             </div>
           </div>
         </div>
+      )}
+
+      {isSuperAdmin && (
+        <AdminContractPackageControls dealerId={dealerId} routeKey={readiness.data?.route_key} />
       )}
 
       {isSuperAdmin && reviewPreference && (!reviewAppointment || reviewAppointment.client_rsvp_status === "declined") && (

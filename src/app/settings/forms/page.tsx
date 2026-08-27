@@ -180,6 +180,13 @@ export default function FormsAndPackagesPage() {
     <header className="hd"><div><a className="eyebrow formsBack" href="/settings"><ArrowLeft size={13} /> Settings</a><h2>Forms and Packages</h2><p className="lede">Control the exact immutable PDFs clients review and sign for each direct program.</p></div></header>
     {message && <div className="note mt" role="status">{message}</div>}
 
+    <section className="formsWorkflowGuide mt" aria-label="How program packages work">
+      <div><span>1</span><b>Upload a PDF version</b><small>Each upload is immutable and keeps its own hash and revision.</small></div>
+      <div><span>2</span><b>Assign it to a program</b><small>Add the form to EZ Term, MicroCap, or both; then set order and requirement.</small></div>
+      <div><span>3</span><b>Publish the package</b><small>New Step 4 drafts use the latest active package. Sent documents stay frozen.</small></div>
+      <div><span>4</span><b>Rep reviews and sends</b><small>Step 4 fills the PDFs from the application and the client signs from their own device.</small></div>
+    </section>
+
     <section className="panel mt"><div className="panelTitle"><div><h3>Template library</h3><span>Every upload creates a new immutable version. Sent and executed documents never change.</span></div></div><div className="formsTemplateGrid">
       <div className="formsUploadPanel">
         <label><span className="lbl">Document title</span><input className="field" value={uploadTitle} onChange={(event) => { setUploadTitle(event.target.value); if (uploadKey === "supporting_agreement") setUploadKey(cleanTemplateKey(event.target.value)); }} /></label>

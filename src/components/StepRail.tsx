@@ -13,8 +13,8 @@
 // already a vertical progress rail with `.cur` and `.done` states, plus the
 // `.prio .n` numbered badge. No new CSS.
 //
-// Locking here is presentation only. The server refuses locked-step data
-// regardless, which is the part that actually matters.
+// Locking here is presentation only. Temporary review mode may remove those
+// visual locks for a super admin; server action validation remains authoritative.
 
 export type Step = { n: number; title: string; blurb: string };
 
@@ -37,6 +37,7 @@ export default function StepRail({
   packageReady,
   applicationExecuted,
   canOpenStep5,
+  reviewMode,
   gateLabel,
   onGo,
 }: {
@@ -47,6 +48,7 @@ export default function StepRail({
   packageReady: boolean;
   applicationExecuted: boolean;
   canOpenStep5: boolean;
+  reviewMode: boolean;
   gateLabel: string;
   onGo: (n: number) => void;
 }) {
@@ -59,10 +61,12 @@ export default function StepRail({
       </div>
       <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {STEPS.map((s) => {
-          const locked = (s.n === 2 && !intakeReady)
+          const processLocked = (s.n === 2 && !intakeReady)
             || (s.n >= GATED_FROM && !unlocked)
             || (s.n >= 4 && !reviewTimesReady)
-            || (s.n === 5 && (!packageReady || !applicationExecuted || !canOpenStep5));
+            || (s.n === 5 && (!packageReady || !applicationExecuted));
+          const locked = (reviewMode ? false : processLocked)
+            || (s.n === 5 && !canOpenStep5);
           const cur = s.n === step;
           const done = s.n < step && !locked;
           return (

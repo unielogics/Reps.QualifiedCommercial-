@@ -6,10 +6,9 @@
 // stands, the current step in the middle, and the desk conversation on the
 // right so answering the underwriter never means leaving the step.
 //
-// Steps 3 to 5 are drawn but not reachable until both authorizations return.
-// The lock is cosmetic here and real on the server: `useCase` reads
-// `verification.unlocked` off the decision endpoint, and the endpoints behind
-// steps 3 to 5 refuse regardless of what this component renders.
+// Production progression remains gated by server readiness. A temporary,
+// super-admin-only review switch can expose every screen for workflow QA while
+// leaving delivery, signing, decision, and funding validations intact.
 
 import { useCallback, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -18,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCase } from "@/lib/useCase";
 import { api } from "@/lib/api";
 import { type SubmissionReadiness } from "@/lib/applicationReadiness";
+import { APPLICATION_STEP_REVIEW_MODE } from "@/lib/applicationReviewMode";
 import {
   activeUnderwritingReviewPreference,
   type UnderwritingReviewPreference,
@@ -46,18 +46,19 @@ export default function ApplicationPage() {
   const { getToken } = useAuth();
   const { id: meId, isSuperAdmin } = useMe();
   const { dealer, decision, verification, unlocked, isLoading, notFound } = useCase(id);
+  const reviewMode = APPLICATION_STEP_REVIEW_MODE && isSuperAdmin;
 
   const raw = Number(search.get("step") || "1");
   const readiness = useQuery({
     queryKey: ["submission-readiness", id],
-    enabled: unlocked,
+    enabled: unlocked || reviewMode,
     queryFn: async () => api<SubmissionReadiness>(`/dealer-os/dealers/${id}/submission-readiness`, {
       authToken: (await getToken()) ?? undefined,
     }),
   });
   const reviewPreferences = useQuery({
     queryKey: ["underwriting-review-preferences", id],
-    enabled: unlocked,
+    enabled: unlocked || reviewMode,
     queryFn: async () => api<UnderwritingReviewPreference[]>(
       `/dealer-os/dealers/${id}/underwriting-review-preferences`,
       { authToken: (await getToken()) ?? undefined },
@@ -65,7 +66,7 @@ export default function ApplicationPage() {
   });
   const contractEnvelopes = useQuery({
     queryKey: ["contract-envelopes", id],
-    enabled: unlocked,
+    enabled: unlocked || reviewMode,
     queryFn: async () => api<Array<{ status: string }>>(
       `/dealer-os/dealers/${id}/contract-envelopes`,
       { authToken: (await getToken()) ?? undefined },
@@ -95,15 +96,17 @@ export default function ApplicationPage() {
     (envelope) => envelope.status === "executed",
   ));
   const reviewTimesReady = Boolean(activeUnderwritingReviewPreference(reviewPreferences.data));
-  const effective = step >= 2 && !intakeReady
-    ? 1
-    : step >= GATED_FROM && !unlocked
-      ? 2
-      : step >= 4 && !reviewTimesReady
-        ? 3
-        : step === 5 && (!packageReady || !applicationExecuted || !isSuperAdmin)
-          ? 4
-          : step;
+  const effective = reviewMode
+    ? (step === 5 && !isSuperAdmin ? 4 : step)
+    : step >= 2 && !intakeReady
+      ? 1
+      : step >= GATED_FROM && !unlocked
+        ? 2
+        : step >= 4 && !reviewTimesReady
+          ? 3
+          : step === 5 && (!packageReady || !applicationExecuted || !isSuperAdmin)
+            ? 4
+            : step;
 
   const go = useCallback(
     (n: number) => router.push(`/applications/${id}?step=${n}`, { scroll: false }),
@@ -165,7 +168,10 @@ export default function ApplicationPage() {
           packageReady={packageReady}
           applicationExecuted={applicationExecuted}
           canOpenStep5={isSuperAdmin}
-          gateLabel={unlocked ? "Unlocked by verification" : "Locked until verification returns"}
+          reviewMode={reviewMode}
+          gateLabel={reviewMode
+            ? "Temporary review mode · progression gates paused"
+            : unlocked ? "Unlocked by verification" : "Locked until verification returns"}
           onGo={go}
         />
 
@@ -209,6 +215,12 @@ export default function ApplicationPage() {
       </div>
 
       <div className="s6" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {reviewMode && (
+          <div className="note applicationReviewMode" role="status">
+            <b>Temporary workflow review mode</b>
+            <span>All screens are open for super-admin review. Required data, delivery, signing, decision, and funding safeguards remain active. Step 5 is still super-admin only.</span>
+          </div>
+        )}
         {isLoading && <div className="panel"><div className="panel-b sub">Loading the case…</div></div>}
         {!isLoading && effective === 1 && <Step1Intake dealerId={id} />}
         {!isLoading && effective === 2 && <Step2Verification dealerId={id} />}
