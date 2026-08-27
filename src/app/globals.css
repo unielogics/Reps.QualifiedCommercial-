@@ -1087,26 +1087,55 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .bookletDisclosure p { flex: 1; margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
 .bookletLoading { min-height: 60dvh; display: grid; place-items: center; color: var(--muted); }
 
-.eligibilityDialog { --modal-w: 880px; }
-.eligibilityBody { display: grid; gap: 16px; }
+.eligibilityOverlay { padding: clamp(12px, 2.5dvh, 24px); }
+.eligibilityDialog {
+  --modal-w: 1040px;
+  width: min(var(--modal-w), calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, .24);
+}
+.eligibilityDialog .modalHead {
+  flex: 0 0 auto;
+  align-items: flex-start;
+  padding: 18px 20px;
+  border-bottom-color: var(--line2);
+}
+.eligibilityDialog .modalHead > div { min-width: 0; display: grid; gap: 5px; }
+.eligibilityDialog .modalHead h2 { margin: 0; font-size: 24px; line-height: 1.15; }
+.eligibilityDialog .modalHead p { max-width: 760px; margin: 0; color: var(--muted); line-height: 1.45; }
+.eligibilityBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 18px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
 .eligibilityProgress { display: flex; align-items: center; gap: 8px; }
 .eligibilityProgress button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); font-weight: 750; cursor: pointer; }
 .eligibilityProgress button.active { border-color: var(--accent); background: var(--accent); color: #fff; }
 .eligibilityProgress button.complete { border-color: var(--ok); background: var(--ok-tint); color: var(--ok); }
-.eligibilityOwnerHead { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.eligibilityOwnerHead { display: flex; align-items: center; gap: 12px; padding: 2px 2px 14px; border-bottom: 1px solid var(--line2); }
 .eligibilityOwnerHead h3 { margin: 4px 0 0; font: 750 23px/1.1 var(--fh); }
 .eligibilityOwnerHead .cellchip { margin-left: auto; }
 .eligibilityQuestions { display: grid; gap: 10px; }
-.eligibilityQuestion { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .42fr); align-items: center; gap: 16px; padding: 13px; border: 1px solid var(--line); border-radius: 8px; }
+.eligibilityQuestion { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .42fr); align-items: center; gap: 18px; min-height: 78px; padding: 14px 16px; border: 1px solid var(--line2); border-radius: 9px; background: var(--surface); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
 .eligibilityQuestion.invalid { border-color: rgba(180, 35, 24, .42); background: var(--danger-tint); }
-.eligibilityQuestion.complete { border-color: rgba(3, 152, 85, .28); }
+.eligibilityQuestion.complete { border-color: rgba(3, 152, 85, .42); }
 .eligibilityQuestion.eligibilityFollowup { margin-left: 28px; border-left: 3px solid var(--accent); background: var(--accent-100); }
 .eligibilityQuestion > div:first-child { display: grid; gap: 4px; }
 .eligibilityQuestion span { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
 .eligibilityYesNo { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.eligibilityYesNo button { min-height: 42px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); font-weight: 700; cursor: pointer; }
+.eligibilityYesNo button { min-height: 48px; border: 1px solid var(--line2); border-radius: 8px; background: var(--surface); color: var(--ink2); font-weight: 700; cursor: pointer; }
 .eligibilityYesNo button.selected { border-color: var(--accent); background: var(--accent); color: #fff; }
-.eligibilityFooter { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.eligibilityFooter { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 13px 20px; border-top: 1px solid var(--line2); background: var(--surface); }
+.eligibilityEmpty { min-height: 180px; display: grid; place-items: center; align-content: center; gap: 6px; text-align: center; }
 .eligibilityPrograms { display: grid; gap: 10px; margin-top: 18px; }
 .eligibilityPrograms article { padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 8px; }
 .eligibilityPrograms article.blocked { border-left-color: var(--danger); }
@@ -1636,11 +1665,23 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 @media (max-width: 1180px) {
   .financialConfirmGrid, .step4SourceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .debtFieldGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .eligibilityDialog { width: 100%; max-width: none; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
-  .eligibilityDialog .modalHeader { flex: 0 0 auto; }
-  .eligibilityBody { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 12px; }
+  .eligibilityOverlay { padding: 10px; }
+  .eligibilityDialog { width: min(100%, 1040px); max-width: none; height: calc(100dvh - 20px); max-height: calc(100dvh - 20px); border: 1px solid var(--line2); border-radius: 11px; }
+  .eligibilityDialog .modalHead { flex: 0 0 auto; }
+  .eligibilityBody { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px; }
   .eligibilityYesNo button { min-height: 52px; }
   .eligibilityFooter { flex: 0 0 auto; }
+}
+
+@media (max-width: 640px) {
+  .eligibilityOverlay { padding: 6px; }
+  .eligibilityDialog { width: 100%; height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); border-radius: 9px; }
+  .eligibilityDialog .modalHead { padding: 14px; }
+  .eligibilityDialog .modalHead h2 { font-size: 21px; }
+  .eligibilityDialog .modalHead p { font-size: 12px; }
+  .eligibilityBody { padding: 12px; }
+  .eligibilityQuestion { min-height: 0; padding: 13px; }
+  .eligibilityFooter { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 760px) {

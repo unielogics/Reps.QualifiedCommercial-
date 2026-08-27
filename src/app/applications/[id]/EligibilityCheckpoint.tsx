@@ -131,7 +131,6 @@ export default function EligibilityCheckpoint({
   const [residencyEligible, setResidencyEligible] = useState<Record<string, boolean | undefined>>({});
   const [bankruptcyHistory, setBankruptcyHistory] = useState<Record<string, boolean | undefined>>({});
   const [felonyHistory, setFelonyHistory] = useState<Record<string, boolean | undefined>>({});
-  const [showSummary, setShowSummary] = useState(false);
   const [error, setError] = useState("");
 
   const query = useQuery({
@@ -166,8 +165,7 @@ export default function EligibilityCheckpoint({
     const preferred = initialOwnerId
       ? requiredOwners.findIndex((owner) => owner.id === initialOwnerId)
       : requiredOwners.findIndex((owner) => !query.data?.completed_owner_ids.includes(owner.id));
-    setStage(preferred >= 0 ? preferred : requiredOwners.length);
-    setShowSummary(Boolean(query.data.complete || requiredOwners.length === 0));
+    setStage(preferred >= 0 ? preferred : 0);
     setError("");
   }, [continueAfterComplete, initialOwnerId, open, query.data, requiredOwners]);
 
@@ -205,36 +203,41 @@ export default function EligibilityCheckpoint({
           return;
         }
         const result = await save.mutateAsync({ owner_id: owner.id, owner_answers: answer });
-        if (stage + 1 >= requiredOwners.length) {
-          setShowSummary(true);
-        } else {
-          setStage((current) => current + 1);
+        if (!continueAfterComplete) {
+          onClose();
+          return;
         }
+        const nextIncomplete = requiredOwners.findIndex(
+          (candidate) => candidate.id !== owner.id && !result.completed_owner_ids.includes(candidate.id),
+        );
+        if (nextIncomplete >= 0) {
+          setStage(nextIncomplete);
+          return;
+        }
+        onClose();
+        onContinue();
         return;
       }
-      setShowSummary(true);
+      onClose();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "The eligibility answers could not be saved.");
     }
   };
-
-  const latest = qc.getQueryData<PreScreen>(["application-pre-screen", dealerId]) ?? query.data;
-  const programs = latest?.routing_result?.programs ?? latest?.routing_result?.evaluated_programs ?? [];
 
   return (
     <div className="modalOverlay eligibilityOverlay" role="presentation">
       <section className="modalDialog eligibilityDialog" role="dialog" aria-modal="true" aria-labelledby="eligibility-title">
         <header className="modalHead">
           <div>
-            <span className="eyebrow">Unnumbered checkpoint between Steps 1 and 2</span>
-            <h2 id="eligibility-title">Preliminary eligibility</h2>
-            <p>Self-reported and unverified. A blocked route does not stop verification or another possible funding path.</p>
+            <span className="eyebrow">Owner checkpoint before Step 2</span>
+            <h2 id="eligibility-title">Owner eligibility</h2>
+            <p>Complete the personal eligibility questions for each 20%+ owner. Business underwriting is reviewed later in Step 4.</p>
           </div>
           <button type="button" className="iconAction" onClick={onClose} aria-label="Close eligibility checkpoint"><X size={18} /></button>
         </header>
 
-        <div className="eligibilityBody">
-          {!showSummary ? (
+        <div className="eligibilityBody" tabIndex={0} aria-label="Owner eligibility questions">
+          {owner ? (
             <>
               <div className="eligibilityProgress" aria-label="Eligibility progress">
                 {requiredOwners.map((item, index) => (
@@ -329,37 +332,30 @@ export default function EligibilityCheckpoint({
               {error && <div className="warnline">{error}</div>}
             </>
           ) : (
-            <div className="eligibilitySummary">
-              <span className="eyebrow">Versioned preliminary result</span>
-              <h3>{latest?.routing_result?.headline || "Screen complete"}</h3>
-              <p className="sub">The rules below are lender-neutral. Exact NAICS matches and borrower-safe reasons are retained in the audit snapshot.</p>
-              <div className="eligibilityPrograms">
-                {programs.map((program) => (
-                  <article key={program.program_key}>
-                    <div><b>{program.name}</b><span className={`cellchip ${program.status === "recommended" ? "c-ok" : program.status === "blocked" ? "c-bad" : "c-warn"}`}>{program.status}</span></div>
-                    {program.borrower_safe_reasons.map((reason) => <p key={reason}>• {reason}</p>)}
-                    {program.unresolved.map((reason) => <p key={reason}>• {reason}</p>)}
-                    {program.matched_rules.length > 0 && <small className="sub">{program.matched_rules.map((rule) => rule.rule_id).join(" · ")}</small>}
-                  </article>
-                ))}
-              </div>
+            <div className="eligibilityEmpty">
+              <h3>No owner eligibility review is required.</h3>
+              <p className="sub">Return to Step 1 and review the ownership schedule.</p>
             </div>
           )}
         </div>
 
         <footer className="eligibilityFooter">
-          {!showSummary ? (
+          {owner ? (
             <>
               <button type="button" className="btn" disabled={stage === 0} onClick={() => setStage((current) => Math.max(0, current - 1))}><ChevronLeft size={16} /> Previous</button>
               <span className="sp" />
-              <button type="button" className="btn pri" disabled={save.isPending} onClick={() => void next()}>{save.isPending ? "Saving…" : "Save and continue"} <ChevronRight size={16} /></button>
+              <button type="button" className="btn pri" disabled={save.isPending} onClick={() => void next()}>
+                {save.isPending
+                  ? "Saving…"
+                  : continueAfterComplete
+                    ? stage + 1 < requiredOwners.length
+                      ? "Save and next owner"
+                      : "Save and continue to Step 2"
+                    : "Save and close"} <ChevronRight size={16} />
+              </button>
             </>
           ) : (
-            <>
-              <button type="button" className="btn" onClick={() => { setShowSummary(false); setStage(0); }}>Review answers</button>
-              <span className="sp" />
-              {continueAfterComplete ? <button type="button" className="btn pri" onClick={onContinue}>Continue to Step 2 <ChevronRight size={16} /></button> : <button type="button" className="btn pri" onClick={onClose}>Done</button>}
-            </>
+            <button type="button" className="btn pri" onClick={onClose}>Return to Step 1</button>
           )}
         </footer>
       </section>

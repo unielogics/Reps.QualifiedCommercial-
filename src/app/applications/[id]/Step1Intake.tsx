@@ -360,6 +360,10 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       signer_title: profileVal("signer_title").trim(),
     });
     const refreshed = await preScreen.refetch();
+    if (refreshed.data?.complete) {
+      router.push(`/applications/${dealerId}?step=2`);
+      return;
+    }
     setEligibilityOwnerId(refreshed.data?.incomplete_owner_ids[0] ?? null);
     setContinueAfterEligibility(true);
     setEligibilityOpen(true);
