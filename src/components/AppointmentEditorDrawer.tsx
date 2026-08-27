@@ -153,6 +153,7 @@ export default function AppointmentEditorDrawer({
             </div>
           </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn" type="button" onClick={onClose}>Close</button>
             <button className="btn pri" type="button" onClick={() => setEditing(true)}>Edit appointment</button>
             {appointment.join_url && <a className="btn" href={appointment.join_url} target="_blank" rel="noreferrer">Join meeting</a>}
             {appointment.dealer_id && <a className="btn" href={`/applications/${appointment.dealer_id}`}>Open file</a>}

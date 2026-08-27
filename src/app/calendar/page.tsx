@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -109,7 +109,10 @@ function gridRange(anchor: Date) {
 export default function RepCalendarPage() {
   const { getToken } = useAuth();
   const qc = useQueryClient();
+  const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const dismissedQueryAppointment = useRef<string | null>(null);
   const initialDate = useMemo(() => {
     const requestedDate = searchParams.get("date");
     if (!requestedDate || !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) return new Date();
@@ -142,6 +145,17 @@ export default function RepCalendarPage() {
   const todayRows = rows.filter((appt) => sameLocalDay(new Date(appt.starts_at), new Date()));
   const upcomingRows = rows.filter((appt) => appt.status !== "cancelled" && new Date(appt.starts_at).getTime() >= now);
   const pendingRows = rows.filter((appt) => appt.status === "pending" || appt.status === "confirmed");
+
+  const closeAppointment = useCallback(() => {
+    const requested = searchParams.get("appointment");
+    dismissedQueryAppointment.current = activeAppointment?.row.id ?? requested;
+    setActiveAppointment(null);
+    if (!requested) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("appointment");
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [activeAppointment, pathname, router, searchParams]);
 
   const patchStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: AppointmentStatus }) =>
@@ -180,7 +194,11 @@ export default function RepCalendarPage() {
 
   useEffect(() => {
     const requested = searchParams.get("appointment");
-    if (!requested || activeAppointment?.row.id === requested || !appointments.data) return;
+    if (!requested) {
+      dismissedQueryAppointment.current = null;
+      return;
+    }
+    if (dismissedQueryAppointment.current === requested || activeAppointment?.row.id === requested || !appointments.data) return;
     const row = appointments.data.find((item) => item.id === requested);
     if (row) {
       setActiveAppointment({ row, mode: "details" });
@@ -356,7 +374,7 @@ export default function RepCalendarPage() {
         <AppointmentEditorDrawer
           appointment={activeAppointment.row}
           mode={activeAppointment.mode}
-          onClose={() => setActiveAppointment(null)}
+          onClose={closeAppointment}
         />
       )}
     </>
