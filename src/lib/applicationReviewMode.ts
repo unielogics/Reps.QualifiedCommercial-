@@ -6,4 +6,4 @@
  * validation remains active, and Step 5 remains restricted to super admins.
  * Set this to false after the live workflow review is complete.
  */
-export const APPLICATION_STEP_REVIEW_MODE = true;
+export const APPLICATION_STEP_REVIEW_MODE = false;
