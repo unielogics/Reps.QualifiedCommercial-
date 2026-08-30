@@ -11,7 +11,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 
-export type Me = { id: string; email: string; name: string; role: string };
+export type Me = { id: string; email: string; name: string; role: string; account_types: Array<"funding" | "field_desk" | "audit"> };
 
 export function useMe() {
   const { getToken, isSignedIn } = useAuth();
@@ -25,12 +25,13 @@ export function useMe() {
   });
 
   const role = q.data?.role;
+  const hasRepAccess = role === "field_rep" || (role === "broker" && q.data?.account_types?.includes("field_desk"));
   return {
     id: q.data?.id,
     name: q.data?.name,
     email: q.data?.email,
     role,
-    isRep: role === "field_rep",
+    isRep: hasRepAccess,
     isSuperAdmin: role === "super_admin",
     // Underwriters and super admins. They see every rep's files here, which is
     // the point of them being in this app at all.
