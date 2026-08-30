@@ -14,10 +14,10 @@ import { useCallback, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
+import { Minus, X } from "lucide-react";
 import { useCase } from "@/lib/useCase";
 import { api } from "@/lib/api";
 import { type SubmissionReadiness } from "@/lib/applicationReadiness";
-import { APPLICATION_STEP_REVIEW_MODE } from "@/lib/applicationReviewMode";
 import {
   activeUnderwritingReviewPreference,
   type UnderwritingReviewPreference,
@@ -46,19 +46,19 @@ export default function ApplicationPage() {
   const { getToken } = useAuth();
   const { id: meId, isSuperAdmin } = useMe();
   const { dealer, decision, verification, unlocked, isLoading, notFound } = useCase(id);
-  const reviewMode = APPLICATION_STEP_REVIEW_MODE && isSuperAdmin;
+  const workflowUngated = Boolean(dealer?.workflow_ungated);
 
   const raw = Number(search.get("step") || "1");
   const readiness = useQuery({
     queryKey: ["submission-readiness", id],
-    enabled: unlocked || reviewMode,
+    enabled: unlocked || workflowUngated,
     queryFn: async () => api<SubmissionReadiness>(`/dealer-os/dealers/${id}/submission-readiness`, {
       authToken: (await getToken()) ?? undefined,
     }),
   });
   const reviewPreferences = useQuery({
     queryKey: ["underwriting-review-preferences", id],
-    enabled: unlocked || reviewMode,
+    enabled: unlocked || workflowUngated,
     queryFn: async () => api<UnderwritingReviewPreference[]>(
       `/dealer-os/dealers/${id}/underwriting-review-preferences`,
       { authToken: (await getToken()) ?? undefined },
@@ -66,7 +66,7 @@ export default function ApplicationPage() {
   });
   const contractEnvelopes = useQuery({
     queryKey: ["contract-envelopes", id],
-    enabled: unlocked || reviewMode,
+    enabled: unlocked || workflowUngated,
     queryFn: async () => api<Array<{ status: string }>>(
       `/dealer-os/dealers/${id}/contract-envelopes`,
       { authToken: (await getToken()) ?? undefined },
@@ -96,10 +96,12 @@ export default function ApplicationPage() {
     (envelope) => envelope.status === "executed",
   ));
   const reviewTimesReady = Boolean(activeUnderwritingReviewPreference(reviewPreferences.data));
-  const effective = reviewMode
+  const effective = workflowUngated
     ? (step === 5 && !isSuperAdmin ? 4 : step)
     : step >= 2 && !intakeReady
       ? 1
+      : step >= 3 && step <= 4 && !unlocked
+        ? 2
       : step === 5 && !isSuperAdmin
         ? 4
         : step;
@@ -139,7 +141,7 @@ export default function ApplicationPage() {
         </div>
         <span className="sp" />
         <button type="button" className="iconAction" onClick={() => router.push("/")} title="Minimize" aria-label="Minimize application">
-          −
+          <Minus size={18} />
         </button>
         <button
           type="button"
@@ -151,7 +153,7 @@ export default function ApplicationPage() {
           title="Close"
           aria-label="Close application"
         >
-          ×
+          <X size={18} />
         </button>
       </div>
       <div className="cg">
@@ -164,9 +166,9 @@ export default function ApplicationPage() {
           packageReady={packageReady}
           applicationExecuted={applicationExecuted}
           canOpenStep5={isSuperAdmin}
-          reviewMode={reviewMode}
-          gateLabel={reviewMode
-            ? "Temporary review mode · progression gates paused"
+          workflowUngated={workflowUngated}
+          gateLabel={workflowUngated
+            ? "Ungated by super admin"
             : unlocked ? "Unlocked by verification" : "Locked until verification returns"}
           onGo={go}
         />
@@ -211,12 +213,6 @@ export default function ApplicationPage() {
       </div>
 
       <div className="s6" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {reviewMode && (
-          <div className="note applicationReviewMode" role="status">
-            <b>Temporary workflow review mode</b>
-            <span>All screens are open for super-admin review. Required data, delivery, signing, decision, and funding safeguards remain active. Step 5 is still super-admin only.</span>
-          </div>
-        )}
         {isLoading && <div className="panel"><div className="panel-b sub">Loading the case…</div></div>}
         {!isLoading && effective === 1 && <Step1Intake dealerId={id} />}
         {!isLoading && effective === 2 && <Step2Verification dealerId={id} />}

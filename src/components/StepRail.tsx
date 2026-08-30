@@ -13,8 +13,8 @@
 // already a vertical progress rail with `.cur` and `.done` states, plus the
 // `.prio .n` numbered badge. No new CSS.
 //
-// Locking here is presentation only. Temporary review mode may remove those
-// visual locks for a super admin; server action validation remains authoritative.
+// Locking here is presentation only. A persisted per-file ungated setting may
+// open Steps 1-4; server action validation remains authoritative.
 
 export type Step = { n: number; title: string; blurb: string };
 
@@ -36,7 +36,7 @@ export default function StepRail({
   reviewTimesReady,
   applicationExecuted,
   canOpenStep5,
-  reviewMode,
+  workflowUngated,
   gateLabel,
   onGo,
 }: {
@@ -47,7 +47,7 @@ export default function StepRail({
   packageReady: boolean;
   applicationExecuted: boolean;
   canOpenStep5: boolean;
-  reviewMode: boolean;
+  workflowUngated: boolean;
   gateLabel: string;
   onGo: (n: number) => void;
 }) {
@@ -60,8 +60,9 @@ export default function StepRail({
       </div>
       <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {STEPS.map((s) => {
-          const processLocked = s.n === 2 && !intakeReady;
-          const locked = (reviewMode ? false : processLocked)
+          const processLocked = (s.n === 2 && !intakeReady)
+            || (s.n >= GATED_FROM && s.n <= 4 && !unlocked);
+          const locked = (workflowUngated ? false : processLocked)
             || (s.n === 5 && !canOpenStep5);
           const cur = s.n === step;
           const done = s.n < step && !locked;
@@ -124,8 +125,10 @@ export default function StepRail({
                 className={`rung${cur ? " cur" : ""}${done ? " done" : ""}`}
                 disabled={locked}
                 onClick={() => !locked && onGo(s.n)}
-                title={s.n === 2 && !intakeReady
+                title={s.n === 2 && !intakeReady && !workflowUngated
                   ? "Complete all required Step 1 fields"
+                  : s.n >= GATED_FROM && s.n <= 4 && !unlocked && !workflowUngated
+                    ? "Complete bank and credit verification"
                   : s.n === 5 && !canOpenStep5
                           ? "Step 5 is reserved for the super admin"
                       : locked ? gateLabel : undefined}

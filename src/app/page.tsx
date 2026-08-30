@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Archive, ArchiveRestore, MoreVertical, Pencil, Tag } from "lucide-react";
+import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 import ApplicationWizardDrawer from "@/components/ApplicationWizardDrawer";
@@ -17,6 +19,8 @@ type Row = {
   archived_at: string | null; owners: OwnerSummary[];
   application_lifecycle: "active" | "draft";
   client_requested_amount: number | null;
+  is_training: boolean;
+  workflow_ungated: boolean;
 };
 type Page = { items: Row[]; total: number; limit: number; offset: number };
 type UnreadSummary = { total: number; per_file: Record<string, number> };
@@ -53,11 +57,13 @@ export default function Portfolio() {
   const [bank, setBank] = useState("all");
   const [credit, setCredit] = useState("all");
   const [archive, setArchive] = useState("active");
+  const [training, setTraining] = useState<"exclude" | "only" | "all">("exclude");
   const [lifecycle, setLifecycle] = useState<"active" | "draft">("active");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
   const [archiveTarget, setArchiveTarget] = useState<Row | null>(null);
   const [deleteText, setDeleteText] = useState("");
+  const [actionMenu, setActionMenu] = useState<{ id: string; left: number; top: number } | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setQueryText(searchText.trim()); setPage(0); }, 250);
@@ -66,12 +72,19 @@ export default function Portfolio() {
   useEffect(() => {
     if (routeSearch.get("new") === "1") { setCreating(true); setCreatingMinimized(false); }
   }, [routeSearch]);
-  useEffect(() => setPage(0), [archive, bank, credit, lifecycle, sortDir, stage]);
+  useEffect(() => setPage(0), [archive, bank, credit, lifecycle, sortDir, stage, training]);
+  useEffect(() => {
+    if (!actionMenu) return;
+    const close = () => setActionMenu(null);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [actionMenu]);
 
   const queryString = useMemo(() => new URLSearchParams({
     q: queryText, stage, bank, credit, archive: isSuperAdmin ? archive : "active",
-    lifecycle, sort_by: "updated_at", sort_dir: sortDir, limit: "10", offset: String(page * 10),
-  }).toString(), [archive, bank, credit, isSuperAdmin, lifecycle, page, queryText, sortDir, stage]);
+    training: isSuperAdmin ? training : "exclude", lifecycle, sort_by: "updated_at",
+    sort_dir: sortDir, limit: "10", offset: String(page * 10),
+  }).toString(), [archive, bank, credit, isSuperAdmin, lifecycle, page, queryText, sortDir, stage, training]);
 
   const portfolio = useQuery({
     queryKey: ["portfolio", queryString], enabled: isRep || isTeam,
@@ -90,6 +103,44 @@ export default function Portfolio() {
       await queryClient.invalidateQueries({ queryKey: ["portfolio"] });
     },
   });
+  const trainingMutation = useMutation({
+    mutationFn: async ({ id, is_training }: { id: string; is_training: boolean }) => api(
+      `/dealer-os/dealers/${id}/workflow-settings`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ is_training }),
+        authToken: (await getToken()) ?? undefined,
+      },
+    ),
+    onSuccess: async () => {
+      setActionMenu(null);
+      await queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+    },
+  });
+
+  const changeTrainingStatus = (row: Row) => {
+    const next = !row.is_training;
+    const warning = next
+      ? `Mark ${row.name} as Training? It will leave live views and production metrics immediately.`
+      : row.workflow_ungated
+        ? `Return ${row.name} to live data? Its workflow will remain ungated until you gate it separately.`
+        : `Return ${row.name} to live operational views and reporting?`;
+    if (window.confirm(warning)) trainingMutation.mutate({ id: row.id, is_training: next });
+  };
+  const toggleActionMenu = (event: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    if (actionMenu?.id === id) {
+      setActionMenu(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 188;
+    const menuHeight = 142;
+    const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+    const top = rect.bottom + menuHeight + 8 <= window.innerHeight
+      ? rect.bottom + 6
+      : Math.max(8, rect.top - menuHeight - 6);
+    setActionMenu({ id, left, top });
+  };
 
   const rows = portfolio.data?.items ?? [];
   const total = portfolio.data?.total ?? 0;
@@ -120,6 +171,9 @@ export default function Portfolio() {
         {isSuperAdmin && <select className="field" aria-label="Archive status" value={archive} onChange={(event) => setArchive(event.target.value)}>
           <option value="active">Active files</option><option value="archived">Archived files</option><option value="all">All files</option>
         </select>}
+        {isSuperAdmin && <select className="field" aria-label="Training status" value={training} onChange={(event) => setTraining(event.target.value as typeof training)}>
+          <option value="exclude">Live files</option><option value="only">Training files</option><option value="all">All files</option>
+        </select>}
         <button type="button" className="btn portfolioSort" onClick={() => setSortDir((value) => value === "desc" ? "asc" : "desc")}>Updated {sortDir === "desc" ? "newest ↓" : "oldest ↑"}</button>
       </div>
 
@@ -134,17 +188,23 @@ export default function Portfolio() {
                 return <tr key={row.id} role="link" tabIndex={0} aria-label={`Open ${row.name}`}
                   onClick={(event) => { if (!isInteractiveTarget(event.target)) router.push(href); }}
                   onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && !isInteractiveTarget(event.target)) { event.preventDefault(); router.push(href); } }}>
-                  <td><b>{row.name}</b><span className="sub num" style={{ display: "block" }}>{row.case_ref || "No case reference"}</span></td>
+                  <td><b>{row.name}</b>{row.is_training && <span className="cellchip c-gold">Training</span>}{row.workflow_ungated && <span className="cellchip c-acc">Ungated</span>}<span className="sub num" style={{ display: "block" }}>{row.case_ref || "No case reference"}</span></td>
                   <td className="ownerSummary">{row.owners.length ? row.owners.slice(0, 2).map((owner) => owner.name).join(", ") : "—"}{row.owners.length > 2 && <span className="sub"> +{row.owners.length - 2}</span>}</td>
                   <td className="sub">{[row.city, row.state].filter(Boolean).join(", ") || row.address || "—"}</td>
                   <td>{row.application_lifecycle === "draft" ? <span className="cellchip c-mut">Draft</span> : stageChip(row)}{unreadCount > 0 && <span className="cellchip c-acc">{unreadCount} new</span>}</td>
                   <td><span className={`cellchip ${row.bank_linked ? "c-ok" : "c-warn"}`}>{row.bank_linked ? "Linked" : "Awaiting"}</span></td>
                   <td><span className={`cellchip ${row.credit_returned ? "c-ok" : "c-warn"}`}>{row.credit_returned ? "Returned" : "Awaiting"}</span></td>
                   <td className="r num">{money(row.funding_goal)}</td><td className="sub num">{new Date(row.updated_at).toLocaleDateString()}</td>
-                  <td className="r">{row.archived_at
-                    ? <button type="button" className="iconAction restore" title="Restore file" aria-label={`Restore ${row.name}`} onClick={() => archiveMutation.mutate({ id: row.id, restore: true })}>↺</button>
-                    : <button type="button" className="iconAction danger" title="Archive file" aria-label={`Archive ${row.name}`} onClick={() => { setArchiveTarget(row); setDeleteText(""); }}>×</button>}
-                  </td>
+                  <td className="r"><div className="fileActions" onPointerDown={(event) => event.stopPropagation()}>
+                    <button type="button" className="iconAction" title="File actions" aria-label={`Actions for ${row.name}`} aria-expanded={actionMenu?.id === row.id} onClick={(event) => toggleActionMenu(event, row.id)}><MoreVertical size={18} /></button>
+                    {actionMenu?.id === row.id && createPortal(<div className="fileActionMenu" role="menu" style={{ left: actionMenu.left, top: actionMenu.top }} onPointerDown={(event) => event.stopPropagation()}>
+                      <button type="button" role="menuitem" onClick={() => router.push(href)}><Pencil size={16} /> Open file</button>
+                      {isSuperAdmin && <button type="button" role="menuitem" onClick={() => changeTrainingStatus(row)}><Tag size={16} /> {row.is_training ? "Return to live" : "Mark as training"}</button>}
+                      {row.archived_at
+                        ? <button type="button" role="menuitem" onClick={() => archiveMutation.mutate({ id: row.id, restore: true })}><ArchiveRestore size={16} /> Restore file</button>
+                        : <button type="button" className="danger" role="menuitem" onClick={() => { setArchiveTarget(row); setDeleteText(""); setActionMenu(null); }}><Archive size={16} /> Archive file</button>}
+                    </div>, document.body)}
+                  </div></td>
                 </tr>;
               })}
               {!portfolio.isLoading && rows.length === 0 && <tr><td colSpan={9}><div className="empty">No files match the current search and filters.</div></td></tr>}

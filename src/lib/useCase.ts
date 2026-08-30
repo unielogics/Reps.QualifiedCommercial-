@@ -84,6 +84,8 @@ export type Dealer = {
   naics_code: string | null;
   naics_label: string | null;
   status: string;
+  is_training: boolean;
+  workflow_ungated: boolean;
   owner_user_id: string | null;
   submitting_agent_name: string | null;
   submitting_agent_email: string | null;
@@ -140,6 +142,8 @@ export function useCase(id: string) {
     queryKey: ["dealer", id],
     enabled: authReady,
     queryFn: () => authenticatedGet<Dealer>(`/dealer-os/dealers/${id}`),
+    refetchOnWindowFocus: "always",
+    refetchInterval: 30_000,
   });
 
   const decision = useQuery({

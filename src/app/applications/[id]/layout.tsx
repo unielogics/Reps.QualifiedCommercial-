@@ -16,7 +16,12 @@
 
 import Link from "next/link";
 import { useParams, usePathname, useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Lock, LockOpen } from "lucide-react";
 import { useCase } from "@/lib/useCase";
+import { api } from "@/lib/api";
+import { useMe } from "@/lib/useMe";
 
 function fmtDate(iso: string | undefined): string {
   if (!iso) return "";
@@ -39,8 +44,35 @@ export default function CaseLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const search = useSearchParams();
   const step = Number(search.get("step") || "1");
+  const { getToken } = useAuth();
+  const queryClient = useQueryClient();
+  const { isSuperAdmin } = useMe();
 
   const { dealer, verification } = useCase(id);
+  const workflowSettings = useMutation({
+    mutationFn: async (workflow_ungated: boolean) => api(
+      `/dealer-os/dealers/${id}/workflow-settings`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ workflow_ungated }),
+        authToken: (await getToken()) ?? undefined,
+      },
+    ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dealer", id] }),
+        queryClient.invalidateQueries({ queryKey: ["portfolio"] }),
+      ]);
+    },
+  });
+  const toggleWorkflowGate = () => {
+    if (!dealer || workflowSettings.isPending) return;
+    const next = !dealer.workflow_ungated;
+    const prompt = next
+      ? "Ungate Steps 1-4 for every authorized staff member on this file?"
+      : "Restore the normal progression gates for every authorized staff member on this file?";
+    if (window.confirm(prompt)) workflowSettings.mutate(next);
+  };
 
   const base = `/applications/${id}`;
   const onWizard = pathname === base;
@@ -58,12 +90,26 @@ export default function CaseLayout({ children }: { children: React.ReactNode }) 
         <div className="ckrow">
           <h2>{dealer?.name ?? "…"}</h2>
           {dealer?.case_ref && <span className="cellchip c-mut num">{dealer.case_ref}</span>}
+          {dealer?.is_training && <span className="cellchip c-gold">Training</span>}
+          {dealer?.workflow_ungated && <span className="cellchip c-acc">Ungated</span>}
           <span className="cellchip c-acc">{stageLabel(verification.stage)}</span>
           <span className={`cellchip ${verification.unlocked ? "c-ok" : "c-warn"}`}>
             {verification.reason}
           </span>
           <span style={{ flex: 1 }} />
           {dealer && <span className="sub">Opened {fmtDate(dealer.created_at)}</span>}
+          {isSuperAdmin && dealer && (
+            <button
+              type="button"
+              className="iconAction"
+              onClick={toggleWorkflowGate}
+              disabled={workflowSettings.isPending}
+              title={dealer.workflow_ungated ? "Gate workflow" : "Ungate workflow"}
+              aria-label={dealer.workflow_ungated ? "Gate workflow" : "Ungate workflow"}
+            >
+              {dealer.workflow_ungated ? <LockOpen size={18} /> : <Lock size={18} />}
+            </button>
+          )}
           <button type="button" className="btn sm">
             Assign to desk
           </button>

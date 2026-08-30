@@ -29,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import BusinessAddressFields from "./BusinessAddressFields";
 import ProductFinderTaxonomy, { type ProductFinderTaxonomyValue } from "./ProductFinderTaxonomy";
+import { useMe } from "@/lib/useMe";
 
 const PURPOSES: Array<{ slug: string; label: string }> = [
   { slug: "working_capital", label: "Working capital" },
@@ -110,7 +111,9 @@ export default function NewApplicationForm({
   const router = useRouter();
   const qc = useQueryClient();
   const { getToken } = useAuth();
+  const { isSuperAdmin } = useMe();
   const [f, setF] = useState<Form>(EMPTY);
+  const [isTraining, setIsTraining] = useState(false);
   const [taxonomy, setTaxonomy] = useState<ProductFinderTaxonomyValue>({
     industry_entry_id: null,
     industry: "",
@@ -187,6 +190,7 @@ export default function NewApplicationForm({
         funding_purpose: f.funding_purpose,
         use_of_proceeds_note: f.use_of_proceeds_note.trim(),
       };
+      if (isSuperAdmin && isTraining) body.is_training = true;
       // Only send what was filled in. Empty strings would overwrite good
       // defaults with blanks and trip the server's pattern validators.
       const optional: Array<[keyof Form, string]> = [
@@ -478,6 +482,13 @@ export default function NewApplicationForm({
               />
             </div>
           </div>
+
+          {isSuperAdmin && (
+            <label className="trainingCreateToggle mt">
+              <input type="checkbox" checked={isTraining} onChange={(event) => setIsTraining(event.target.checked)} />
+              <span><b>Training file</b><small>Exclude this file from live staff views and production metrics.</small></span>
+            </label>
+          )}
 
           <div className="panel mt">
             <div className="panel-h">Notes from the visit</div>

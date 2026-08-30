@@ -13,6 +13,42 @@ export class ApiError extends Error {
   }
 }
 
+type TrainingLiveAction = {
+  code: "training_live_action_confirmation_required";
+  action?: string;
+  provider?: string;
+  recipient?: string | null;
+  effect?: string;
+};
+
+async function trainingLiveAction(res: Response): Promise<TrainingLiveAction | null> {
+  if (res.status !== 409 || typeof window === "undefined") return null;
+  try {
+    const body = await res.clone().json() as { detail?: unknown };
+    const detail = body.detail;
+    if (!detail || typeof detail !== "object") return null;
+    const action = detail as Partial<TrainingLiveAction>;
+    return action.code === "training_live_action_confirmation_required"
+      ? action as TrainingLiveAction
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function confirmTrainingLiveAction(detail: TrainingLiveAction): boolean {
+  const lines = [
+    detail.action || "Run live action",
+    "",
+    detail.provider ? `Provider: ${detail.provider}` : null,
+    detail.recipient ? `Recipient: ${detail.recipient}` : null,
+    detail.effect ? `Effect: ${detail.effect}` : null,
+    "",
+    "This is a Training file. Continue with the real external action?",
+  ].filter((line): line is string => line !== null);
+  return window.confirm(lines.join("\n"));
+}
+
 async function unwrap<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let body: unknown = null;
@@ -47,24 +83,42 @@ async function unwrap<T>(res: Response): Promise<T> {
 
 export async function api<T>(path: string, opts: RequestInit & { authToken?: string } = {}): Promise<T> {
   const { authToken, ...init } = opts;
-  const res = await fetch(`${apiBase}${path}`, {
+  const requestHeaders = {
+    "Content-Type": "application/json",
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    ...(init.headers ?? {}),
+  };
+  let res = await fetch(`${apiBase}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...(init.headers ?? {}),
-    },
+    headers: requestHeaders,
   });
+  const liveAction = await trainingLiveAction(res);
+  if (liveAction && confirmTrainingLiveAction(liveAction)) {
+    res = await fetch(`${apiBase}${path}`, {
+      ...init,
+      headers: { ...requestHeaders, "X-QC-Training-Live-Action": "confirmed" },
+    });
+  }
   return unwrap<T>(res);
 }
 
 // Multipart upload — no Content-Type header so the browser sets the multipart
 // boundary itself (the JSON helper above would force application/json).
 export async function apiUpload<T>(path: string, form: FormData, opts: { authToken?: string } = {}): Promise<T> {
-  const res = await fetch(`${apiBase}${path}`, {
+  const requestHeaders: Record<string, string> = {};
+  if (opts.authToken) requestHeaders.Authorization = `Bearer ${opts.authToken}`;
+  let res = await fetch(`${apiBase}${path}`, {
     method: "POST",
     body: form,
-    headers: opts.authToken ? { Authorization: `Bearer ${opts.authToken}` } : {},
+    headers: requestHeaders,
   });
+  const liveAction = await trainingLiveAction(res);
+  if (liveAction && confirmTrainingLiveAction(liveAction)) {
+    res = await fetch(`${apiBase}${path}`, {
+      method: "POST",
+      body: form,
+      headers: { ...requestHeaders, "X-QC-Training-Live-Action": "confirmed" },
+    });
+  }
   return unwrap<T>(res);
 }
