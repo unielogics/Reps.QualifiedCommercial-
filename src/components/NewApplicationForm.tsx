@@ -486,7 +486,7 @@ export default function NewApplicationForm({
           {isSuperAdmin && (
             <label className="trainingCreateToggle mt">
               <input type="checkbox" checked={isTraining} onChange={(event) => setIsTraining(event.target.checked)} />
-              <span><b>Training file</b><small>Exclude this file from live staff views and production metrics.</small></span>
+              <span><b>Training file</b><small>Exclude from live views and metrics, and automatically ungate Steps 1–4.</small></span>
             </label>
           )}
 

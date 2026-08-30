@@ -121,7 +121,7 @@ export default function Portfolio() {
   const changeTrainingStatus = (row: Row) => {
     const next = !row.is_training;
     const warning = next
-      ? `Mark ${row.name} as Training? It will leave live views and production metrics immediately.`
+      ? `Mark ${row.name} as Training? It will leave live views and production metrics, and Steps 1–4 will be ungated automatically.`
       : row.workflow_ungated
         ? `Return ${row.name} to live data? Its workflow will remain ungated until you gate it separately.`
         : `Return ${row.name} to live operational views and reporting?`;

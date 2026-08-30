@@ -66,7 +66,7 @@ export default function CaseLayout({ children }: { children: React.ReactNode }) 
     },
   });
   const toggleWorkflowGate = () => {
-    if (!dealer || workflowSettings.isPending) return;
+    if (!dealer || dealer.is_training || workflowSettings.isPending) return;
     const next = !dealer.workflow_ungated;
     const prompt = next
       ? "Ungate Steps 1-4 for every authorized staff member on this file?"
@@ -103,9 +103,9 @@ export default function CaseLayout({ children }: { children: React.ReactNode }) 
               type="button"
               className="iconAction"
               onClick={toggleWorkflowGate}
-              disabled={workflowSettings.isPending}
-              title={dealer.workflow_ungated ? "Gate workflow" : "Ungate workflow"}
-              aria-label={dealer.workflow_ungated ? "Gate workflow" : "Ungate workflow"}
+              disabled={workflowSettings.isPending || dealer.is_training}
+              title={dealer.is_training ? "Training files are always ungated" : dealer.workflow_ungated ? "Gate workflow" : "Ungate workflow"}
+              aria-label={dealer.is_training ? "Training files are always ungated" : dealer.workflow_ungated ? "Gate workflow" : "Ungate workflow"}
             >
               {dealer.workflow_ungated ? <LockOpen size={18} /> : <Lock size={18} />}
             </button>
