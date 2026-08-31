@@ -126,8 +126,8 @@ function BalanceChart({ rows }: { rows: Period[] }) {
   if (rows.length === 0) {
     return (
       <span className="sub">
-        No monthly activity yet. Statements arrive with the bank connection and populate this
-        within a few minutes.
+        No monthly activity yet. Plaid Asset data or uploaded bank PDFs populate this after
+        ingestion completes.
       </span>
     );
   }
@@ -135,7 +135,7 @@ function BalanceChart({ rows }: { rows: Period[] }) {
     (value): value is number => value !== null && Number.isFinite(value),
   );
   if (values.length === 0) {
-    return <span className="sub">The statement months are present, but no readable monthly balance figures were found.</span>;
+    return <span className="sub">The verified bank months are present, but no readable monthly balance figures were found.</span>;
   }
   const W = 720;
   const H = 230;
@@ -171,7 +171,7 @@ function BalanceChart({ rows }: { rows: Period[] }) {
 
   return (
     <div className="balanceChart">
-      <svg viewBox={`0 0 ${W} ${H}`} aria-label="Starting, ending, and average daily balances for up to six statement months">
+      <svg viewBox={`0 0 ${W} ${H}`} aria-label="Starting, ending, and average daily balances for up to six verified bank months">
         {tickValues.map((value, index) => {
           const tickY = top + ((bottom - top) / 2) * index;
           return (
@@ -576,13 +576,13 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
               <span style={{ flex: 1 }} />
               {coverage.data && (
                 <span className="sub num">
-                  {coverage.data.statement_months.length} of {coverage.data.statement_target} statement months
+                  {coverage.data.statement_months.length} of {coverage.data.statement_target} verified months
                 </span>
               )}
             </div>
             <div className="panel-b">
               {coverage.data && [
-                { label: "Six current bank-produced statement months", met: coverage.data.statement_months.length >= 6 },
+                { label: "Six current months from Plaid Assets or bank-produced PDF statements", met: coverage.data.statement_months.length >= 6 },
                 { label: "Current-year profit and loss statement", met: coverage.data.has_pl },
                 { label: "Debt schedule", met: coverage.data.has_debt_schedule },
               ].map((item) => (

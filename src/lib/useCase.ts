@@ -18,7 +18,7 @@ import { ApiError, api } from "./api";
 
 export type Verification = {
   bank_linked: boolean;
-  bank_source: "plaid" | "upload" | "none";
+  bank_source: "assets" | "plaid" | "upload" | "none";
   statement_months: string[];
   missing_statement_months: string[];
   credit_returned: boolean;

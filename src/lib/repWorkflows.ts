@@ -1,5 +1,5 @@
 export type ComposeChannel = "email" | "sms";
-export type BankEvidenceSource = "plaid" | "upload" | "none";
+export type BankEvidenceSource = "assets" | "plaid" | "upload" | "none";
 
 export type BankEvidenceRead = {
   bank_linked: boolean;

@@ -35,7 +35,23 @@ type PlaidItem = {
   is_primary_operating: boolean;
   statement_months: string[];
 };
-type PlaidState = { enabled: boolean; environment: string; items: PlaidItem[] };
+type PlaidAssetReport = {
+  id: string;
+  status: string;
+  days_requested: number;
+  error: string | null;
+  ready_at: string | null;
+  ingested_at: string | null;
+  document_id: string | null;
+  created_at: string;
+};
+type PlaidState = {
+  enabled: boolean;
+  environment: string;
+  items: PlaidItem[];
+  assets_enabled: boolean;
+  asset_reports: PlaidAssetReport[];
+};
 
 type Owner = {
   id: string;
@@ -218,6 +234,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const creditOwner = ownerRows.find((owner) => owner.id === creditOwnerId) ?? null;
   const primaryOwner = ownerRows.find((owner) => owner.is_primary) ?? requiredOwners[0] ?? ownerRows[0] ?? null;
   const activeBanks = (plaid.data?.items ?? []).filter((item) => item.status !== "removed");
+  const latestAssetReport = plaid.data?.asset_reports?.[0] ?? null;
 
   useEffect(() => {
     if (!modal) return;
@@ -387,9 +404,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
         <div className="panel-b">
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>
-            Two authorizations are required before the credit application opens: bank evidence
-            through Plaid or uploaded statements, and a soft credit inquiry. Each client request
-            is sent from this screen, by email or SMS, and returns to this case automatically.
+            Two authorizations are required before the credit application opens: verified bank
+            evidence through Plaid Assets or uploaded bank PDFs, and a soft credit inquiry. Each
+            client request is sent from this screen and returns to this case automatically.
           </p>
           <span className="sub" style={{ display: "block", marginTop: 8 }}>
             A soft inquiry does not affect the applicant&apos;s credit score. Delivery, opening
@@ -462,7 +479,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             {bankLinked
               ? bankSource === "upload"
                 ? "Uploaded statements"
-                : "Connected"
+                : bankSource === "assets"
+                  ? "Asset Report verified"
+                  : "Plaid statements verified"
               : "Awaiting applicant"}
           </span>
         </div>
@@ -475,11 +494,17 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <div>
               <span className="lbl">Evidence source</span>
               <b className="num" style={{ display: "block" }}>
-                {bankSource === "upload" ? "Upload" : bankSource === "plaid" ? "Plaid" : "—"}
+                {bankSource === "assets"
+                  ? "Plaid Assets"
+                  : bankSource === "upload"
+                    ? "Uploaded bank PDFs"
+                    : bankSource === "plaid"
+                      ? "Plaid Statements"
+                      : "—"}
               </b>
             </div>
             <div>
-              <span className="lbl">Statement coverage</span>
+              <span className="lbl">Verified coverage</span>
               <b className="num" style={{ display: "block" }}>
                 {statementMonths.length
                   ? `${statementMonths.length} month${statementMonths.length === 1 ? "" : "s"}`
@@ -487,6 +512,47 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </b>
             </div>
           </div>
+          {plaid.data?.assets_enabled && activeBanks.length > 0 && (
+            <div
+              className="row"
+              style={{
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                padding: 12,
+                alignItems: "center",
+                marginTop: 14,
+              }}
+            >
+              <div>
+                <b>Plaid Asset Report</b>
+                <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                  {latestAssetReport?.status === "ingested"
+                    ? `Verified balances and transactions are in the financial profile · ${latestAssetReport.days_requested} days requested`
+                    : latestAssetReport?.status === "ready"
+                      ? "Report received and financial ingestion is starting"
+                      : latestAssetReport?.status === "error" || latestAssetReport?.status === "ingest_error"
+                        ? latestAssetReport.error || "The report needs attention"
+                        : "Plaid is building the verified balance and transaction report"}
+                </span>
+              </div>
+              <span style={{ flex: 1 }} />
+              <span
+                className={`cellchip ${
+                  latestAssetReport?.status === "ingested"
+                    ? "c-ok"
+                    : latestAssetReport?.status === "error" || latestAssetReport?.status === "ingest_error"
+                      ? "c-bad"
+                      : "c-warn"
+                }`}
+              >
+                {latestAssetReport?.status === "ingested"
+                  ? "Verified"
+                  : latestAssetReport?.status === "error" || latestAssetReport?.status === "ingest_error"
+                    ? "Action required"
+                    : "Processing"}
+              </span>
+            </div>
+          )}
           {activeBanks.length > 0 && (
             <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
               {activeBanks.map((bank) => (
@@ -498,7 +564,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                   <div>
                     <b>{bank.institution_name || "Connected institution"}</b>
                     <span className="sub" style={{ display: "block", marginTop: 3 }}>
-                      {bank.accounts_label || "Account labels syncing"} · {bank.statement_months.length} statement month{bank.statement_months.length === 1 ? "" : "s"}
+                      {bank.accounts_label || "Account labels syncing"} · {bank.statement_months.length} verified month{bank.statement_months.length === 1 ? "" : "s"}
                     </span>
                     {bank.error && <span className="sub" style={{ color: "var(--bad)", display: "block" }}>{bank.error}</span>}
                   </div>
@@ -601,7 +667,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </span>
             ))}
             {!statementMonths.length && !missingStatementMonths.length && (
-              <span className="sub">No uploaded statement coverage has been extracted yet.</span>
+              <span className="sub">No verified bank-month coverage has been ingested yet.</span>
             )}
           </div>
           {evidenceData?.upload_url && (
@@ -623,8 +689,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           )}
           {plaid.data && !plaid.data.enabled && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
-              Plaid connections are not switched on yet. Use statement upload in the meantime;
-              the upload path satisfies the same bank gate once six current months extract.
+              Plaid connections are not switched on yet. Use bank PDF upload in the meantime;
+              that path satisfies the same gate once six current months extract.
             </span>
           )}
         </div>
@@ -787,7 +853,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         ready={verification.unlocked}
         message={
           !verification.bank_linked
-            ? "Bank evidence is still required. Connect a bank or upload six complete statement months."
+            ? "Bank evidence is still required. Connect the business bank through Plaid Assets or upload six complete bank PDF months."
             : !verification.credit_returned
               ? `${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`
               : "Verification is complete. Continue to the financial profile."
@@ -800,7 +866,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         <Modal
           title={
             modal === "bank"
-              ? "Send Plaid connection request"
+              ? "Send secure bank connection request"
               : modal === "upload"
                 ? "Request statement upload"
                 : "Send credit authorization"
@@ -809,7 +875,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         >
           <p className="sub" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6 }}>
             {modal === "bank"
-              ? "The applicant opens a Plaid connection and grants read-only access to the operating account. No credentials pass through Qualified Commercial."
+              ? "The applicant connects the business operating account with read-only access. Plaid Assets returns verified balances and transactions; no credentials pass through Qualified Commercial."
               : modal === "upload"
                 ? "The applicant opens the secure room and uploads the last six completed months of business bank statements to the linked bucket."
               : "The applicant authorizes a soft credit inquiry. It does not affect their score and returns a band rather than an exact figure."}
@@ -881,7 +947,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           <div className="note">
             <div>
               {modal === "bank"
-                ? "Delivery and completion are timestamped in the audit trail. The link can be reissued from this panel at any time."
+                ? "Delivery, connection, report generation, and ingestion are timestamped. The link can be reissued from this panel at any time."
                 : modal === "upload"
                   ? "A checklist item is added to the client room. Uploaded files are mirrored into the bucket and ingested into the same financial pipeline."
                 : "The disclosure text shown to the applicant is served and stored by the system, so the record matches exactly what they saw."}
@@ -918,7 +984,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               {modalPending
                 ? "Sending…"
                 : modal === "bank"
-                  ? "Send Plaid link"
+                  ? "Send secure bank link"
                   : modal === "upload"
                     ? "Send upload request"
                     : "Send authorization"}
