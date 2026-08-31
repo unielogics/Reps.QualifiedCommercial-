@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflows";
@@ -128,6 +129,26 @@ function statusTone(s: string): string {
   return "c-mut";
 }
 
+async function copyText(value: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value);
+    return;
+  } catch {
+    // Older tablet browsers may expose Clipboard but reject it. Keep a
+    // selection-based fallback so the rep can still copy the secure URL.
+  }
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  document.body.appendChild(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) throw new Error("Clipboard access was denied");
+}
+
 /** A score band rather than the exact figure, which is what a soft inquiry returns. */
 function band(score: number | null): string {
   if (score === null) return "Pending";
@@ -171,6 +192,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [alsoText, setAlsoText] = useState(false);
   const [sent, setSent] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [roomUrl, setRoomUrl] = useState<string | null>(null);
+  const [roomCopyState, setRoomCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [dragging, setDragging] = useState(false);
   const [creditLinks, setCreditLinks] = useState<Record<string, string>>({});
   const [deliveryEmail, setDeliveryEmail] = useState("");
@@ -186,11 +209,15 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   // code has leaked.
   const rotateCode = useMutation({
     mutationFn: async () =>
-      api<{ passcode: string | null }>(`/dealer-os/dealers/${dealerId}/room/access-code`, {
+      api<{ passcode: string | null; url: string }>(`/dealer-os/dealers/${dealerId}/room/access-code`, {
         method: "POST",
         authToken: (await getToken()) ?? undefined,
       }),
-    onSuccess: (r) => setAccessCode(r.passcode ?? null),
+    onSuccess: (r) => {
+      setAccessCode(r.passcode ?? null);
+      setRoomUrl(r.url);
+      setRoomCopyState("idle");
+    },
   });
 
   const plaid = useQuery({
@@ -303,6 +330,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       }
       const code = (r as { passcode?: string | null })?.passcode;
       if (code) setAccessCode(code);
+      const url = (r as { url?: string | null })?.url;
+      if (url) setRoomUrl(url);
       void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
       void qc.invalidateQueries({ queryKey: ["owners", dealerId] });
       void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
@@ -362,6 +391,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       setModal(null);
       setSent(r.detail ?? "Statement upload request sent.");
       if (r.passcode) setAccessCode(r.passcode);
+      setRoomUrl(r.url);
       void qc.invalidateQueries({ queryKey: ["delivery-log", dealerId] });
       void qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] });
     },
@@ -369,6 +399,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   });
 
   const evidenceData = evidence.data;
+  const roomLink = roomUrl ?? evidenceData?.upload_url ?? null;
   const bankSource = evidenceData?.bank_source ?? verification.bank_source;
   const statementMonths = evidenceData?.statement_months ?? verification.statement_months;
   const missingStatementMonths =
@@ -391,6 +422,16 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const modalError = modal === "upload" ? requestUpload.error : send.error;
   const modalIsError = modal === "upload" ? requestUpload.isError : send.isError;
   const modalPending = modal === "upload" ? requestUpload.isPending : send.isPending;
+  const copyRoomLink = async () => {
+    if (!roomLink) return;
+    try {
+      await copyText(roomLink);
+      setRoomCopyState("copied");
+      window.setTimeout(() => setRoomCopyState("idle"), 2400);
+    } catch {
+      setRoomCopyState("error");
+    }
+  };
 
   return (
     <>
@@ -422,7 +463,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           <span className="sub">One code for everything the client does</span>
         </div>
         <div className="panel-b">
-          <div className="row" style={{ alignItems: "center", gap: 12 }}>
+          <div className="row" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             {accessCode ? (
               <b
                 className="num"
@@ -443,14 +484,28 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </span>
             )}
             <span style={{ flex: 1 }} />
-            <button
-              type="button"
-              className="btn sm"
-              disabled={rotateCode.isPending}
-              onClick={() => rotateCode.mutate()}
-            >
-              {rotateCode.isPending ? "Minting…" : accessCode ? "New code" : "Show a new access code"}
-            </button>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={!roomLink}
+                onClick={() => void copyRoomLink()}
+                style={{ minHeight: 44 }}
+                title={roomLink ? "Copy the secure client-room link" : "Create an access code first"}
+              >
+                {roomCopyState === "copied" ? <Check size={16} /> : <Copy size={16} />}
+                {roomCopyState === "copied" ? "Link copied" : "Copy room link"}
+              </button>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={rotateCode.isPending}
+                onClick={() => rotateCode.mutate()}
+                style={{ minHeight: 44 }}
+              >
+                {rotateCode.isPending ? "Minting…" : accessCode ? "New code" : "Show a new access code"}
+              </button>
+            </div>
           </div>
           {accessCode && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
@@ -461,6 +516,14 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           {rotateCode.isError && (
             <div className="note">
               <div>Could not mint a code. Try again.</div>
+            </div>
+          )}
+          {roomCopyState === "error" && (
+            <div className="note">
+              <div>
+                Could not copy automatically. Open the client-room link below and copy it from
+                the browser.
+              </div>
             </div>
           )}
         </div>
