@@ -159,6 +159,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [creditLinks, setCreditLinks] = useState<Record<string, string>>({});
   const [deliveryEmail, setDeliveryEmail] = useState("");
   const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [deliverySource, setDeliverySource] = useState("application");
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const authReady = isLoaded && Boolean(isSignedIn);
   const statementUploads = uploads.filter((item) => item.dealerId === dealerId);
@@ -215,6 +216,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const ownerRows = owners.data ?? [];
   const requiredOwners = ownerRows.filter((owner) => owner.credit_required);
   const creditOwner = ownerRows.find((owner) => owner.id === creditOwnerId) ?? null;
+  const primaryOwner = ownerRows.find((owner) => owner.is_primary) ?? requiredOwners[0] ?? ownerRows[0] ?? null;
   const activeBanks = (plaid.data?.items ?? []).filter((item) => item.status !== "removed");
 
   useEffect(() => {
@@ -222,18 +224,22 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
     if (modal === "credit") {
       setDeliveryEmail(creditOwner?.email ?? "");
       setDeliveryPhone(creditOwner?.phone ?? "");
-    } else {
-      setDeliveryEmail(dealer?.email ?? "");
-      setDeliveryPhone(dealer?.phone ?? "");
+    } else if (deliverySource === "application") {
+      setDeliveryEmail(dealer?.email ?? primaryOwner?.email ?? "");
+      setDeliveryPhone(dealer?.phone ?? primaryOwner?.phone ?? "");
+    } else if (deliverySource.startsWith("owner:")) {
+      const selectedOwner = ownerRows.find((owner) => owner.id === deliverySource.slice(6));
+      setDeliveryEmail(selectedOwner?.email ?? "");
+      setDeliveryPhone(selectedOwner?.phone ?? "");
     }
     setDeliveryError(null);
-  }, [creditOwner, dealer?.email, dealer?.phone, modal]);
+  }, [creditOwner, dealer?.email, dealer?.phone, deliverySource, modal, owners.data, primaryOwner?.email, primaryOwner?.phone]);
 
   const persistDeliveryContact = async (ownerId?: string) => {
     const email = deliveryEmail.trim().toLowerCase();
     const phone = deliveryPhone.trim();
     if (!validEmail(email)) throw new Error("Enter a valid personal email address before sending.");
-    if (ownerId && !validPhone(phone)) throw new Error("Enter a valid personal mobile number before sending.");
+    if ((ownerId || alsoText) && !validPhone(phone)) throw new Error("Enter a valid personal mobile number before sending by text.");
     const token = (await getToken()) ?? undefined;
     if (ownerId) {
       await api(`/dealer-os/dealers/${dealerId}/owners/${ownerId}`, {
@@ -244,12 +250,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       await qc.invalidateQueries({ queryKey: ["owners", dealerId] });
       return;
     }
-    await api(`/dealer-os/dealers/${dealerId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ email, phone: phone || null }),
-      authToken: token,
-    });
-    await qc.invalidateQueries({ queryKey: ["dealer", dealerId] });
+    return;
   };
 
   const send = useMutation({
@@ -260,7 +261,15 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       if (request.kind === "bank") {
         return api<{ detail: string | null; emailed: boolean; texted: boolean }>(
           `/dealer-os/dealers/${dealerId}/bank-connect-invite`,
-          { method: "POST", body: JSON.stringify({ channel }), authToken: token },
+          {
+            method: "POST",
+            body: JSON.stringify({
+              channel,
+              recipient_email: deliveryEmail.trim().toLowerCase(),
+              recipient_phone: deliveryPhone.trim() || null,
+            }),
+            authToken: token,
+          },
         );
       }
       return api<CreditInviteResult>(
@@ -324,7 +333,11 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       await persistDeliveryContact();
       return api<BankUploadRequestResult>(`/dealer-os/dealers/${dealerId}/bank-upload-request`, {
         method: "POST",
-        body: JSON.stringify({ channel: alsoText ? "sms" : "email" }),
+        body: JSON.stringify({
+          channel: alsoText ? "sms" : "email",
+          recipient_email: deliveryEmail.trim().toLowerCase(),
+          recipient_phone: deliveryPhone.trim() || null,
+        }),
         authToken: (await getToken()) ?? undefined,
       });
     },
@@ -504,17 +517,17 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             </div>
           )}
           <div className="row mt">
-            <button type="button" className="btn pri" onClick={() => setModal("bank")}>
+            <button type="button" className="btn pri" onClick={() => { setDeliverySource("application"); setModal("bank"); }}>
               {activeBanks.length ? "Connect another bank" : "Send bank connection request"}
             </button>
-            <button type="button" className="btn" onClick={() => setModal("upload")}>
+            <button type="button" className="btn" onClick={() => { setDeliverySource("application"); setModal("upload"); }}>
               Request statement upload
             </button>
             <button
               type="button"
               className="btn"
               disabled={send.isPending}
-              onClick={() => send.mutate({ kind: "bank" })}
+              onClick={() => { setDeliverySource("application"); setModal("bank"); }}
             >
               Resend Plaid
             </button>
@@ -802,6 +815,25 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               : "The applicant authorizes a soft credit inquiry. It does not affect their score and returns a band rather than an exact figure."}
           </p>
 
+          {modal !== "credit" && (
+            <label className="mt" style={{ display: "block" }}>
+              <span className="lbl">Send request to</span>
+              <select
+                className="field"
+                value={deliverySource}
+                onChange={(event) => setDeliverySource(event.target.value)}
+              >
+                <option value="application">Application contact (Step 1)</option>
+                {ownerRows.map((owner) => (
+                  <option key={owner.id} value={`owner:${owner.id}`}>
+                    {owner.full_name}{owner.is_primary ? " · Primary owner" : " · Owner"}
+                  </option>
+                ))}
+                <option value="manual">Manual override</option>
+              </select>
+            </label>
+          )}
+
           <div className="deliveryEditor mt">
             <label>
               <span className="lbl">{modal === "credit" ? "Personal email" : "Applicant email"}</span>
@@ -810,7 +842,11 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                 type="email"
                 value={deliveryEmail}
                 autoComplete="email"
-                onChange={(event) => { setDeliveryEmail(event.target.value); setDeliveryError(null); }}
+                onChange={(event) => {
+                  setDeliveryEmail(event.target.value);
+                  if (modal !== "credit") setDeliverySource("manual");
+                  setDeliveryError(null);
+                }}
               />
             </label>
             <label>
@@ -820,12 +856,18 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                 type="tel"
                 value={deliveryPhone}
                 autoComplete="tel"
-                onChange={(event) => { setDeliveryPhone(event.target.value); setDeliveryError(null); }}
+                onChange={(event) => {
+                  setDeliveryPhone(event.target.value);
+                  if (modal !== "credit") setDeliverySource("manual");
+                  setDeliveryError(null);
+                }}
               />
             </label>
           </div>
           <span className="sub" style={{ display: "block", marginTop: 6 }}>
-            Corrections save to this {modal === "credit" ? "owner" : "application"} before the secure link is sent.
+            {modal === "credit"
+              ? "Corrections save to this owner before the secure link is sent."
+              : "The selected contact is used for this delivery only. Manual overrides do not replace Step 1 details."}
           </span>
 
           <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, cursor: "pointer" }}>
@@ -866,7 +908,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <button
               type="button"
               className="btn pri"
-              disabled={modalPending || !validEmail(deliveryEmail) || (modal === "credit" && !validPhone(deliveryPhone))}
+              disabled={modalPending || !validEmail(deliveryEmail) || ((modal === "credit" || alsoText) && !validPhone(deliveryPhone))}
               onClick={() => {
                 if (modal === "upload") requestUpload.mutate();
                 else if (modal === "bank") send.mutate({ kind: "bank" });
