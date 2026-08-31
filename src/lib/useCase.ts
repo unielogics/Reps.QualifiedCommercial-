@@ -21,6 +21,9 @@ export type Verification = {
   bank_source: "assets" | "plaid" | "upload" | "none";
   statement_months: string[];
   missing_statement_months: string[];
+  statement_target: number;
+  bank_exception_available: boolean;
+  bank_exception_active: boolean;
   credit_returned: boolean;
   unlocked: boolean;
   returned: number;
@@ -108,6 +111,9 @@ const NO_VERIFICATION: Verification = {
   bank_source: "none",
   statement_months: [],
   missing_statement_months: [],
+  statement_target: 6,
+  bank_exception_available: false,
+  bank_exception_active: false,
   credit_returned: false,
   unlocked: false,
   returned: 0,

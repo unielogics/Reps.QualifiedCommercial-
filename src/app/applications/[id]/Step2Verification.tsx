@@ -18,7 +18,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflows";
@@ -194,6 +194,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [roomUrl, setRoomUrl] = useState<string | null>(null);
   const [roomCopyState, setRoomCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [bankExceptionOpen, setBankExceptionOpen] = useState(false);
+  const [creditRefreshing, setCreditRefreshing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [creditLinks, setCreditLinks] = useState<Record<string, string>>({});
   const [deliveryEmail, setDeliveryEmail] = useState("");
@@ -262,6 +264,29 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const primaryOwner = ownerRows.find((owner) => owner.is_primary) ?? requiredOwners[0] ?? ownerRows[0] ?? null;
   const activeBanks = (plaid.data?.items ?? []).filter((item) => item.status !== "removed");
   const latestAssetReport = plaid.data?.asset_reports?.[0] ?? null;
+
+  const refetchBankStatus = async () => {
+    await Promise.all([
+      plaid.refetch(),
+      evidence.refetch(),
+      qc.refetchQueries({ queryKey: ["decision", dealerId] }),
+      log.refetch(),
+    ]);
+  };
+
+  const refreshCreditStatus = async () => {
+    setCreditRefreshing(true);
+    try {
+      await Promise.all([
+        owners.refetch(),
+        qc.refetchQueries({ queryKey: ["decision", dealerId] }),
+        log.refetch(),
+      ]);
+      setSent("Credit authorization status refreshed.");
+    } finally {
+      setCreditRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     if (!modal) return;
@@ -398,6 +423,43 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
     onError: (error) => setDeliveryError(error instanceof Error ? error.message : "The upload request could not be sent."),
   });
 
+  const refreshBank = useMutation({
+    mutationFn: async () => {
+      if (!activeBanks.length) return { queued: 0 };
+      return api<{ queued: number }>(`/dealer-os/dealers/${dealerId}/plaid/refresh`, {
+        method: "POST",
+        authToken: (await getToken()) ?? undefined,
+      });
+    },
+    onSuccess: async (result) => {
+      await refetchBankStatus();
+      setSent(
+        result.queued
+          ? `Bank refresh queued for ${result.queued} connected institution${result.queued === 1 ? "" : "s"}.`
+          : "Bank evidence status refreshed.",
+      );
+      window.setTimeout(() => void refetchBankStatus(), 4000);
+    },
+  });
+
+  const acceptThreeMonthException = useMutation({
+    mutationFn: async () =>
+      api<BankEvidenceRead>(
+        `/dealer-os/dealers/${dealerId}/bank-evidence/three-month-exception`,
+        {
+          method: "POST",
+          body: JSON.stringify({ acknowledged: true }),
+          authToken: (await getToken()) ?? undefined,
+        },
+      ),
+    onSuccess: async (result) => {
+      qc.setQueryData(["bank-evidence", dealerId], result);
+      setBankExceptionOpen(false);
+      await qc.refetchQueries({ queryKey: ["decision", dealerId] });
+      router.push(`/applications/${dealerId}?step=3`);
+    },
+  });
+
   const evidenceData = evidence.data;
   const roomLink = roomUrl ?? evidenceData?.upload_url ?? null;
   const bankSource = evidenceData?.bank_source ?? verification.bank_source;
@@ -405,6 +467,18 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const missingStatementMonths =
     evidenceData?.missing_statement_months ?? verification.missing_statement_months;
   const bankLinked = evidenceData?.bank_linked ?? verification.bank_linked;
+  const bankExceptionAvailable =
+    evidenceData?.bank_exception_available ?? verification.bank_exception_available;
+  const bankExceptionActive =
+    evidenceData?.bank_exception_active ?? verification.bank_exception_active;
+  const canAcknowledgeBankException = Boolean(
+    bankExceptionAvailable &&
+      !bankExceptionActive &&
+      verification.credit_returned &&
+      verification.ownership_complete &&
+      verification.owner_contact_complete &&
+      verification.pre_screen_complete,
+  );
   const handleFiles = (list: FileList | File[]) => {
     const files = Array.from(list).filter((file) => file.size > 0);
     if (!files.length) return;
@@ -414,6 +488,18 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
   const bankTone = bankLinked ? "c-ok" : "c-warn";
   const creditTone = verification.credit_returned ? "c-ok" : "c-warn";
+  const bankRefreshing = refreshBank.isPending || plaid.isFetching || evidence.isFetching;
+  const bankStatusLabel = bankExceptionActive
+    ? "3-month minimum accepted"
+    : bankExceptionAvailable
+      ? "3-month minimum available"
+      : bankLinked
+        ? bankSource === "upload"
+          ? "Uploaded statements"
+          : bankSource === "assets"
+            ? "Asset Report verified"
+            : "Plaid statements verified"
+        : "Awaiting applicant";
   const kv: CSSProperties = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
@@ -432,6 +518,16 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       setRoomCopyState("error");
     }
   };
+  const stepReady = verification.unlocked || canAcknowledgeBankException;
+  const stepMessage = verification.unlocked
+    ? "Verification is complete. Continue to the financial profile."
+    : bankExceptionAvailable && !verification.credit_returned
+      ? `The three-month bank minimum is available. ${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`
+      : canAcknowledgeBankException
+        ? "The latest three completed bank months are verified. Review the exception before continuing; the remaining standard months stay outstanding."
+        : !verification.bank_linked
+          ? "Bank evidence is still required. Connect another business bank or upload completed bank PDF months."
+          : `${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`;
 
   return (
     <>
@@ -529,23 +625,32 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className={`panel${verification.bank_linked ? "" : " panel-invalid"}`}>
+      <div className={`panel${bankLinked ? "" : " panel-invalid"}`}>
         <div className="panel-h">
-          <IconTile tone={verification.bank_linked ? "ok" : "warn"}>
+          <IconTile tone={bankLinked ? "ok" : "warn"}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 10l9-6 9 6M5 10v9h14v-9M9 19v-6h6v6" />
             </svg>
           </IconTile>
           Bank evidence
           <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="iconAction"
+            style={{ width: 44, height: 44 }}
+            onClick={() => refreshBank.mutate()}
+            disabled={bankRefreshing}
+            title="Refresh Plaid and bank evidence"
+            aria-label="Refresh Plaid and bank evidence"
+          >
+            <RefreshCw
+              size={16}
+              className={bankRefreshing ? "systemStatusSpin" : undefined}
+              aria-hidden
+            />
+          </button>
           <span className={`cellchip ${bankTone}`}>
-            {bankLinked
-              ? bankSource === "upload"
-                ? "Uploaded statements"
-                : bankSource === "assets"
-                  ? "Asset Report verified"
-                  : "Plaid statements verified"
-              : "Awaiting applicant"}
+            {bankStatusLabel}
           </span>
         </div>
         <div className="panel-b">
@@ -647,7 +752,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           )}
           <div className="row mt">
             <button type="button" className="btn pri" onClick={() => { setDeliverySource("application"); setModal("bank"); }}>
-              {activeBanks.length ? "Connect another bank" : "Send bank connection request"}
+              {activeBanks.length ? "Connect another bank or account" : "Send bank connection request"}
             </button>
             <button type="button" className="btn" onClick={() => { setDeliverySource("application"); setModal("upload"); }}>
               Request statement upload
@@ -733,6 +838,29 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               <span className="sub">No verified bank-month coverage has been ingested yet.</span>
             )}
           </div>
+          {bankExceptionAvailable && (
+            <div className="note">
+              <div>
+                <b>
+                  {bankExceptionActive
+                    ? "Three-month minimum acknowledged."
+                    : "Three-month minimum available."}
+                </b>{" "}
+                {bankExceptionActive
+                  ? "The financial profile is open, while the missing standard months remain outstanding for final underwriting."
+                  : "Continue will ask for acknowledgment. You may instead connect another bank or account, or upload the missing bank PDFs."}
+              </div>
+            </div>
+          )}
+          {refreshBank.isError && (
+            <div className="note">
+              <div>
+                {refreshBank.error instanceof Error
+                  ? refreshBank.error.message
+                  : "The Plaid refresh could not be queued."}
+              </div>
+            </div>
+          )}
           {evidenceData?.upload_url && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
               Client room:{" "}
@@ -768,6 +896,21 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           </IconTile>
           Credit authorization · soft inquiry
           <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="iconAction"
+            style={{ width: 44, height: 44 }}
+            onClick={() => void refreshCreditStatus()}
+            disabled={creditRefreshing || owners.isFetching}
+            title="Refresh iSoftPull status"
+            aria-label="Refresh iSoftPull status"
+          >
+            <RefreshCw
+              size={16}
+              className={creditRefreshing || owners.isFetching ? "systemStatusSpin" : undefined}
+              aria-hidden
+            />
+          </button>
           <span className={`cellchip ${creditTone}`}>
             {verification.credit_returned ? "Returned" : "Awaiting applicant"}
           </span>
@@ -913,17 +1056,88 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       )}
 
       <StepActions
-        ready={verification.unlocked}
-        message={
-          !verification.bank_linked
-            ? "Bank evidence is still required. Connect the business bank through Plaid Assets or upload six complete bank PDF months."
-            : !verification.credit_returned
-              ? `${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`
-              : "Verification is complete. Continue to the financial profile."
-        }
-        buttonLabel="Continue to Step 3"
-        onContinue={() => router.push(`/applications/${dealerId}?step=3`)}
+        ready={stepReady}
+        message={stepMessage}
+        buttonLabel={canAcknowledgeBankException ? "Review 3-month exception" : "Continue to Step 3"}
+        onContinue={() => {
+          if (verification.unlocked) {
+            router.push(`/applications/${dealerId}?step=3`);
+          } else if (canAcknowledgeBankException) {
+            setBankExceptionOpen(true);
+          }
+        }}
       />
+
+      {bankExceptionOpen && (
+        <Modal
+          title="Continue with three verified bank months"
+          onClose={() => {
+            if (!acceptThreeMonthException.isPending) setBankExceptionOpen(false);
+          }}
+        >
+          <p className="sub" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6 }}>
+            The latest three completed bank months are verified. A six-month history remains
+            the standard evidence target, but you can open the financial profile now and keep
+            collecting the outstanding months.
+          </p>
+
+          <div style={kv} className="mt">
+            <div>
+              <span className="lbl">Verified coverage</span>
+              <b className="num" style={{ display: "block" }}>
+                {statementMonths.length} month{statementMonths.length === 1 ? "" : "s"}
+              </b>
+            </div>
+            <div>
+              <span className="lbl">Standard target</span>
+              <b className="num" style={{ display: "block" }}>6 months</b>
+            </div>
+            <div>
+              <span className="lbl">Missing standard months</span>
+              <b className="num" style={{ display: "block" }}>
+                {missingStatementMonths.length ? missingStatementMonths.join(", ") : "None"}
+              </b>
+            </div>
+          </div>
+
+          <div className="note">
+            <div>
+              This acknowledgment opens Step 3 only. It does not waive final program rules,
+              mark missing statements complete, or approve the application. The action is
+              retained in the file audit trail.
+            </div>
+          </div>
+
+          {acceptThreeMonthException.isError && (
+            <div className="documentError" style={{ margin: "12px 0 0" }}>
+              {acceptThreeMonthException.error instanceof Error
+                ? acceptThreeMonthException.error.message
+                : "The three-month exception could not be recorded."}
+            </div>
+          )}
+
+          <div className="row mt" style={{ justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="btn"
+              disabled={acceptThreeMonthException.isPending}
+              onClick={() => setBankExceptionOpen(false)}
+            >
+              Keep collecting statements
+            </button>
+            <button
+              type="button"
+              className="btn pri"
+              disabled={acceptThreeMonthException.isPending}
+              onClick={() => acceptThreeMonthException.mutate()}
+            >
+              {acceptThreeMonthException.isPending
+                ? "Recording…"
+                : "Acknowledge and continue"}
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {modal && (
         <Modal
@@ -938,7 +1152,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         >
           <p className="sub" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6 }}>
             {modal === "bank"
-              ? "The applicant connects the business operating account with read-only access. Plaid Assets returns verified balances and transactions; no credentials pass through Qualified Commercial."
+              ? activeBanks.length
+                ? "The applicant can connect another business account or institution with read-only access. Plaid Assets combines verified balances and transactions; no credentials pass through Qualified Commercial."
+                : "The applicant connects the business operating account with read-only access. Plaid Assets returns verified balances and transactions; no credentials pass through Qualified Commercial."
               : modal === "upload"
                 ? "The applicant opens the secure room and uploads the last six completed months of business bank statements to the linked bucket."
               : "The applicant authorizes a soft credit inquiry. It does not affect their score and returns a band rather than an exact figure."}

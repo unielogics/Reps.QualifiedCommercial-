@@ -7,6 +7,8 @@ export type BankEvidenceRead = {
   statement_months: string[];
   missing_statement_months: string[];
   statement_target: number;
+  bank_exception_available: boolean;
+  bank_exception_active: boolean;
   bucket_id?: string | null;
   upload_url?: string | null;
   passcode?: string | null;
