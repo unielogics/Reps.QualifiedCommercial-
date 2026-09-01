@@ -95,6 +95,29 @@ export default function InboxPage() {
     if (!groups.flatMap((g) => g.threads).some((t) => t.id === selectedId)) setSelectedId(null);
   }, [groups, selectedId]);
 
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await api(`/communications/threads/${selectedId}/seen`, {
+          method: "POST",
+          authToken: (await getToken()) ?? undefined,
+        });
+        if (cancelled) return;
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["inbox-contacts"] }),
+          qc.invalidateQueries({ queryKey: ["field-notifications"] }),
+        ]);
+      } catch {
+        /* Reading the thread still works if its seen marker cannot be saved. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken, qc, selectedId]);
+
   // Their drawers seed from the conversation's contact. A unified thread
   // carries the same facts under different names.
   const threadSeed = selected

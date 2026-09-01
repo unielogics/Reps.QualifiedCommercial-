@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SignedIn, UserButton, useAuth } from "@clerk/nextjs";
+import { SignedIn, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
@@ -113,8 +113,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [rail, setRail] = useState(true);
   const [now, setNow] = useState<Date | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [clearingNotifications, setClearingNotifications] = useState(false);
   const { name, email, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
   const { getToken } = useAuth();
+  const { user } = useUser();
 
   // One grouped query for every file, not the per-file endpoint in a loop: a
   // rep with forty files would otherwise fire forty requests to draw one
@@ -133,7 +135,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const unreadTotal = unread.data?.total ?? 0;
   const notifications = useQuery({
     queryKey: ["field-notifications"],
-    queryFn: async () => api<NotificationList>("/notifications?limit=12", {
+    queryFn: async () => api<NotificationList>("/notifications?status=unread&limit=50", {
       authToken: (await getToken()) ?? undefined,
     }),
     enabled: (isRep || isTeam) && !isProductFocus,
@@ -148,6 +150,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setNotificationsOpen(false);
     await notifications.refetch();
     if (row.deep_link) window.location.assign(row.deep_link);
+  };
+
+  const clearNotifications = async () => {
+    setClearingNotifications(true);
+    try {
+      await api("/notifications/read-all", {
+        method: "POST",
+        authToken: (await getToken()) ?? undefined,
+      });
+      await notifications.refetch();
+    } finally {
+      setClearingNotifications(false);
+    }
   };
 
   useEffect(() => {
@@ -229,6 +244,54 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const activeSection = pathname.startsWith("/applications/")
     ? "Application workspace"
     : nav.find((item) => isActiveNavItem(item.href))?.label ?? "Field Desk";
+  const notificationCount = notifications.data?.unread_count ?? 0;
+  const profileInitials = (name || email || "QC")
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+  const notificationControl = (placement: "sidebar" | "mobile") => (
+    <div className={`popwrap notificationWrap ${placement}`}>
+      <button
+        type="button"
+        className={placement === "sidebar" ? "sidebarNotificationButton" : "btn sm mobileNotificationButton"}
+        aria-label={`${notificationCount} unread notifications`}
+        aria-expanded={notificationsOpen}
+        onClick={() => {
+          setNotificationsOpen((value) => !value);
+          if (!notificationsOpen) void notifications.refetch();
+        }}
+      >
+        <Icon name="bell" />
+        {placement === "sidebar" && <span className="sidebarUtilityLabel">Notifications</span>}
+        {notificationCount > 0 && <span className="navbadge">{notificationCount > 99 ? "99+" : notificationCount}</span>}
+      </button>
+      {notificationsOpen && (
+        <div className={`popmenu notificationMenu ${placement === "sidebar" ? "sidebarNotificationMenu" : ""}`}>
+          <div className="notificationMenuHead">
+            <div><b>Notifications</b><small>Unread messages and file activity</small></div>
+            <button
+              type="button"
+              onClick={() => void clearNotifications()}
+              disabled={clearingNotifications || notificationCount === 0}
+            >
+              {clearingNotifications ? "Clearing..." : "Clear notifications"}
+            </button>
+          </div>
+          {(notifications.data?.items ?? []).map((row) => (
+            <button key={row.id} type="button" className="mi notificationItem" onClick={() => void openNotification(row)}>
+              <b>{row.title}</b>
+              <small>{row.body}</small>
+            </button>
+          ))}
+          {!notifications.isLoading && (notifications.data?.items.length ?? 0) === 0 && (
+            <div className="notificationEmpty">You are caught up.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className={rail ? "app rail" : "app"}>
@@ -269,20 +332,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
+        <div className="sideUtilities">
+          {notificationControl("sidebar")}
+        </div>
+
         <div className="foot">
           <SignedIn>
-            <UserButton afterSignOutUrl="/sign-in">
-              <UserButton.MenuItems>
-                <UserButton.Link label="Field Desk settings" labelIcon={<Icon name="settings" />} href="/settings" />
-              </UserButton.MenuItems>
-            </UserButton>
-            <div className="side-user">
-              <b>{name || "Field rep"}</b>
-              {email && <span>{email}</span>}
-            </div>
-            <Link href="/account/security" className="footlink" title="Account and security">
-              Security
+            <Link href="/settings" className="railProfileLink" aria-label="Open profile settings" title="Profile settings">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Clerk supplies the signed-in user's avatar URL. */}
+              {user?.imageUrl ? <img src={user.imageUrl} alt="" /> : <span>{profileInitials || "QC"}</span>}
             </Link>
+            <div className="expandedProfileControl">
+              <UserButton afterSignOutUrl="/sign-in">
+                <UserButton.MenuItems>
+                  <UserButton.Link label="Field Desk settings" labelIcon={<Icon name="settings" />} href="/settings" />
+                </UserButton.MenuItems>
+              </UserButton>
+              <div className="side-user">
+                <b>{name || "Field rep"}</b>
+                {email && <span>{email}</span>}
+              </div>
+              <Link href="/account/security" className="footlink" title="Account and security">
+                Security
+              </Link>
+            </div>
           </SignedIn>
         </div>
       </aside>
@@ -310,30 +383,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
           {isSuperAdmin && <SystemStatusMenu />}
           <UploadStatusMenu />
-          <div className="popwrap">
-            <button
-              type="button"
-              className="btn sm"
-              aria-label={`${notifications.data?.unread_count ?? 0} unread notifications`}
-              aria-expanded={notificationsOpen}
-              onClick={() => setNotificationsOpen((value) => !value)}
-            >
-              <Icon name="bell" />
-              {(notifications.data?.unread_count ?? 0) > 0 && <span className="navbadge">{notifications.data?.unread_count}</span>}
-            </button>
-            {notificationsOpen && (
-              <div className="popmenu notificationMenu">
-                <div className="mi" style={{ cursor: "default" }}><b>Notifications</b><small>Appointments and file activity</small></div>
-                {(notifications.data?.items ?? []).map((row) => (
-                  <button key={row.id} type="button" className="mi" onClick={() => void openNotification(row)}>
-                    <b>{row.title}</b>
-                    <small>{row.body}</small>
-                  </button>
-                ))}
-                {!notifications.isLoading && (notifications.data?.items.length ?? 0) === 0 && <div className="mi" style={{ cursor: "default" }}>No notifications yet.</div>}
-              </div>
-            )}
-          </div>
+          {notificationControl("mobile")}
           <ActionHub />
         </div>
         <nav className="mobileTabs" aria-label="Field Desk sections">

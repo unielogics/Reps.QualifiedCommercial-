@@ -37,7 +37,7 @@ a { color: var(--accent); }
 /* ---------- shell ---------- */
 .app { display: grid; grid-template-columns: 242px 1fr; min-height: 100vh; }
 .app.rail { grid-template-columns: 76px 1fr; }
-.app.rail .brand > div:last-child, .app.rail .grp, .app.rail .side .ident, .app.rail .side .foot > div { display: none; }
+.app.rail .brand > div:last-child, .app.rail .grp, .app.rail .side .ident { display: none; }
 .app.rail .brand { padding: 18px 20px 12px; }
 .app.rail .nav a { justify-content: center; padding: 0; width: 52px; min-height: 48px; margin: 0 auto; }
 .app.rail .nav a > span:not(.navbadge) { display: none; }
@@ -61,7 +61,23 @@ a { color: var(--accent); }
 .nav a svg { width: 16.5px; height: 16.5px; flex-shrink: 0; opacity: 0.85; }
 .nav a.dim { opacity: 0.55; }
 .nav .bdg { margin-left: auto; background: var(--accent); color: #fff; border-radius: 99px; font-size: 10px; font-weight: 800; padding: 1px 6px; }
-.side .foot { margin: 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken2); display: flex; align-items: center; gap: 9px; }
+.sideUtilities { margin: 4px 10px 0; padding-top: 9px; border-top: 1px solid var(--line); }
+.sideUtilities .popwrap { width: 100%; }
+.sidebarNotificationButton { position: relative; width: 100%; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer; }
+.sidebarNotificationButton:hover, .sidebarNotificationButton[aria-expanded="true"] { background: var(--accent-100); color: var(--accent); }
+.sidebarNotificationButton > svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.sidebarUtilityLabel { min-width: 0; flex: 1; text-align: left; }
+.app.rail .sideUtilities { margin-inline: 12px; }
+.app.rail .sidebarNotificationButton { width: 52px; min-height: 48px; justify-content: center; padding: 0; }
+.app.rail .sidebarUtilityLabel { display: none; }
+.side .foot { margin: 8px 10px 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken2); display: flex; align-items: center; gap: 9px; }
+.expandedProfileControl { width: 100%; min-width: 0; display: flex; align-items: center; gap: 9px; }
+.railProfileLink { display: none; width: 38px; height: 38px; overflow: hidden; place-items: center; border-radius: 50%; background: var(--petrol); color: #fff; font-size: 11px; font-weight: 800; text-decoration: none; }
+.railProfileLink img { width: 100%; height: 100%; object-fit: cover; }
+.railProfileLink:hover, .railProfileLink:focus-visible { outline: 3px solid var(--accent-200); }
+.app.rail .side .foot { width: 52px; min-height: 52px; align-self: center; justify-content: center; margin-inline: 0; padding: 6px; }
+.app.rail .expandedProfileControl { display: none; }
+.app.rail .railProfileLink { display: grid; }
 .side-user { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
 .side-user b { font-size: 12.5px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-user span { font-size: 10.8px; line-height: 1.25; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -231,7 +247,19 @@ a { color: var(--accent); }
 .popmenu .mi:hover { background: var(--sunken2); }
 .popmenu .mi:disabled { opacity: 0.55; cursor: default; }
 .popmenu .mi small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 1px; white-space: normal; }
-.notificationMenu { width: min(360px, calc(100vw - 24px)); max-height: min(480px, calc(100vh - 90px)); overflow-y: auto; }
+.notificationWrap.mobile { display: none; }
+.notificationMenu { width: min(380px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 90px)); overflow-y: auto; }
+.sidebarNotificationMenu { top: auto; right: auto; bottom: 0; left: calc(100% + 8px); }
+.notificationMenuHead { min-height: 58px; display: flex; align-items: center; gap: 12px; padding: 7px 8px 9px; border-bottom: 1px solid var(--line); }
+.notificationMenuHead > div { min-width: 0; flex: 1; display: grid; gap: 1px; }
+.notificationMenuHead b { font-size: 13px; }
+.notificationMenuHead small { color: var(--muted); font-size: 10.5px; }
+.notificationMenuHead > button { min-height: 36px; border: 0; border-radius: 7px; background: var(--accent-100); color: var(--accent); padding: 0 10px; font: inherit; font-size: 10.5px; font-weight: 750; cursor: pointer; white-space: nowrap; }
+.notificationMenuHead > button:hover { background: var(--accent-200); }
+.notificationMenuHead > button:disabled { opacity: .5; cursor: default; }
+.notificationItem { border-bottom: 1px solid var(--line) !important; border-radius: 0 !important; white-space: normal !important; }
+.notificationItem:last-of-type { border-bottom: 0 !important; }
+.notificationEmpty { min-height: 84px; display: grid; place-items: center; padding: 18px; color: var(--muted); font-size: 12px; text-align: center; }
 .systemStatusTrigger { position: relative; width: 42px; min-width: 42px; padding: 0; color: var(--ink2); }
 .systemStatusTrigger > svg { width: 18px; height: 18px; }
 .systemStatusIndicator { position: absolute; right: 6px; top: 6px; width: 8px; height: 8px; border: 2px solid var(--surface); border-radius: 50%; background: var(--warn); }
@@ -1106,6 +1134,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .topclock span { display: none; }
   .topclock b { font-size: 20px; }
   .consoleSwitch { display: none; }
+  .notificationWrap.mobile { display: inline-flex; }
+  .mobileNotificationButton { position: relative; width: 44px; min-width: 44px; padding: 0; }
+  .mobileNotificationButton > svg { width: 18px; height: 18px; }
+  .mobileNotificationButton .navbadge { position: absolute; top: -3px; right: -3px; margin: 0; }
+  .notificationWrap.mobile .notificationMenu { position: fixed; top: 62px; right: 8px; left: auto; max-height: calc(100vh - 138px); }
   .mobileTabs {
     position: fixed;
     left: 0;
