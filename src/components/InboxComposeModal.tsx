@@ -49,7 +49,7 @@ export default function InboxComposeModal({
   const canSend = Boolean(
     name.trim() &&
       body.trim() &&
-      subject.trim() &&
+      (!sendEmail || subject.trim()) &&
       ((sendEmail && email.trim()) || (sendSms && phone.trim())) &&
       channels.length > 0 &&
       (!sendSms || transactional || marketing),
@@ -153,12 +153,14 @@ export default function InboxComposeModal({
             </div>
           )}
 
+          {sendEmail && (
+            <div>
+              <label className="lbl">Subject</label>
+              <input className="field" value={subject} onChange={(e) => setSubject(e.target.value)} />
+            </div>
+          )}
           <div>
-            <label className="lbl">Subject</label>
-            <input className="field" value={subject} onChange={(e) => setSubject(e.target.value)} />
-          </div>
-          <div>
-            <label className="lbl">Message</label>
+            <label className="lbl">{sendEmail ? "Message" : "Text message"}</label>
             <textarea className="field" rows={7} value={body} onChange={(e) => setBody(e.target.value)} />
           </div>
 
