@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,10 +31,7 @@ import {
   appointmentRsvpTone,
   type RepAppointment,
 } from "@/lib/appointments";
-import {
-  type ApplicationProfileData,
-  type SubmissionReadiness,
-} from "@/lib/applicationReadiness";
+import { type SubmissionReadiness } from "@/lib/applicationReadiness";
 import {
   activeUnderwritingReviewPreference,
   type UnderwritingReviewPreference,
@@ -109,6 +106,12 @@ function money(value: number | null | undefined): string {
   }).format(value);
 }
 
+function ratio(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "Awaiting evidence"
+    : `${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
+}
+
 function when(value: string | null | undefined): string {
   if (!value) return "Not recorded";
   return new Date(value).toLocaleString(undefined, {
@@ -147,7 +150,7 @@ function SummarySection({
 export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
-  const { dealer, verification } = useCase(dealerId);
+  const { dealer, decision, verification } = useCase(dealerId);
   const { isSuperAdmin } = useMe();
   const [reviewNote, setReviewNote] = useState("");
   const [statusDraft, setStatusDraft] = useState("active");
@@ -169,12 +172,6 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     queryKey: ["submission-readiness", dealerId],
     queryFn: () => authenticated<SubmissionReadiness>(
       `/dealer-os/dealers/${dealerId}/submission-readiness`,
-    ),
-  });
-  const profile = useQuery({
-    queryKey: ["application-profile", dealerId],
-    queryFn: () => authenticated<ApplicationProfileData | null>(
-      `/dealer-os/dealers/${dealerId}/application-profile`,
     ),
   });
   const owners = useQuery({
@@ -219,13 +216,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const reviewAppointment = reviewPreference?.appointment_id
     ? (appointments.data ?? []).find((appointment) => appointment.id === reviewPreference.appointment_id) ?? null
     : null;
-  const financial = profile.data;
-  const dscr = useMemo(() => {
-    const cash = financial?.annual_cash_flow_available_for_debt;
-    const monthlyDebt = financial?.monthly_debt_payments;
-    if (!cash || !monthlyDebt) return null;
-    return cash / (monthlyDebt * 12);
-  }, [financial?.annual_cash_flow_available_for_debt, financial?.monthly_debt_payments]);
+  const financial = decision?.financial;
 
   useEffect(() => {
     if (!dealer) return;
@@ -382,7 +373,11 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
               <div className="kv"><span>Annual sales</span><b>{money(financial?.annual_sales)}</b></div>
               <div className="kv"><span>Cash flow for debt</span><b>{money(financial?.annual_cash_flow_available_for_debt)}</b></div>
               <div className="kv"><span>Monthly debt</span><b>{money(financial?.monthly_debt_payments)}</b></div>
-              <div className="kv"><span>Calculated DSCR</span><b>{dscr === null ? "Awaiting evidence" : dscr.toFixed(2)}</b></div>
+              <div className="kv"><span>Calculated DSCR</span><b>{ratio(financial?.dscr)}</b></div>
+              <div className="kv"><span>Average daily balance</span><b>{money(financial?.avg_daily_balance)}</b></div>
+              <div className="kv"><span>Annualized deposits</span><b>{money(financial?.annualized_deposits)}</b></div>
+              <div className="kv"><span>Negative days / 90</span><b>{financial?.negative_balance_days_90 ?? "Awaiting evidence"}</b></div>
+              <div className="kv"><span>Returned items</span><b>{financial?.returned_items ?? "Awaiting evidence"}</b></div>
             </SummarySection>
             <SummarySection title="Step 4 · Package" icon={<CheckCircle2 size={17} />}>
               <div className="kv"><span>Route</span><b>{readiness.data?.route_label || "Awaiting route"}</b></div>
