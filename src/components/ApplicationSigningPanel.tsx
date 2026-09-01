@@ -105,12 +105,14 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
   const [sendResult, setSendResult] = useState<SendResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewEnvelope, setReviewEnvelope] = useState<ContractEnvelope | null>(null);
+  const [reviewRefreshing, setReviewRefreshing] = useState(false);
   const holdTimer = useRef<number | null>(null);
   const authenticated = async <T,>(path: string, init?: RequestInit) => api<T>(path, { ...init, authToken: (await getToken()) ?? undefined });
   const envelopes = useQuery({
     queryKey: ["contract-envelopes", dealerId],
     queryFn: () => authenticated<ContractEnvelope[]>(`/dealer-os/dealers/${dealerId}/contract-envelopes`),
-    refetchInterval: 15_000,
+    refetchInterval: reviewOpen ? false : 15_000,
   });
   const decision = useQuery({ queryKey: ["decision", dealerId], queryFn: () => authenticated<Decision>(`/dealer-os/dealers/${dealerId}/decision`) });
   const envelope = envelopes.data?.find((item) => item.status !== "void") ?? envelopes.data?.[0];
@@ -130,6 +132,8 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
     setSelectedPrograms([]);
     setConfirmedOverrides({});
     setReviewOpen(false);
+    setReviewEnvelope(null);
+    setSendResult(null);
   }, [dealerId]);
   useEffect(() => {
     if (selectionInitialized) return;
@@ -166,6 +170,7 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
         result,
         ...(current ?? []).filter((item) => item.id !== result.id),
       ]);
+      setReviewEnvelope(result);
       setReviewOpen(true);
       void qc.invalidateQueries({ queryKey: ["contract-envelopes", dealerId] });
       void qc.invalidateQueries({ queryKey: ["application-profile", dealerId] });
@@ -176,11 +181,37 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
   });
   const send = useMutation({
     mutationFn: () => {
-      if (!envelope) throw new Error("Generate the package first.");
-      return authenticated<SendResult>(`/dealer-os/dealers/${dealerId}/contract-envelopes/${envelope.id}/send`, { method: "POST", body: JSON.stringify({ channel: "email" }) });
+      const deliveryEnvelope = reviewEnvelope ?? envelope;
+      if (!deliveryEnvelope) throw new Error("Generate the package first.");
+      return authenticated<SendResult>(`/dealer-os/dealers/${dealerId}/contract-envelopes/${deliveryEnvelope.id}/send`, { method: "POST", body: JSON.stringify({ channel: "email" }) });
     },
-    onSuccess: (result) => { setSendResult(result); void qc.invalidateQueries({ queryKey: ["contract-envelopes", dealerId] }); },
+    onSuccess: (result) => {
+      setSendResult(result);
+      setReviewEnvelope((current) => current ? { ...current, status: "out_for_signature" } : current);
+      void qc.invalidateQueries({ queryKey: ["contract-envelopes", dealerId] });
+    },
   });
+  const refreshReview = async () => {
+    if (!reviewEnvelope) return;
+    setReviewRefreshing(true);
+    try {
+      const result = await envelopes.refetch();
+      const latest = result.data?.find((item) => item.id === reviewEnvelope.id);
+      if (latest) setReviewEnvelope(latest);
+    } finally {
+      setReviewRefreshing(false);
+    }
+  };
+  const openReview = () => {
+    if (!envelope) return;
+    setReviewEnvelope(envelope);
+    setReviewOpen(true);
+  };
+  const closeReview = () => {
+    setReviewOpen(false);
+    setReviewEnvelope(null);
+    void envelopes.refetch();
+  };
   const copy = async (key: string, value: string | null | undefined) => {
     if (!value) return;
     await navigator.clipboard.writeText(value);
@@ -294,12 +325,12 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
         </div>
       )}
       {missing.length > 0 && <div className="warnline mt"><b>{missing.length} source field{missing.length === 1 ? " is" : "s are"} missing.</b> {missing.slice(0, 5).join("; ")}. Open the package to use the Edit source links.</div>}
-      {envelope && <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}><button type="button" className="btn pri" onClick={() => setReviewOpen(true)}><FileSignature size={16} /> {status === "executed" ? "View executed package" : "Review package"}</button>{envelope.bundle_download_url && <a className="btn" href={envelope.bundle_download_url} download>Download executed package</a>}</div>}
+      {envelope && <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}><button type="button" className="btn pri" onClick={openReview}><FileSignature size={16} /> {status === "executed" ? "View executed package" : "Review package"}</button>{envelope.bundle_download_url && <a className="btn" href={envelope.bundle_download_url} download>Download executed package</a>}</div>}
       {sendResult && <div className="note mt"><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><b>{sendResult.emailed ? "Signature invitation emailed." : "Secure room created; email delivery needs attention."}</b><span className="sp" /><button type="button" className="btn sm" onClick={() => void copy("room", sendResult.url)}><Copy size={14} /> {copied === "room" ? "Link copied" : "Copy secure link"}</button>{sendResult.passcode && <button type="button" className="btn sm num" onClick={() => void copy("pin", sendResult.passcode)}><Copy size={14} /> {copied === "pin" ? "PIN copied" : `PIN ${sendResult.passcode}`}</button>}</div></div>}
       {status === "executed" && <div className="note mt"><div className="row" style={{ gap: 8 }}><CheckCircle2 size={18} /><b>Package executed</b></div><div className="sub mt">Every configured document has its own visible signature, certificate, and hash.</div></div>}
       {error && <div className="warnline mt">{error instanceof Error ? error.message : "The package action did not complete."}</div>}
     </div>
-    {reviewOpen && envelope && <AgreementReviewWorkspace envelope={envelope} sendResult={sendResult} sendPending={send.isPending} copied={copied} onSend={() => send.mutate()} onCopy={(key, value) => void copy(key, value)} onClose={() => setReviewOpen(false)} />}
+    {reviewOpen && reviewEnvelope && <AgreementReviewWorkspace envelope={reviewEnvelope} sendResult={sendResult} sendPending={send.isPending} refreshPending={reviewRefreshing} copied={copied} onSend={() => send.mutate()} onRefresh={() => void refreshReview()} onCopy={(key, value) => void copy(key, value)} onClose={closeReview} />}
     {overrideTarget && targetProgram && <Drawer title={`Override ${targetProgram.label} package gate?`} width={580} dismissOnBackdrop={false} onClose={() => setOverrideTarget(null)}>
       <div className="contractOverrideConfirm">
         <div className="contractOverrideIcon"><ShieldAlert size={25} /></div>

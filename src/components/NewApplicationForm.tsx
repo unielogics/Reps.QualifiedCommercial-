@@ -53,6 +53,8 @@ type Form = {
   funding_purpose: string;
   notes: string;
   use_of_proceeds_note: string;
+  secure_room_pin: string;
+  secure_room_pin_confirm: string;
   smsTransactional: boolean;
   smsMarketing: boolean;
   acceptedLegal: boolean;
@@ -73,6 +75,8 @@ const EMPTY: Form = {
   funding_purpose: "",
   notes: "",
   use_of_proceeds_note: "",
+  secure_room_pin: "",
+  secure_room_pin_confirm: "",
   smsTransactional: false,
   smsMarketing: false,
   acceptedLegal: false,
@@ -160,6 +164,8 @@ export default function NewApplicationForm({
   const wantsSms = f.smsTransactional || f.smsMarketing;
   const consentIncomplete = wantsSms && (!f.acceptedLegal || !phoneUsable);
   const requested = Number(f.funding_goal.replace(/[^0-9.]/g, ""));
+  const roomPinValid = /^\d{6}$/.test(f.secure_room_pin)
+    && f.secure_room_pin === f.secure_room_pin_confirm;
   const canSubmit = Boolean(
     f.name.trim()
       && f.entity_type.trim()
@@ -169,6 +175,7 @@ export default function NewApplicationForm({
       && requested > 0
       && f.funding_purpose
       && f.use_of_proceeds_note.trim()
+      && roomPinValid
       && !consentIncomplete,
   );
 
@@ -189,6 +196,7 @@ export default function NewApplicationForm({
         funding_goal: requested,
         funding_purpose: f.funding_purpose,
         use_of_proceeds_note: f.use_of_proceeds_note.trim(),
+        secure_room_pin: f.secure_room_pin,
       };
       if (isSuperAdmin && isTraining) body.is_training = true;
       // Only send what was filled in. Empty strings would overwrite good
@@ -491,6 +499,47 @@ export default function NewApplicationForm({
           )}
 
           <div className="panel mt">
+            <div className="panel-h">Client room access</div>
+            <div className="panel-b">
+              <p className="sub" style={{ marginTop: 0 }}>
+                Choose the client&apos;s six-digit PIN now. It remains valid until someone explicitly generates a replacement.
+              </p>
+              <div className="row" style={{ gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <label style={{ flex: "1 1 150px", minWidth: 0 }}>
+                  <span className="lbl">Six-digit PIN *</span>
+                  <input
+                    className={`field required-field${/^\d{6}$/.test(f.secure_room_pin) ? "" : " field-invalid"}`}
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    maxLength={6}
+                    value={f.secure_room_pin}
+                    onChange={(event) => set("secure_room_pin", event.target.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                  />
+                </label>
+                <label style={{ flex: "1 1 150px", minWidth: 0 }}>
+                  <span className="lbl">Confirm PIN *</span>
+                  <input
+                    className={`field required-field${roomPinValid ? "" : " field-invalid"}`}
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    maxLength={6}
+                    value={f.secure_room_pin_confirm}
+                    onChange={(event) => set("secure_room_pin_confirm", event.target.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                  />
+                </label>
+              </div>
+              {f.secure_room_pin_confirm && !roomPinValid && (
+                <span className="validation-hint">Enter the same six digits in both fields.</span>
+              )}
+              <span className="sub" style={{ display: "block", marginTop: 8 }}>
+                The PIN is stored only as a secure hash and cannot be displayed again. Use Generate new only when replacing it.
+              </span>
+            </div>
+          </div>
+
+          <div className="panel mt">
             <div className="panel-h">Notes from the visit</div>
             <div className="panel-b">
               <textarea
@@ -521,8 +570,8 @@ export default function NewApplicationForm({
             </button>
           </div>
           <span className="sub">
-            A document room is created with the file, so you can request statements straight
-            away.
+            The secure room and the PIN you chose are activated with this file, so you can request
+            statements straight away.
           </span>
         </div>
       </form>

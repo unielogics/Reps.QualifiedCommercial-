@@ -542,12 +542,12 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
             <div className="panel-h"><FolderLock size={17} /> Secure bucket and information requests</div>
             <div className="panel-b">
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <div><b>{dealer?.bucket_name || "Secure client room"}</b><div className="sub">The access PIN is stored as a hash. Showing a PIN rotates it and invalidates the previous code.</div></div>
+                <div><b>{dealer?.bucket_name || "Secure client room"}</b><div className="sub">The initial PIN remains active without expiring. Generate new replaces it immediately and displays the replacement once.</div></div>
                 <span className="sp" />
                 {dealer?.bucket_id && <button type="button" className="btn" onClick={() => window.open(`https://app.qualifiedcommercial.com/admin/buckets?bucket=${dealer.bucket_id}`, "_blank", "noopener,noreferrer")}><ExternalLink size={16} /> Open bucket</button>}
-                <button type="button" className="btn pri" disabled={rotateRoom.isPending} onClick={() => rotateRoom.mutate()}><RefreshCw size={16} /> {rotateRoom.isPending ? "Securing room…" : "Create link + new PIN"}</button>
+                <button type="button" className="btn pri" disabled={rotateRoom.isPending} onClick={() => rotateRoom.mutate()}><RefreshCw size={16} /> {rotateRoom.isPending ? "Generating…" : "Generate new PIN"}</button>
               </div>
-              {roomResult?.url && <div className="note mt"><div className="kv"><span>Secure link</span><button type="button" className="btn" onClick={() => void copy("link", roomResult.url)}><Copy size={15} /> {copied === "link" ? "Copied" : "Copy link"}</button></div><div className="kv"><span>Six-digit PIN</span><button type="button" className="btn" disabled={!roomResult.passcode} onClick={() => void copy("pin", roomResult.passcode)}><Copy size={15} /> {roomResult.passcode || "Rotate to reveal"}</button></div></div>}
+              {roomResult?.url && <div className="note mt"><div className="kv"><span>Secure link</span><button type="button" className="btn" onClick={() => void copy("link", roomResult.url)}><Copy size={15} /> {copied === "link" ? "Copied" : "Copy link"}</button></div><div className="kv"><span>Replacement PIN</span><button type="button" className="btn" disabled={!roomResult.passcode} onClick={() => void copy("pin", roomResult.passcode)}><Copy size={15} /> {roomResult.passcode || "Generate to display"}</button></div></div>}
             </div>
           </div>
           <RequestPanel dealerId={dealerId} canText={false} />

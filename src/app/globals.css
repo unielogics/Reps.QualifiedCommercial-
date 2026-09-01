@@ -240,6 +240,9 @@ a { color: var(--accent); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 .btn.danger { color: var(--danger); }
 .btn.danger:hover { background: var(--danger-tint); border-color: rgba(180, 35, 24, 0.28); }
+.iconBtn { width: 44px; height: 44px; flex: 0 0 auto; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); cursor: pointer; text-decoration: none; }
+.iconBtn:hover { border-color: var(--line2); background: var(--sunken2); }
+.iconBtn:disabled { opacity: .55; cursor: default; }
 /* Popover menu — compact action list anchored to a header chip (bucket actions). */
 .popwrap { position: relative; display: inline-flex; align-items: center; }
 .popmenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 212px; background: var(--surface); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--sh2); padding: 5px; display: flex; flex-direction: column; gap: 1px; }

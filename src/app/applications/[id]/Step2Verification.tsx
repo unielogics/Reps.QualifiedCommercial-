@@ -230,6 +230,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [roomUrl, setRoomUrl] = useState<string | null>(null);
   const [roomCopyState, setRoomCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [replacePinOpen, setReplacePinOpen] = useState(false);
   const [bankExceptionOpen, setBankExceptionOpen] = useState(false);
   const [bankExceptionNote, setBankExceptionNote] = useState("");
   const [creditRefreshing, setCreditRefreshing] = useState(false);
@@ -256,7 +257,19 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       setAccessCode(r.passcode ?? null);
       setRoomUrl(r.url);
       setRoomCopyState("idle");
+      setReplacePinOpen(false);
+      qc.setQueryData(["client-room", dealerId], r);
     },
+  });
+
+  const room = useQuery({
+    queryKey: ["client-room", dealerId],
+    enabled: authReady,
+    retry: false,
+    queryFn: async () =>
+      api<{ passcode: null; url: string }>(`/dealer-os/dealers/${dealerId}/room`, {
+        authToken: (await getToken()) ?? undefined,
+      }),
   });
 
   const plaid = useQuery({
@@ -511,7 +524,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   });
 
   const evidenceData = evidence.data;
-  const roomLink = roomUrl ?? evidenceData?.upload_url ?? null;
+  const roomLink = roomUrl ?? room.data?.url ?? evidenceData?.upload_url ?? null;
   const bankSource = evidenceData?.bank_source ?? verification.bank_source;
   const statementMonths = evidenceData?.statement_months ?? verification.statement_months;
   const missingStatementMonths =
@@ -630,9 +643,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </b>
             ) : (
               <span className="sub">
-                The code is stored only as a hash and cannot be looked up. Mint one and read it
-                to the client; it opens their room, the bank connection, the credit
-                authorization and signing.
+                {roomLink
+                  ? "The PIN chosen when this application was opened is active. It is stored only as a secure hash and does not expire."
+                  : "This legacy file has no client room yet. Generate a new PIN to create one."}
               </span>
             )}
             <span style={{ flex: 1 }} />
@@ -643,7 +656,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                 disabled={!roomLink}
                 onClick={() => void copyRoomLink()}
                 style={{ minHeight: 44 }}
-                title={roomLink ? "Copy the secure client-room link" : "Create an access code first"}
+                title={roomLink ? "Copy the secure client-room link" : "Generate a new PIN first"}
               >
                 {roomCopyState === "copied" ? <Check size={16} /> : <Copy size={16} />}
                 {roomCopyState === "copied" ? "Link copied" : "Copy room link"}
@@ -652,17 +665,17 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                 type="button"
                 className="btn sm"
                 disabled={rotateCode.isPending}
-                onClick={() => rotateCode.mutate()}
+                onClick={() => setReplacePinOpen(true)}
                 style={{ minHeight: 44 }}
               >
-                {rotateCode.isPending ? "Minting…" : accessCode ? "New code" : "Show a new access code"}
+                Generate new
               </button>
             </div>
           </div>
           {accessCode && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
-              Read it to the client now. Minting a new code invalidates this one, and it is not
-              shown again after you leave this screen.
+              Read it to the client now. It remains valid until another replacement is generated
+              and is not shown again after you leave this screen.
             </span>
           )}
           {rotateCode.isError && (
@@ -1348,6 +1361,20 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                   : modal === "upload"
                     ? "Send upload request"
                     : "Send authorization"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {replacePinOpen && (
+        <Modal title="Generate a new client-room PIN?" onClose={() => !rotateCode.isPending && setReplacePinOpen(false)}>
+          <p style={{ marginTop: 0 }}>
+            The current PIN will stop working immediately. The replacement will be six digits,
+            will not expire, and will be displayed only once.
+          </p>
+          <div className="row mt" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn" disabled={rotateCode.isPending} onClick={() => setReplacePinOpen(false)}>Keep current PIN</button>
+            <button type="button" className="btn pri" disabled={rotateCode.isPending} onClick={() => rotateCode.mutate()}>
+              {rotateCode.isPending ? "Generating…" : "Generate new PIN"}
             </button>
           </div>
         </Modal>

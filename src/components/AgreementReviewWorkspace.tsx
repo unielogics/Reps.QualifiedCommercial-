@@ -11,6 +11,7 @@ import {
   FileCheck2,
   FileSignature,
   Mail,
+  RefreshCw,
   TriangleAlert,
 } from "lucide-react";
 import type { ContractEnvelope, EnvelopeDocument } from "./ApplicationSigningPanel";
@@ -45,16 +46,20 @@ export default function AgreementReviewWorkspace({
   envelope,
   sendResult,
   sendPending,
+  refreshPending,
   copied,
   onSend,
+  onRefresh,
   onCopy,
   onClose,
 }: {
   envelope: ContractEnvelope;
   sendResult: SendResult | null;
   sendPending: boolean;
+  refreshPending: boolean;
   copied: string | null;
   onSend: () => void;
+  onRefresh: () => void;
   onCopy: (key: string, value: string | null | undefined) => void;
   onClose: () => void;
 }) {
@@ -103,6 +108,9 @@ export default function AgreementReviewWorkspace({
             </div>
           </div>
           <div className="agreementReviewActions">
+            <button type="button" className="iconBtn" onClick={onRefresh} disabled={refreshPending} title="Refresh package status" aria-label="Refresh package status">
+              <RefreshCw size={17} className={refreshPending ? "spin" : undefined} />
+            </button>
             <span className={`cellchip ${executed ? "c-ok" : invitationSent ? "c-warn" : ready ? "c-acc" : "c-bad"}`}>
               {executed ? "Executed" : invitationSent ? "Awaiting client" : ready ? "Ready to send" : "Source fields missing"}
             </span>
