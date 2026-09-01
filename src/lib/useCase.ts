@@ -51,6 +51,35 @@ export type Program = {
   blocked_by: string[];
 };
 
+export type FinancialMetricSource = {
+  status: string;
+  source: string;
+  label: string;
+  evidence: string | null;
+};
+
+export type FinancialSnapshot = {
+  credit_quality_tier: string | null;
+  credit_score_band: string | null;
+  credit_status: string;
+  credit_completed_owners: number;
+  credit_required_owners: number;
+  annual_sales: number | null;
+  annual_cash_flow_available_for_debt: number | null;
+  monthly_debt_payments: number | null;
+  dscr: number | null;
+  avg_daily_balance: number | null;
+  negative_balance_days_90: number | null;
+  returned_items: number | null;
+  average_monthly_deposits: number | null;
+  annualized_deposits: number | null;
+  indicative_capacity: number | null;
+  capacity_path: string | null;
+  periods_used: number;
+  statement_months: string[];
+  sources: Record<string, FinancialMetricSource>;
+};
+
 export type Decision = {
   verdict: string;
   headline: string;
@@ -62,6 +91,7 @@ export type Decision = {
   goal_feasible: boolean | null;
   ready_for_forms: boolean;
   programs: Program[];
+  financial: FinancialSnapshot;
   verification: Verification;
   workflow: ApplicationWorkflow;
 };

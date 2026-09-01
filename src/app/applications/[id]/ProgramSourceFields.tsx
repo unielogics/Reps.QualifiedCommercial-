@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { WandSparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ApplicationProfileData } from "@/lib/applicationReadiness";
+import type { UnderwritingResolution } from "./Step4Resolution";
 
 type SourceField =
   | "guaranty_type"
@@ -17,6 +19,7 @@ type SourceField =
   | "send_welcome_email";
 
 type Draft = Record<SourceField, string>;
+type ExtractedSourceField = "existing_mca_balance" | "existing_sba_balance" | "active_ucc_filings";
 
 const EMPTY: Draft = {
   guaranty_type: "",
@@ -64,6 +67,7 @@ function draftFromProfile(profile: ApplicationProfileData | null | undefined): D
 export default function ProgramSourceFields({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
+  const touched = useRef(new Set<SourceField>());
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const profile = useQuery({
     queryKey: ["application-profile", dealerId],
@@ -71,8 +75,31 @@ export default function ProgramSourceFields({ dealerId }: { dealerId: string }) 
       authToken: (await getToken()) ?? undefined,
     }),
   });
+  const resolution = useQuery({
+    queryKey: ["underwriting-resolution", dealerId],
+    queryFn: async () => api<UnderwritingResolution>(`/dealer-os/dealers/${dealerId}/underwriting-resolution`, {
+      authToken: (await getToken()) ?? undefined,
+    }),
+  });
 
-  useEffect(() => setDraft(draftFromProfile(profile.data)), [profile.data]);
+  useEffect(() => {
+    const saved = draftFromProfile(profile.data);
+    setDraft((current) => {
+      const next = { ...current };
+      for (const key of Object.keys(saved) as SourceField[]) {
+        if (touched.current.has(key)) continue;
+        next[key] = saved[key];
+      }
+      for (const key of ["existing_mca_balance", "existing_sba_balance", "active_ucc_filings"] as ExtractedSourceField[]) {
+        if (touched.current.has(key) || saved[key] !== "") continue;
+        const suggestion = resolution.data?.financial_suggestions[key]?.value;
+        if (suggestion !== null && suggestion !== undefined && Number.isFinite(Number(suggestion))) {
+          next[key] = String(suggestion);
+        }
+      }
+      return next;
+    });
+  }, [profile.data, resolution.data?.financial_suggestions]);
 
   const patch = useMutation({
     mutationFn: async (body: Record<string, unknown>) => api<ApplicationProfileData>(
@@ -91,7 +118,10 @@ export default function ProgramSourceFields({ dealerId }: { dealerId: string }) 
     },
   });
 
-  const update = (field: SourceField, value: string) => setDraft((current) => ({ ...current, [field]: value }));
+  const update = (field: SourceField, value: string) => {
+    touched.current.add(field);
+    setDraft((current) => ({ ...current, [field]: value }));
+  };
   const commit = (field: SourceField, explicit?: string) => {
     const raw = (explicit ?? draft[field]).trim();
     let value: string | number | boolean | null = raw || null;
@@ -107,7 +137,20 @@ export default function ProgramSourceFields({ dealerId }: { dealerId: string }) 
     update(field, value);
     commit(field, value);
   };
+  const extractedMeta = (field: ExtractedSourceField) => {
+    const confirmed = Boolean(profile.data?.field_confirmations?.[field]);
+    const suggestion = resolution.data?.financial_suggestions[field];
+    const label = confirmed
+      ? "Agent confirmed"
+      : profile.data?.[field] !== null && profile.data?.[field] !== undefined
+        ? "Agent entered"
+        : suggestion?.label || suggestion?.source || "Unavailable";
+    return { confirmed, suggestion, label };
+  };
   const complete = programSourceFieldsComplete(profile.data);
+  const mcaMeta = extractedMeta("existing_mca_balance");
+  const sbaMeta = extractedMeta("existing_sba_balance");
+  const uccMeta = extractedMeta("active_ucc_filings");
 
   return (
     <div id="program-source-fields" className={`panel guided-target${complete ? "" : " panel-invalid"}`} tabIndex={-1}>
@@ -124,9 +167,24 @@ export default function ProgramSourceFields({ dealerId }: { dealerId: string }) 
           <label><span className="lbl">Guaranty type</span><select className={`field${draft.guaranty_type ? "" : " field-invalid"}`} value={draft.guaranty_type} onChange={(event) => select("guaranty_type", event.target.value)}><option value="">Select</option><option value="personal">Personal</option><option value="business">Business only</option><option value="limited">Limited</option><option value="none">None</option></select></label>
           <label><span className="lbl">Business stage</span><select className={`field${draft.business_stage ? "" : " field-invalid"}`} value={draft.business_stage} onChange={(event) => select("business_stage", event.target.value)}><option value="">Select</option><option value="startup">Startup</option><option value="existing">Existing business</option><option value="acquisition">Acquisition</option></select></label>
           <label><span className="lbl">Authorized signer title</span><input className={`field${draft.signer_title.trim() ? "" : " field-invalid"}`} value={draft.signer_title} placeholder="President, Managing Member, CEO" onChange={(event) => update("signer_title", event.target.value)} onBlur={() => commit("signer_title")} /></label>
-          <label><span className="lbl">Outstanding MCA balance</span><input className={`field${draft.existing_mca_balance.trim() ? "" : " field-invalid"}`} type="number" min="0" inputMode="decimal" placeholder="Enter 0 when none" value={draft.existing_mca_balance} onChange={(event) => update("existing_mca_balance", event.target.value)} onBlur={() => commit("existing_mca_balance")} /></label>
-          <label><span className="lbl">Outstanding SBA balance</span><input className={`field${draft.existing_sba_balance.trim() ? "" : " field-invalid"}`} type="number" min="0" inputMode="decimal" placeholder="Enter 0 when none" value={draft.existing_sba_balance} onChange={(event) => update("existing_sba_balance", event.target.value)} onBlur={() => commit("existing_sba_balance")} /></label>
-          <label><span className="lbl">Active UCC filings</span><input className={`field${draft.active_ucc_filings.trim() ? "" : " field-invalid"}`} type="number" min="0" step="1" inputMode="numeric" placeholder="Enter 0 when none" value={draft.active_ucc_filings} onChange={(event) => update("active_ucc_filings", event.target.value)} onBlur={() => commit("active_ucc_filings")} /></label>
+          <label>
+            <span className="lbl">Outstanding MCA balance</span>
+            <input className={`field${draft.existing_mca_balance.trim() ? "" : " field-invalid"}`} type="number" min="0" inputMode="decimal" placeholder="Enter 0 when none" value={draft.existing_mca_balance} onChange={(event) => update("existing_mca_balance", event.target.value)} />
+            <span className="financialProvenance"><span className={`cellchip ${mcaMeta.confirmed ? "c-ok" : mcaMeta.suggestion ? "c-warn" : "c-mut"}`}>{mcaMeta.label}</span>{!mcaMeta.confirmed && draft.existing_mca_balance.trim() && <button type="button" className="btn sm" disabled={patch.isPending} onClick={() => commit("existing_mca_balance")}><WandSparkles size={14} /> {mcaMeta.suggestion ? "Confirm estimate" : "Confirm value"}</button>}</span>
+            {mcaMeta.suggestion?.evidence && <small className="sub">{mcaMeta.suggestion.evidence}</small>}
+          </label>
+          <label>
+            <span className="lbl">Outstanding SBA balance</span>
+            <input className={`field${draft.existing_sba_balance.trim() ? "" : " field-invalid"}`} type="number" min="0" inputMode="decimal" placeholder="Enter 0 when none" value={draft.existing_sba_balance} onChange={(event) => update("existing_sba_balance", event.target.value)} />
+            <span className="financialProvenance"><span className={`cellchip ${sbaMeta.confirmed ? "c-ok" : sbaMeta.suggestion ? "c-warn" : "c-mut"}`}>{sbaMeta.label}</span>{!sbaMeta.confirmed && draft.existing_sba_balance.trim() && <button type="button" className="btn sm" disabled={patch.isPending} onClick={() => commit("existing_sba_balance")}><WandSparkles size={14} /> {sbaMeta.suggestion ? "Confirm estimate" : "Confirm value"}</button>}</span>
+            {sbaMeta.suggestion?.evidence && <small className="sub">{sbaMeta.suggestion.evidence}</small>}
+          </label>
+          <label>
+            <span className="lbl">Active UCC filings</span>
+            <input className={`field${draft.active_ucc_filings.trim() ? "" : " field-invalid"}`} type="number" min="0" step="1" inputMode="numeric" placeholder="Enter 0 when none" value={draft.active_ucc_filings} onChange={(event) => update("active_ucc_filings", event.target.value)} />
+            <span className="financialProvenance"><span className={`cellchip ${uccMeta.confirmed ? "c-ok" : uccMeta.suggestion ? "c-warn" : "c-mut"}`}>{uccMeta.label}</span>{!uccMeta.confirmed && draft.active_ucc_filings.trim() && <button type="button" className="btn sm" disabled={patch.isPending} onClick={() => commit("active_ucc_filings")}><WandSparkles size={14} /> {uccMeta.suggestion ? "Confirm estimate" : "Confirm value"}</button>}</span>
+            {uccMeta.suggestion?.evidence && <small className="sub">{uccMeta.suggestion.evidence}</small>}
+          </label>
           <label><span className="lbl">Affiliate businesses</span><select className={`field${draft.affiliate_businesses ? "" : " field-invalid"}`} value={draft.affiliate_businesses} onChange={(event) => select("affiliate_businesses", event.target.value)}><option value="">Select</option><option value="no">No</option><option value="yes">Yes</option></select></label>
           <label><span className="lbl">Program welcome email</span><select className={`field${draft.send_welcome_email ? "" : " field-invalid"}`} value={draft.send_welcome_email} onChange={(event) => select("send_welcome_email", event.target.value)}><option value="">Select</option><option value="yes">Yes</option><option value="no">No</option></select></label>
         </div>

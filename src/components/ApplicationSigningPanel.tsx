@@ -35,6 +35,12 @@ export type ContractEnvelope = {
     annual_cash_flow_available_for_debt?: number | null;
     monthly_debt_payments?: number | null;
     dscr?: number | null;
+    avg_daily_balance?: number | null;
+    negative_balance_days_90?: number | null;
+    returned_items?: number | null;
+    average_monthly_deposits?: number | null;
+    annualized_deposits?: number | null;
+    financial_sources?: Record<string, { status?: string; source?: string; label?: string; evidence?: string | null }>;
     verified_bank_months?: string[];
     bank_evidence_target?: number;
     credit?: Array<{ owner?: string; status?: string; quality?: string }>;
@@ -84,6 +90,18 @@ function money(value: number | null | undefined): string {
   return value === null || value === undefined || !Number.isFinite(Number(value))
     ? "Unavailable"
     : Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function ratio(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "Unavailable"
+    : `${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
+}
+
+function count(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "Unavailable"
+    : Number(value).toLocaleString();
 }
 
 function selectedEnvelopePrograms(envelope: ContractEnvelope | undefined): ProgramKey[] {
@@ -335,6 +353,12 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
             <div><span>Annual sales</span><b>{money(envelope.funding_profile.annual_sales)}</b></div>
             <div><span>Available cash flow</span><b>{money(envelope.funding_profile.annual_cash_flow_available_for_debt)}</b></div>
             <div><span>Monthly debt service</span><b>{money(envelope.funding_profile.monthly_debt_payments)}</b></div>
+            <div><span>DSCR</span><b>{ratio(envelope.funding_profile.dscr)}</b></div>
+            <div><span>Average daily balance</span><b>{money(envelope.funding_profile.avg_daily_balance)}</b></div>
+            <div><span>Average monthly deposits</span><b>{money(envelope.funding_profile.average_monthly_deposits)}</b></div>
+            <div><span>Annualized deposits</span><b>{money(envelope.funding_profile.annualized_deposits)}</b></div>
+            <div><span>Negative days / 90</span><b>{count(envelope.funding_profile.negative_balance_days_90)}</b></div>
+            <div><span>Returned items</span><b>{count(envelope.funding_profile.returned_items)}</b></div>
             <div><span>Verified bank coverage</span><b>{envelope.funding_profile.verified_bank_months?.length ?? 0} of {envelope.funding_profile.bank_evidence_target ?? 6} accepted months</b></div>
           </div>
           {(envelope.funding_profile.credit ?? []).map((credit, index) => <div className="packageCreditRow" key={`${credit.owner}:${index}`}><span>{credit.owner || "Required owner"}</span><b>{credit.quality || credit.status || "Verification pending"}</b></div>)}

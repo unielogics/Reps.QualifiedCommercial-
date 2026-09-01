@@ -39,6 +39,11 @@ function money(n: number | null | undefined): string {
   return "$" + Math.round(n).toLocaleString();
 }
 
+function ratio(value: unknown): string {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}×` : "—";
+}
+
 export default function ApplicationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -178,28 +183,29 @@ export default function ApplicationPage() {
             <div className="panel-b">
               <span className="lbl">Indicative capacity</span>
               <div className="big num">
-                {decision.best_path ? money(dealer?.funding_goal) : "—"}
+                {money(decision.financial?.indicative_capacity)}
               </div>
+              {decision.financial?.capacity_path && <span className="sub">Typical · {decision.financial.capacity_path}</span>}
               {decision.goal_feasible !== null && (
                 <span className={`cellchip ${decision.goal_feasible ? "c-ok" : "c-warn"}`}>
                   {decision.goal_feasible ? "Within requested amount" : "Above what the file supports"}
                 </span>
               )}
-              <div className="kv mt">
+              <div className="kv mt" title={decision.financial?.sources?.credit_quality?.evidence ?? undefined}>
                 <span>Credit band</span>
-                <b className="num">—</b>
+                <b>{decision.financial?.credit_quality_tier ? `${decision.financial.credit_quality_tier} · ${decision.financial.credit_score_band ?? "range unavailable"}` : "—"}</b>
               </div>
-              <div className="kv">
+              <div className="kv" title={decision.financial?.sources?.dscr?.evidence ?? undefined}>
                 <span>Coverage (DSCR)</span>
-                <b className="num">—</b>
+                <b className="num">{ratio(decision.financial?.dscr)}</b>
               </div>
-              <div className="kv">
+              <div className="kv" title={decision.financial?.sources?.avg_daily_balance?.evidence ?? undefined}>
                 <span>Avg daily balance</span>
-                <b className="num">—</b>
+                <b className="num">{money(decision.financial?.avg_daily_balance)}</b>
               </div>
-              <div className="kv">
+              <div className="kv" title={decision.financial?.sources?.negative_balance_days_90?.evidence ?? undefined}>
                 <span>Negative days / 90</span>
-                <b className="num">—</b>
+                <b className="num">{decision.financial?.negative_balance_days_90 ?? "—"}</b>
               </div>
             </div>
           </div>

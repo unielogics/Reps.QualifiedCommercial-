@@ -1,18 +1,10 @@
 "use client";
 
-// Step 3 — the profile, computed from verified data only.
+// Step 3 - the evidence-backed financial profile.
 //
-// Everything on this screen comes from the bank connection and the bureau. The
-// header says so, and it is not a decoration: a rep reading a coverage ratio to
-// a business owner needs to know it came from their statements rather than from
-// the revenue they claimed in step 1.
-//
-// Two panels are drawn but not yet fed, and they say so rather than showing a
-// zero. The balance calendar needs daily balances, which nothing stores yet —
-// only monthly aggregates exist. The eligibility table's Maximum, Term and
-// Indicative rate need the desk's rate card. A rep quoting an invented rate to
-// a business owner is worse than a rep quoting none, so those columns stay out
-// until the numbers are real.
+// Values carry their source and remain null when evidence cannot support them.
+// Extracted estimates can prefill confirmation fields, but only a rep action
+// turns them into confirmed application data.
 
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
@@ -53,8 +45,6 @@ type Period = Omit<RawPeriod, "deposits" | "starting_balance" | "ending_balance"
   nsf_count: number | null;
 };
 
-type Health = { snapshot: { metrics: Record<string, unknown> } | null };
-
 type Coverage = {
   statement_months: string[];
   statement_target: number;
@@ -73,19 +63,6 @@ function finiteNumber(value: unknown): number | null {
   if (typeof value === "string" && value.trim() !== "") {
     const parsed = Number(value.replace(/[$,%x,]/gi, ""));
     return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function metricNumber(value: unknown, keys: string[] = ["current", "value", "amount"]): number | null {
-  const direct = finiteNumber(value);
-  if (direct !== null) return direct;
-  if (value && typeof value === "object") {
-    const object = value as Record<string, unknown>;
-    for (const key of keys) {
-      const nested = finiteNumber(object[key]);
-      if (nested !== null) return nested;
-    }
   }
   return null;
 }
@@ -316,16 +293,6 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
     refetchInterval: 30_000,
   });
 
-  const health = useQuery({
-    queryKey: ["health", dealerId],
-    queryFn: async () =>
-      api<Health>(`/dealer-os/dealers/${dealerId}/health`, {
-        authToken: (await getToken()) ?? undefined,
-      }),
-    refetchOnWindowFocus: "always",
-    refetchInterval: 30_000,
-  });
-
   const coverage = useQuery({
     queryKey: ["coverage", dealerId],
     queryFn: async () =>
@@ -365,7 +332,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         : () => focusSection("financial-confirmation"),
   }));
 
-  const m = health.data?.snapshot?.metrics ?? {};
+  const financial = decision?.financial;
   // Business-level rows only, newest six, oldest first so the chart reads left
   // to right the way a person would.
   const rows = combinedBusinessPeriods((periods.data ?? []).map(normalizePeriod)).slice(-6);
@@ -386,7 +353,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
   );
   const profileState = activeUploads.length
     ? "Processing statements"
-    : periods.isError || health.isError
+    : periods.isError
       ? "Evidence needs attention"
       : statementCount >= standardStatementTarget
         ? `${standardStatementTarget} months verified`
@@ -396,15 +363,19 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
             ? `${statementCount} of ${standardStatementTarget} months`
             : "Awaiting evidence";
 
-  const dscr = metricNumber(m.dscr, ["current", "coverage", "value"]);
-  const adb = metricNumber(m.adb, ["current", "average", "value"]);
-  const nsf = rows.reduce((a, r) => a + (r.nsf_count ?? 0), 0);
+  const dscr = finiteNumber(financial?.dscr);
+  const adb = finiteNumber(financial?.avg_daily_balance);
+  const nsf = finiteNumber(financial?.returned_items);
+  const averageMonthlyDeposits = finiteNumber(financial?.average_monthly_deposits);
+  const annualizedDeposits = finiteNumber(financial?.annualized_deposits);
 
   const flags: Array<{ ok: boolean; text: string; onSelect: () => void }> = [
     ...(decision?.balance_reasons ?? []).map((r) => ({ ok: false, text: r, onSelect: () => focusSection("monthly-balance-trend") })),
-    ...(nsf > 0
-      ? [{ ok: false, text: `${nsf} returned item${nsf === 1 ? "" : "s"} in the observed months`, onSelect: () => focusSection("monthly-balance-trend") }]
-      : [{ ok: true, text: "No returned items in the observed months", onSelect: () => focusSection("monthly-balance-trend") }]),
+    ...(nsf !== null
+      ? nsf > 0
+        ? [{ ok: false, text: `${nsf} returned item${nsf === 1 ? "" : "s"} in the observed months`, onSelect: () => focusSection("monthly-balance-trend") }]
+        : [{ ok: true, text: "No returned items in the observed months", onSelect: () => focusSection("monthly-balance-trend") }]
+      : []),
     ...(decision?.balance_passed === true
       ? [{ ok: true, text: "Ending balances holding or growing", onSelect: () => focusSection("monthly-balance-trend") }]
       : []),
@@ -425,28 +396,35 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         <div className="panel-h">
           Verified financial profile
           <span style={{ flex: 1 }} />
-          <span className={`cellchip ${bankEvidenceAccepted && !bankExceptionActive && !activeUploads.length ? "c-ok" : periods.isError || health.isError ? "c-bad" : "c-warn"}`}>{profileState}</span>
+          <span className={`cellchip ${bankEvidenceAccepted && !bankExceptionActive && !activeUploads.length ? "c-ok" : periods.isError ? "c-bad" : "c-warn"}`}>{profileState}</span>
         </div>
         <div className="panel-b">
           <div className="kpis">
             <div className="kpi">
               <span className="lbl">Credit band</span>
-              <b className="knum num">—</b>
-              <span className="sub">Soft inquiry</span>
+              <b className="knum">{financial?.credit_quality_tier ?? "—"}</b>
+              <span className="sub">{financial?.credit_score_band ?? financial?.sources?.credit_quality?.label ?? "Soft inquiry"}</span>
             </div>
             <div className="kpi">
               <span className="lbl">Indicative capacity</span>
-              <b className="knum num">—</b>
-              <span className="sub">Needs the rate card</span>
+              <b className="knum num">{money(financial?.indicative_capacity, true)}</b>
+              <span className="sub">{financial?.capacity_path ? `Typical · ${financial.capacity_path}` : financial?.sources?.indicative_capacity?.label ?? "Awaiting sizing evidence"}</span>
             </div>
             <div className="kpi">
               <span className="lbl">Avg daily balance</span>
               <b className="knum num">{money(adb)}</b>
+              <span className="sub">{financial?.sources?.avg_daily_balance?.label ?? "Awaiting balance evidence"}</span>
             </div>
             <div className="kpi">
               <span className="lbl">Returned items</span>
-              <b className="knum num">{nsf}</b>
-              {nsf > 0 && <span className="gapchip g-warn">Above zero</span>}
+              <b className="knum num">{nsf ?? "—"}</b>
+              {nsf !== null && nsf > 0 && <span className="gapchip g-warn">Above zero</span>}
+              {nsf === null && <span className="sub">Awaiting readable activity</span>}
+            </div>
+            <div className="kpi">
+              <span className="lbl">Negative days / 90</span>
+              <b className="knum num">{financial?.negative_balance_days_90 ?? "—"}</b>
+              <span className="sub">{financial?.sources?.negative_balance_days_90?.label ?? "Awaiting daily balances"}</span>
             </div>
             <div className="kpi">
               <span className="lbl">Coverage (DSCR)</span>
@@ -512,10 +490,16 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
                 }
               />
               <Meter
-                name="Monthly deposits"
-                sub="Most recent observed month"
-                pct={rows.length ? 100 : null}
-                value={money(rows[rows.length - 1]?.deposits ?? null, true)}
+                name="Average monthly deposits"
+                sub={financial?.sources?.average_monthly_deposits?.label ?? "Across qualifying bank months"}
+                pct={averageMonthlyDeposits !== null ? 100 : null}
+                value={money(averageMonthlyDeposits, true)}
+              />
+              <Meter
+                name="Annualized deposits"
+                sub={financial?.sources?.annualized_deposits?.label ?? "Average monthly deposits multiplied by 12"}
+                pct={annualizedDeposits !== null ? 100 : null}
+                value={money(annualizedDeposits, true)}
               />
             </div>
           </div>
@@ -552,7 +536,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         <div className="panel-h">
           Program eligibility
           <span style={{ flex: 1 }} />
-          <span className="sub">Computed from verified data only</span>
+          <span className="sub">Evidence-backed; estimates remain labeled</span>
         </div>
         <div className="tblwrap">
           <table className="tbl">
@@ -636,6 +620,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
                     : `${statementCount} of ${standardStatementTarget} verified months`}
                 </span>
               )}
+              <span className="sub">{financial?.sources?.dscr?.label ?? "Awaiting cash flow and debt"}</span>
             </div>
             <div className="panel-b">
               {coverage.data && [

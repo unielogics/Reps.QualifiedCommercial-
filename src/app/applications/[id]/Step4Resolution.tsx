@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Pencil, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
+import type { FinancialSnapshot } from "@/lib/useCase";
 
 export type Recommendation = {
   id: string;
@@ -47,7 +48,8 @@ export type UnderwritingResolution = {
   applicable_business_questions: import("./Step4BusinessQuestions").BusinessQuestionGroup[];
   business_questions_complete: boolean;
   business_question_blockers: string[];
-  financial_suggestions: Record<string, { value?: number; source?: string; provenance?: string; evidence?: string }>;
+  financial_suggestions: Record<string, { value?: number; source?: string; status?: string; label?: string; provenance?: string; evidence?: string }>;
+  financial: FinancialSnapshot;
   exception_requests: Array<{ id: string; rule_key: string; status: string }>;
   direct_program_viable: boolean;
   signing_mode: "program_package" | "qc_summary_booking";

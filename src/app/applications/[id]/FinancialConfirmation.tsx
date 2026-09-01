@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { WandSparkles } from "lucide-react";
@@ -15,15 +15,25 @@ const FINANCIAL_FIELDS = [
 ] as const;
 type FinancialField = (typeof FINANCIAL_FIELDS)[number]["key"];
 
-function sourceLabel(profile: ApplicationProfileData | null | undefined, field: FinancialField): string {
+function sourceLabel(
+  profile: ApplicationProfileData | null | undefined,
+  field: FinancialField,
+  suggestion?: { label?: string; source?: string },
+): string {
   if (profile?.field_confirmations?.[field]) return "Agent confirmed";
   const provenance = profile?.field_provenance?.[field];
-  return provenance?.label || provenance?.source || (profile?.[field] !== null && profile?.[field] !== undefined ? "Agent entered" : "Unavailable");
+  return provenance?.label
+    || provenance?.source
+    || (profile?.[field] !== null && profile?.[field] !== undefined ? "Agent entered" : null)
+    || suggestion?.label
+    || suggestion?.source
+    || "Unavailable";
 }
 
 export default function FinancialConfirmation({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
+  const touched = useRef(new Set<FinancialField>());
   const [draft, setDraft] = useState<Record<FinancialField, string>>({
     annual_sales: "",
     annual_cash_flow_available_for_debt: "",
@@ -43,13 +53,21 @@ export default function FinancialConfirmation({ dealerId }: { dealerId: string }
   });
 
   useEffect(() => {
-    if (!profile.data) return;
-    setDraft({
-      annual_sales: profile.data.annual_sales?.toString() ?? "",
-      annual_cash_flow_available_for_debt: profile.data.annual_cash_flow_available_for_debt?.toString() ?? "",
-      monthly_debt_payments: profile.data.monthly_debt_payments?.toString() ?? "",
+    setDraft((current) => {
+      const next = { ...current };
+      for (const { key } of FINANCIAL_FIELDS) {
+        if (touched.current.has(key)) continue;
+        const saved = profile.data?.[key];
+        const suggested = resolution.data?.financial_suggestions[key]?.value;
+        next[key] = saved !== null && saved !== undefined
+          ? String(saved)
+          : suggested !== null && suggested !== undefined && Number.isFinite(Number(suggested))
+            ? String(suggested)
+            : "";
+      }
+      return next;
     });
-  }, [profile.data]);
+  }, [profile.data, resolution.data?.financial_suggestions]);
 
   const patch = useMutation({
     mutationFn: async (body: Record<string, unknown>) => api<ApplicationProfileData>(
@@ -64,17 +82,11 @@ export default function FinancialConfirmation({ dealerId }: { dealerId: string }
     },
   });
 
-  const commit = (field: FinancialField, override?: number) => {
+  const confirm = (field: FinancialField) => {
     const raw = draft[field].trim();
-    const value = override ?? (raw === "" ? null : Number(raw));
+    const value = raw === "" ? null : Number(raw);
     if (typeof value === "number" && !Number.isFinite(value)) return;
     patch.mutate({ [field]: value, confirm_fields: [field] });
-  };
-  const applySuggestion = (field: FinancialField) => {
-    const value = resolution.data?.financial_suggestions[field]?.value;
-    if (value === undefined || !Number.isFinite(Number(value))) return;
-    setDraft((current) => ({ ...current, [field]: String(value) }));
-    commit(field, Number(value));
   };
 
   return (
@@ -87,15 +99,16 @@ export default function FinancialConfirmation({ dealerId }: { dealerId: string }
         <div className="financialConfirmGrid">
           {FINANCIAL_FIELDS.map(({ key, label }) => {
             const suggestion = resolution.data?.financial_suggestions[key];
-            const status = sourceLabel(profile.data, key);
+            const status = sourceLabel(profile.data, key, suggestion);
+            const confirmed = Boolean(profile.data?.field_confirmations?.[key]);
             const invalid = key === "annual_sales" ? Number(draft[key]) <= 0 : draft[key].trim() === "";
             return (
               <label key={key} className="financialConfirmField">
                 <span className="lbl">{label}</span>
-                <input className={`field${invalid ? " field-invalid" : ""}`} type="number" min="0" inputMode="decimal" value={draft[key]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} onBlur={() => commit(key)} />
+                <input className={`field${invalid ? " field-invalid" : ""}`} type="number" min="0" inputMode="decimal" value={draft[key]} onChange={(event) => { touched.current.add(key); setDraft((current) => ({ ...current, [key]: event.target.value })); }} />
                 <div className="financialProvenance">
                   <span className={`cellchip ${status === "Agent confirmed" ? "c-ok" : status === "Unavailable" ? "c-mut" : "c-warn"}`}>{status}</span>
-                  {suggestion && <button type="button" className="btn sm" onClick={() => applySuggestion(key)}><WandSparkles size={14} /> Use {Number(suggestion.value).toLocaleString()}</button>}
+                  {!confirmed && !invalid && <button type="button" className="btn sm" disabled={patch.isPending} onClick={() => confirm(key)}><WandSparkles size={14} /> {suggestion ? "Confirm estimate" : "Confirm value"}</button>}
                 </div>
                 {suggestion?.evidence && <small className="sub">{suggestion.evidence}</small>}
               </label>

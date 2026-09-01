@@ -46,6 +46,18 @@ function money(value: number | null | undefined): string {
     : Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
+function ratio(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "Unavailable"
+    : `${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
+}
+
+function count(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "Unavailable"
+    : Number(value).toLocaleString();
+}
+
 export default function AgreementReviewWorkspace({
   envelope,
   roomAccess,
@@ -166,6 +178,12 @@ export default function AgreementReviewWorkspace({
                   <div><dt>Annual sales</dt><dd>{money(envelope.funding_profile.annual_sales)}</dd></div>
                   <div><dt>Cash flow</dt><dd>{money(envelope.funding_profile.annual_cash_flow_available_for_debt)}</dd></div>
                   <div><dt>Monthly debt</dt><dd>{money(envelope.funding_profile.monthly_debt_payments)}</dd></div>
+                  <div><dt>DSCR</dt><dd>{ratio(envelope.funding_profile.dscr)}</dd></div>
+                  <div><dt>ADB</dt><dd>{money(envelope.funding_profile.avg_daily_balance)}</dd></div>
+                  <div><dt>Avg. deposits</dt><dd>{money(envelope.funding_profile.average_monthly_deposits)}</dd></div>
+                  <div><dt>Annualized deposits</dt><dd>{money(envelope.funding_profile.annualized_deposits)}</dd></div>
+                  <div><dt>Negative days / 90</dt><dd>{count(envelope.funding_profile.negative_balance_days_90)}</dd></div>
+                  <div><dt>Returned items</dt><dd>{count(envelope.funding_profile.returned_items)}</dd></div>
                   <div><dt>Bank coverage</dt><dd>{envelope.funding_profile.verified_bank_months?.length ?? 0} / {envelope.funding_profile.bank_evidence_target ?? 6} months</dd></div>
                 </dl>
                 {(envelope.funding_profile.credit ?? []).map((credit, creditIndex) => (
