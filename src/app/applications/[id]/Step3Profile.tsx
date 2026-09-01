@@ -17,7 +17,7 @@
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
@@ -28,6 +28,8 @@ import {
 import StepActions from "@/components/StepActions";
 import UnderwritingSlots from "@/components/UnderwritingSlots";
 import { useUploadManager } from "@/components/UploadManager";
+import FinancialConfirmation from "./FinancialConfirmation";
+import Step4DebtSchedule from "./Step4DebtSchedule";
 
 type NumericLike = number | string | null | undefined;
 
@@ -299,7 +301,8 @@ function Meter({
 export default function Step3Profile({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const router = useRouter();
-  const { decision } = useCase(dealerId);
+  const qc = useQueryClient();
+  const { decision, workflow } = useCase(dealerId);
   const { uploads } = useUploadManager();
   const [reviewWindowsOpen, setReviewWindowsOpen] = useState(false);
 
@@ -427,6 +430,10 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
           )}
         </div>
       </div>
+
+      <FinancialConfirmation dealerId={dealerId} />
+
+      <Step4DebtSchedule dealerId={dealerId} />
 
       <div className="cg">
         <div className="s6">
@@ -584,7 +591,6 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
               {coverage.data && [
                 { label: "Six current months from Plaid Assets or bank-produced PDF statements", met: coverage.data.statement_months.length >= 6 },
                 { label: "Current-year profit and loss statement", met: coverage.data.has_pl },
-                { label: "Debt schedule", met: coverage.data.has_debt_schedule },
               ].map((item) => (
                 <div className="req" key={item.label}>
                   <span className={`ic ${item.met ? "ok" : "no"}`}>{item.met ? "✓" : "!"}</span>
@@ -613,10 +619,10 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
       )}
 
       <StepActions
-        ready={!reviewPreferences.isLoading}
-        message={activeReviewPreference
-          ? "The verified financial profile and client review windows are ready."
-          : "Before Step 4, choose three weekday windows when the desk can review the file with the client."}
+        ready={workflow.step_3.complete}
+        message={workflow.step_3.complete
+          ? "The financial profile, debt schedule, and client review windows are ready."
+          : workflow.step_3.blockers[0] || "Complete the financial profile before Step 4."}
         buttonLabel={activeReviewPreference ? "Continue to Step 4" : "Choose three review windows"}
         onContinue={() => activeReviewPreference
           ? router.push(`/applications/${dealerId}?step=4`)
@@ -628,7 +634,12 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
           dealerId={dealerId}
           existing={activeReviewPreference}
           onClose={() => setReviewWindowsOpen(false)}
-          onComplete={() => router.push(`/applications/${dealerId}?step=4`)}
+          onComplete={() => {
+            void (async () => {
+              await qc.refetchQueries({ queryKey: ["decision", dealerId] });
+              router.push(`/applications/${dealerId}?step=4`);
+            })();
+          }}
         />
       )}
     </>

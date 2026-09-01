@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { CheckCircle2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 
 type Debt = {
@@ -25,6 +25,14 @@ type Debt = {
 };
 
 type DebtDraft = Omit<Debt, "id" | "origin" | "status">;
+
+type DebtConfirmation = {
+  status: "schedule_confirmed" | "no_business_debt" | null;
+  confirmed: boolean;
+  stale: boolean;
+  confirmed_at: string | null;
+  note: string | null;
+};
 
 const EMPTY: DebtDraft = {
   lender: "",
@@ -67,6 +75,12 @@ export default function Step4DebtSchedule({ dealerId }: { dealerId: string }) {
       authToken: (await getToken()) ?? undefined,
     }),
   });
+  const confirmation = useQuery({
+    queryKey: ["debt-confirmation", dealerId],
+    queryFn: async () => api<DebtConfirmation>(`/dealer-os/dealers/${dealerId}/debts/confirmation`, {
+      authToken: (await getToken()) ?? undefined,
+    }),
+  });
   useEffect(() => setRows(debts.data ?? []), [debts.data]);
 
   const refresh = () => {
@@ -74,6 +88,8 @@ export default function Step4DebtSchedule({ dealerId }: { dealerId: string }) {
     void qc.invalidateQueries({ queryKey: ["underwriting-resolution", dealerId] });
     void qc.invalidateQueries({ queryKey: ["application-profile", dealerId] });
     void qc.invalidateQueries({ queryKey: ["submission-readiness", dealerId] });
+    void qc.invalidateQueries({ queryKey: ["debt-confirmation", dealerId] });
+    void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
   };
 
   const patchDebt = useMutation({
@@ -106,6 +122,21 @@ export default function Step4DebtSchedule({ dealerId }: { dealerId: string }) {
       method: "POST", authToken: (await getToken()) ?? undefined,
     }),
     onSuccess: refresh,
+  });
+  const confirmSchedule = useMutation({
+    mutationFn: async (status: "schedule_confirmed" | "no_business_debt") => api<DebtConfirmation>(
+      `/dealer-os/dealers/${dealerId}/debts/confirmation`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ status }),
+        authToken: (await getToken()) ?? undefined,
+      },
+    ),
+    onSuccess: (saved) => {
+      qc.setQueryData(["debt-confirmation", dealerId], saved);
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["underwriting-resolution", dealerId] });
+    },
   });
 
   const updateLocal = (id: string, field: keyof DebtDraft, value: unknown) => {
@@ -142,6 +173,9 @@ export default function Step4DebtSchedule({ dealerId }: { dealerId: string }) {
       <div className="panel-h">
         Debt schedule
         <span className="sp" />
+        <span className={`cellchip ${confirmation.data?.confirmed ? "c-ok" : confirmation.data?.stale ? "c-warn" : "c-mut"}`}>
+          {confirmation.data?.confirmed ? "Confirmed" : confirmation.data?.stale ? "Reconfirmation required" : "Not confirmed"}
+        </span>
         <button type="button" className="btn sm" onClick={() => draftFromEvidence.mutate()} disabled={draftFromEvidence.isPending}><Sparkles size={16} /> Draft from evidence</button>
         <button type="button" className="btn sm pri" onClick={() => setNewRows((current) => [...current, { ...EMPTY, localId: crypto.randomUUID() }])}><Plus size={16} /> Add debt</button>
       </div>
@@ -166,7 +200,15 @@ export default function Step4DebtSchedule({ dealerId }: { dealerId: string }) {
           </article>
         ))}
         {!debts.isLoading && rows.length === 0 && newRows.length === 0 && <div className="emptyStateCompact"><b>No obligations entered</b><span className="sub">Add each business debt, or draft suggestions from verified statements.</span></div>}
-        {(patchDebt.error || createDebt.error || removeDebt.error || draftFromEvidence.error) && <div className="warnline">A debt change could not be saved. Review the row and retry.</div>}
+        <div className="row" style={{ justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          {rows.length > 0 ? (
+            <button type="button" className="btn pri" disabled={newRows.length > 0 || confirmSchedule.isPending} onClick={() => confirmSchedule.mutate("schedule_confirmed")}><CheckCircle2 size={16} /> Confirm current schedule</button>
+          ) : (
+            <button type="button" className="btn pri" disabled={newRows.length > 0 || confirmSchedule.isPending || debts.isLoading} onClick={() => confirmSchedule.mutate("no_business_debt")}><CheckCircle2 size={16} /> Confirm no business debt</button>
+          )}
+        </div>
+        {confirmation.data?.stale && <div className="warnline">The debt schedule changed after the last confirmation. Review the rows and confirm again.</div>}
+        {(patchDebt.error || createDebt.error || removeDebt.error || draftFromEvidence.error || confirmSchedule.error) && <div className="warnline">A debt change or confirmation could not be saved. Review the schedule and retry.</div>}
       </div>
     </div>
   );

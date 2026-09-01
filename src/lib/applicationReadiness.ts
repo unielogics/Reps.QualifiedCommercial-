@@ -69,11 +69,19 @@ export function applicationProfileReady(
   if (!profile) return false;
   return Boolean(
     profile.state_of_formation?.trim()
+      && profile.location_type?.trim()
       && profile.mailing_address?.trim()
       && profile.mailing_city?.trim()
       && profile.mailing_state?.trim()
       && profile.mailing_zip?.trim()
       && profile.signer_title?.trim()
-      && Number(profile.annual_sales ?? 0) > 0,
+      && profile.guaranty_type?.trim()
+      && profile.office_space?.trim()
+      && profile.business_stage?.trim()
+      && profile.existing_mca_balance !== null
+      && profile.existing_sba_balance !== null
+      && profile.active_ucc_filings !== null
+      && profile.affiliate_businesses !== null
+      && profile.send_welcome_email !== null,
   );
 }

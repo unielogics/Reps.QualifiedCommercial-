@@ -384,6 +384,16 @@ a { color: var(--accent); }
 .packageRailSummary { display: grid; gap: 4px; padding: 4px 4px 14px; }
 .packageRailSummary b { font-family: var(--fh); font-size: 15px; }
 .packageRailSummary small, .packageDeliveryHistory small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.packageRailFunding { display: grid; gap: 8px; margin-bottom: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.packageRailFunding > .row > b { font-size: 12px; }
+.packageRailFunding dl { display: grid; gap: 5px; margin: 0; }
+.packageRailFunding dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.packageRailFunding dt { color: var(--muted); font-size: 10.5px; }
+.packageRailFunding dd { margin: 0; font-size: 10.8px; font-weight: 750; text-align: right; }
+.packageRailFunding > small { color: var(--muted); font-size: 10.5px; line-height: 1.35; }
+.packageRailCredit { display: grid; gap: 2px; padding-top: 7px; border-top: 1px solid var(--line); }
+.packageRailCredit span { color: var(--muted); font-size: 10px; }
+.packageRailCredit b { font-size: 10.8px; }
 .packageRailList { display: grid; gap: 7px; }
 .packageRailList button { width: 100%; min-height: 58px; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
 .packageRailList button:hover, .packageRailList button.on { border-color: var(--accent); background: var(--accent-100); }
@@ -439,7 +449,7 @@ a { color: var(--accent); }
   .agreementReviewHash { display: none; }
   .packageReviewMain { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .packageDocumentRail { max-height: 148px; overflow-y: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px 12px; }
-  .packageRailSummary, .packageMissingPanel, .packageDeliveryHistory { display: none; }
+  .packageRailSummary, .packageRailFunding, .packageMissingPanel, .packageDeliveryHistory { display: none; }
   .packageRailList { display: flex; overflow-x: auto; gap: 7px; }
   .packageRailList button { min-width: 220px; }
 }
@@ -1936,6 +1946,26 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 @media (max-width: 720px) { .bookingDocumentOptions { grid-template-columns: 1fr; } }
 .emptyStateCompact { min-height: 90px; display: grid; place-items: center; align-content: center; gap: 5px; border: 1px dashed var(--line2); border-radius: 8px; text-align: center; }
 .blockedCompletionPanel { border-color: rgba(192, 126, 5, .35); }
+.programSelectionControl { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.4fr); gap: 14px; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.programSelectionControl > div:first-child { display: grid; gap: 5px; }
+.programSelectionControl > div:first-child small { color: var(--muted); line-height: 1.4; }
+.programSelectionControl > .note, .programSelectionControl > .warnline { grid-column: 1 / -1; margin: 0; }
+
+/* Authenticated persistent underwriting-summary viewer. */
+.summaryWorkspace { min-height: calc(100dvh - 70px); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; }
+.summaryToolbar { position: sticky; top: 0; z-index: 8; min-height: 70px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow1); }
+.summaryToolbar > div { min-width: 0; display: grid; gap: 2px; }
+.summaryToolbar > div b, .summaryToolbar > div small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summaryToolbar > div small { color: var(--muted); }
+.summaryNotice { margin: 0; }
+.summaryCanvas { min-height: 720px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #dfe3e8; }
+.summaryCanvas iframe { width: 100%; height: calc(100dvh - 176px); min-height: 720px; display: block; border: 0; background: #fff; }
+.summaryEmpty { min-height: 720px; display: grid; place-items: center; align-content: center; gap: 7px; text-align: center; }
+.packageFundingProfile { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.packageFundingGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.packageFundingGrid > div { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+.packageFundingGrid span, .packageCreditRow span { color: var(--muted); font-size: 11px; }
+.packageCreditRow { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-top: 1px solid var(--line); }
 
 @media (max-width: 1180px) {
   .financialConfirmGrid, .step4SourceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1966,6 +1996,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .step4Question { grid-template-columns: 1fr; }
   .debtCollateral { grid-column: auto; }
   .recommendationActions .btn, .blockedCompletionActions .btn { width: 100%; }
+  .programSelectionControl { grid-template-columns: 1fr; }
+  .summaryToolbar { position: static; flex-wrap: wrap; }
+  .summaryToolbar > div { flex: 1 1 190px; }
+  .summaryToolbar > .btn { width: 100%; }
+  .summaryCanvas iframe { height: calc(100dvh - 230px); min-height: 560px; }
+  .packageFundingGrid { grid-template-columns: 1fr; }
 }
 
 /* ── Rep inbox ────────────────────────────────────────────────────────────

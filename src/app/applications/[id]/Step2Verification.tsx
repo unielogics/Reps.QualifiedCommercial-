@@ -25,6 +25,7 @@ import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflo
 import Modal from "@/components/Modal";
 import StepActions from "@/components/StepActions";
 import { useUploadManager } from "@/components/UploadManager";
+import Step4BusinessQuestions, { type BusinessQuestionGroup } from "./Step4BusinessQuestions";
 
 type PlaidItem = {
   id: string;
@@ -72,6 +73,14 @@ type Owner = {
   credit_workflow_status: string | null;
   credit_delivery_detail: string | null;
   credit_provider_error_category: string | null;
+  credit_summary: { score_band?: string | null; quality_tier?: string | null } | null;
+};
+
+type PreScreen = {
+  file_answers: Record<string, unknown>;
+  applicable_business_questions: BusinessQuestionGroup[];
+  business_questions_complete: boolean;
+  business_question_blockers: string[];
 };
 
 type CreditInviteResult = {
@@ -149,11 +158,38 @@ async function copyText(value: string): Promise<void> {
   if (!copied) throw new Error("Clipboard access was denied");
 }
 
-/** A score band rather than the exact figure, which is what a soft inquiry returns. */
-function band(score: number | null): string {
-  if (score === null) return "Pending";
-  const lo = Math.floor(score / 30) * 30;
-  return `${lo}–${lo + 29}`;
+const CREDIT_QUALITY_LABELS = new Set([
+  "Excellent",
+  "Good",
+  "Average",
+  "Below average",
+  "Bad",
+  "Not fundable",
+]);
+
+function qualityFromScore(score: number | null): { tier: string; range: string } | null {
+  if (score === null || !Number.isFinite(score)) return null;
+  if (score >= 760 && score <= 850) return { tier: "Excellent", range: "760–850" };
+  if (score >= 720) return { tier: "Good", range: "720–759" };
+  if (score >= 700) return { tier: "Average", range: "700–719" };
+  if (score >= 680) return { tier: "Below average", range: "680–699" };
+  if (score >= 660) return { tier: "Bad", range: "660–679" };
+  if (score >= 300) return { tier: "Not fundable", range: "300–659" };
+  return null;
+}
+
+/** Borrower-safe credit quality. A completed pull never falls back to Pending. */
+function creditQuality(owner: Owner): string {
+  const computed = qualityFromScore(owner.credit_score);
+  if (computed) return `${computed.tier} · ${computed.range}`;
+  const providerBand = owner.credit_summary?.score_band;
+  const storedTier = owner.credit_summary?.quality_tier || owner.credit_tier;
+  const tier = storedTier && CREDIT_QUALITY_LABELS.has(storedTier) ? storedTier : null;
+  if (tier && providerBand) return `${tier} · ${providerBand}`;
+  if (tier || providerBand) return tier || `Returned · ${providerBand}`;
+  return owner.credit_complete
+    ? "Returned · classification unavailable"
+    : "Awaiting authorization";
 }
 
 function IconTile({ tone, children }: { tone: "ok" | "warn"; children: React.ReactNode }) {
@@ -184,7 +220,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
-  const { dealer, verification } = useCase(dealerId);
+  const { dealer, verification, workflow } = useCase(dealerId);
   const { uploads, enqueueStatements } = useUploadManager();
   const uploadInput = useRef<HTMLInputElement | null>(null);
   const [modal, setModal] = useState<null | "bank" | "upload" | "credit">(null);
@@ -195,6 +231,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [roomUrl, setRoomUrl] = useState<string | null>(null);
   const [roomCopyState, setRoomCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [bankExceptionOpen, setBankExceptionOpen] = useState(false);
+  const [bankExceptionNote, setBankExceptionNote] = useState("");
   const [creditRefreshing, setCreditRefreshing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [creditLinks, setCreditLinks] = useState<Record<string, string>>({});
@@ -260,6 +297,10 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
   const ownerRows = owners.data ?? [];
   const requiredOwners = ownerRows.filter((owner) => owner.credit_required);
+  const creditReturned = Boolean(
+    verification.credit_returned ||
+      (requiredOwners.length > 0 && requiredOwners.every((owner) => owner.credit_complete)),
+  );
   const creditOwner = ownerRows.find((owner) => owner.id === creditOwnerId) ?? null;
   const primaryOwner = ownerRows.find((owner) => owner.is_primary) ?? requiredOwners[0] ?? ownerRows[0] ?? null;
   const activeBanks = (plaid.data?.items ?? []).filter((item) => item.status !== "removed");
@@ -423,6 +464,14 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
     onError: (error) => setDeliveryError(error instanceof Error ? error.message : "The upload request could not be sent."),
   });
 
+  const preScreen = useQuery({
+    queryKey: ["application-pre-screen", dealerId],
+    enabled: authReady,
+    queryFn: async () => api<PreScreen>(`/dealer-os/dealers/${dealerId}/pre-screen`, {
+      authToken: (await getToken()) ?? undefined,
+    }),
+  });
+
   const refreshBank = useMutation({
     mutationFn: async () => {
       if (!activeBanks.length) return { queued: 0 };
@@ -448,13 +497,14 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         `/dealer-os/dealers/${dealerId}/bank-evidence/three-month-exception`,
         {
           method: "POST",
-          body: JSON.stringify({ acknowledged: true }),
+          body: JSON.stringify({ acknowledged: true, note: bankExceptionNote.trim() || null }),
           authToken: (await getToken()) ?? undefined,
         },
       ),
     onSuccess: async (result) => {
       qc.setQueryData(["bank-evidence", dealerId], result);
       setBankExceptionOpen(false);
+      setBankExceptionNote("");
       await qc.refetchQueries({ queryKey: ["decision", dealerId] });
       router.push(`/applications/${dealerId}?step=3`);
     },
@@ -474,10 +524,11 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const canAcknowledgeBankException = Boolean(
     bankExceptionAvailable &&
       !bankExceptionActive &&
-      verification.credit_returned &&
+      creditReturned &&
       verification.ownership_complete &&
       verification.owner_contact_complete &&
-      verification.pre_screen_complete,
+      verification.pre_screen_complete &&
+      Boolean(preScreen.data?.business_questions_complete),
   );
   const handleFiles = (list: FileList | File[]) => {
     const files = Array.from(list).filter((file) => file.size > 0);
@@ -487,12 +538,12 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   };
 
   const bankTone = bankLinked ? "c-ok" : "c-warn";
-  const creditTone = verification.credit_returned ? "c-ok" : "c-warn";
+  const creditTone = creditReturned ? "c-ok" : "c-warn";
   const bankRefreshing = refreshBank.isPending || plaid.isFetching || evidence.isFetching;
   const bankStatusLabel = bankExceptionActive
-    ? "3-month minimum accepted"
+    ? "Bank-evidence exception accepted"
     : bankExceptionAvailable
-      ? "3-month minimum available"
+      ? "3–5 month exception available"
       : bankLinked
         ? bankSource === "upload"
           ? "Uploaded statements"
@@ -518,16 +569,16 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       setRoomCopyState("error");
     }
   };
-  const stepReady = verification.unlocked || canAcknowledgeBankException;
-  const stepMessage = verification.unlocked
-    ? "Verification is complete. Continue to the financial profile."
-    : bankExceptionAvailable && !verification.credit_returned
-      ? `The three-month bank minimum is available. ${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`
+  const stepReady = workflow.step_2.complete || canAcknowledgeBankException;
+  const stepMessage = workflow.step_2.complete
+    ? "Verification and the applicable business underwriting questions are complete. Continue to the financial profile."
+    : bankExceptionAvailable && !creditReturned
+      ? `A qualifying 3–5 month bank-evidence exception is available. ${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`
       : canAcknowledgeBankException
         ? "The latest three completed bank months are verified. Review the exception before continuing; the remaining standard months stay outstanding."
         : !verification.bank_linked
           ? "Bank evidence is still required. Connect another business bank or upload completed bank PDF months."
-          : `${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`;
+          : workflow.step_2.blockers[0] || `${verification.completed_credit_owner_count} of ${verification.required_credit_owner_count} required owners completed their iSoftPull.`;
 
   return (
     <>
@@ -843,8 +894,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               <div>
                 <b>
                   {bankExceptionActive
-                    ? "Three-month minimum acknowledged."
-                    : "Three-month minimum available."}
+                    ? "Bank-evidence exception acknowledged."
+                    : "Three-to-five-month exception available."}
                 </b>{" "}
                 {bankExceptionActive
                   ? "The financial profile is open, while the missing standard months remain outstanding for final underwriting."
@@ -887,9 +938,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className={`panel${verification.credit_returned ? "" : " panel-invalid"}`}>
+      <div className={`panel${creditReturned ? "" : " panel-invalid"}`}>
         <div className="panel-h">
-          <IconTile tone={verification.credit_returned ? "ok" : "warn"}>
+          <IconTile tone={creditReturned ? "ok" : "warn"}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 7h18v10H3zM3 11h18M7 15h4" />
             </svg>
@@ -912,7 +963,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             />
           </button>
           <span className={`cellchip ${creditTone}`}>
-            {verification.credit_returned ? "Returned" : "Awaiting applicant"}
+            {creditReturned ? "Returned" : "Awaiting applicant"}
           </span>
         </div>
         <div className="panel-b">
@@ -929,10 +980,10 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             <button
               type="button"
               className="btn pri"
-              disabled={!verification.ownership_complete || !verification.owner_contact_complete || !requiredOwners.length || !verification.credit_enabled || sendAllCredit.isPending}
+              disabled={creditReturned || !verification.ownership_complete || !verification.owner_contact_complete || !requiredOwners.length || !verification.credit_enabled || sendAllCredit.isPending}
               onClick={() => sendAllCredit.mutate()}
             >
-              Send all pending authorizations
+              {creditReturned ? "All authorizations returned" : "Send all pending authorizations"}
             </button>
           </div>
           <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
@@ -986,7 +1037,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                       Copy secure link
                     </button>
                   )}
-                  {owner.credit_complete && <b className="num">{band(owner.credit_score)}</b>}
+                  {owner.credit_complete && <b className="num">{creditQuality(owner)}</b>}
                 </div>
               );
             })}
@@ -1007,6 +1058,26 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      <div className={`panel${preScreen.data?.business_questions_complete ? "" : " panel-invalid"}`}>
+        <div className="panel-h">
+          Business underwriting questions
+          <span className="sp" />
+          <span className={`cellchip ${preScreen.data?.business_questions_complete ? "c-ok" : "c-warn"}`}>
+            {preScreen.data?.business_questions_complete ? "Complete" : `${preScreen.data?.business_question_blockers.length ?? 0} unanswered`}
+          </span>
+        </div>
+        <div className="panel-b">
+          <p className="sub" style={{ marginTop: 0 }}>
+            These business-level questions adapt to the canonical NAICS and remaining program paths. Personal owner eligibility stays in Step 1.5.
+          </p>
+          <Step4BusinessQuestions
+            dealerId={dealerId}
+            groups={preScreen.data?.applicable_business_questions ?? []}
+            initialAnswers={preScreen.data?.file_answers ?? {}}
+          />
         </div>
       </div>
 
@@ -1058,9 +1129,9 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
       <StepActions
         ready={stepReady}
         message={stepMessage}
-        buttonLabel={canAcknowledgeBankException ? "Review 3-month exception" : "Continue to Step 3"}
+        buttonLabel={canAcknowledgeBankException ? "Review bank-evidence exception" : "Continue to Step 3"}
         onContinue={() => {
-          if (verification.unlocked) {
+          if (workflow.step_2.complete) {
             router.push(`/applications/${dealerId}?step=3`);
           } else if (canAcknowledgeBankException) {
             setBankExceptionOpen(true);
@@ -1070,13 +1141,13 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
 
       {bankExceptionOpen && (
         <Modal
-          title="Continue with three verified bank months"
+          title={`Continue with ${statementMonths.length} verified bank months`}
           onClose={() => {
             if (!acceptThreeMonthException.isPending) setBankExceptionOpen(false);
           }}
         >
           <p className="sub" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6 }}>
-            The latest three completed bank months are verified. A six-month history remains
+            The qualifying contiguous completed bank months are verified. A six-month history remains
             the standard evidence target, but you can open the financial profile now and keep
             collecting the outstanding months.
           </p>
@@ -1108,11 +1179,16 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             </div>
           </div>
 
+          <label style={{ display: "block", marginTop: 12 }}>
+            <span className="lbl">Acknowledgment note <span className="sub">Optional</span></span>
+            <textarea className="field" rows={2} value={bankExceptionNote} onChange={(event) => setBankExceptionNote(event.target.value)} placeholder="Document why the file is proceeding before all six standard months are available." />
+          </label>
+
           {acceptThreeMonthException.isError && (
             <div className="documentError" style={{ margin: "12px 0 0" }}>
               {acceptThreeMonthException.error instanceof Error
                 ? acceptThreeMonthException.error.message
-                : "The three-month exception could not be recorded."}
+                : "The bank-evidence exception could not be recorded."}
             </div>
           )}
 

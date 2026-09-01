@@ -102,6 +102,22 @@ export async function api<T>(path: string, opts: RequestInit & { authToken?: str
   return unwrap<T>(res);
 }
 
+export async function apiBlob(path: string, opts: RequestInit & { authToken?: string } = {}): Promise<Blob> {
+  const { authToken, ...init } = opts;
+  const headers = {
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    ...(init.headers ?? {}),
+  };
+  const res = await fetch(`${apiBase}${path}`, { ...init, headers });
+  if (!res.ok) {
+    let body: unknown = null;
+    try { body = await res.json(); } catch { /* non-JSON error body */ }
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    throw new ApiError(res.status, typeof detail === "string" ? detail : `Request failed (${res.status})`, body);
+  }
+  return res.blob();
+}
+
 // Multipart upload — no Content-Type header so the browser sets the multipart
 // boundary itself (the JSON helper above would force application/json).
 export async function apiUpload<T>(path: string, form: FormData, opts: { authToken?: string } = {}): Promise<T> {

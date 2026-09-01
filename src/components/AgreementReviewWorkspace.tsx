@@ -31,8 +31,14 @@ function documentStatus(document: EnvelopeDocument): string {
   return "Ready";
 }
 
-function sourceStep(item: string): 1 | 4 {
-  return /annual sales|dscr|debt|mca|sba|ucc|affiliate/i.test(item) ? 4 : 1;
+function sourceStep(item: string): 1 | 3 {
+  return /annual sales|cash flow|dscr|monthly debt|debt schedule/i.test(item) ? 3 : 1;
+}
+
+function money(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "Unavailable"
+    : Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
 export default function AgreementReviewWorkspace({
@@ -114,6 +120,26 @@ export default function AgreementReviewWorkspace({
               <b>{envelope.documents.length} document{envelope.documents.length === 1 ? "" : "s"}</b>
               <small>One client signature applies only after every required document is reviewed and acknowledged.</small>
             </div>
+            {envelope.funding_profile && Object.keys(envelope.funding_profile).length > 0 && (
+              <section className="packageRailFunding" aria-label="Funding profile">
+                <div className="row"><b>Funding profile</b><span className="sp" /><span className={`cellchip ${envelope.funding_profile.system_status === "blocked" ? "c-warn" : "c-ok"}`}>{envelope.funding_profile.system_status || "System route"}</span></div>
+                <dl>
+                  <div><dt>Original request</dt><dd>{money(envelope.funding_profile.original_requested_amount)}</dd></div>
+                  <div><dt>Working goal</dt><dd>{money(envelope.funding_profile.working_funding_goal)}</dd></div>
+                  <div><dt>Annual sales</dt><dd>{money(envelope.funding_profile.annual_sales)}</dd></div>
+                  <div><dt>Cash flow</dt><dd>{money(envelope.funding_profile.annual_cash_flow_available_for_debt)}</dd></div>
+                  <div><dt>Monthly debt</dt><dd>{money(envelope.funding_profile.monthly_debt_payments)}</dd></div>
+                  <div><dt>Bank coverage</dt><dd>{envelope.funding_profile.verified_bank_months?.length ?? 0} / {envelope.funding_profile.bank_evidence_target ?? 6} months</dd></div>
+                </dl>
+                {(envelope.funding_profile.credit ?? []).map((credit, creditIndex) => (
+                  <div className="packageRailCredit" key={`${credit.owner ?? "owner"}-${creditIndex}`}>
+                    <span>{credit.owner || "Required owner"}</span>
+                    <b>{credit.quality || credit.status || "Verification pending"}</b>
+                  </div>
+                ))}
+                {(envelope.funding_profile.unresolved_conditions ?? []).length > 0 && <small>{envelope.funding_profile.unresolved_conditions?.length} condition{envelope.funding_profile.unresolved_conditions?.length === 1 ? "" : "s"} retained for underwriting.</small>}
+              </section>
+            )}
             <div className="packageRailList">
               {envelope.documents.map((document, documentIndex) => (
                 <button type="button" key={document.id} className={document.id === active?.id ? "on" : ""} onClick={() => setActiveId(document.id)}>

@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, CheckCircle2, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
+import Modal from "@/components/Modal";
 
 export type Recommendation = {
   id: string;
@@ -48,6 +49,17 @@ export type UnderwritingResolution = {
   exception_requests: Array<{ id: string; rule_key: string; status: string }>;
   direct_program_viable: boolean;
   signing_mode: "program_package" | "qc_summary_booking";
+  program_selection: {
+    system_program_key: string | null;
+    system_program_status: string | null;
+    effective_program_key: string | null;
+    effective_program_status: string | null;
+    manually_selected: boolean;
+    selected_by_name: string | null;
+    selected_at: string | null;
+    note: string | null;
+    rules_version: string | null;
+  };
 };
 
 const PROGRAM_LABELS: Record<string, string> = {
@@ -89,6 +101,8 @@ export default function Step4Resolution({
   const [note, setNote] = useState("");
   const [exceptionRule, setExceptionRule] = useState<string | null>(null);
   const [exceptionNote, setExceptionNote] = useState("");
+  const [selectionTarget, setSelectionTarget] = useState<{ key: string; label: string; status: string } | null>(null);
+  const [selectionNote, setSelectionNote] = useState("");
 
   useEffect(() => {
     setAmount(recommendation?.recommended_amount?.toString() ?? "");
@@ -137,6 +151,38 @@ export default function Step4Resolution({
     onSuccess: () => { setExceptionRule(null); setExceptionNote(""); refresh(); },
   });
 
+  const selectProgram = useMutation({
+    mutationFn: async ({ key, note }: { key: string; note?: string }) => api(
+      `/dealer-os/dealers/${dealerId}/program-selection`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ program_key: key, acknowledged: true, note: note?.trim() || null }),
+        authToken: (await getToken()) ?? undefined,
+      },
+    ),
+    onSuccess: () => {
+      setSelectionTarget(null);
+      setSelectionNote("");
+      refresh();
+    },
+  });
+  const clearProgram = useMutation({
+    mutationFn: async () => api(`/dealer-os/dealers/${dealerId}/program-selection`, {
+      method: "DELETE",
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onSuccess: refresh,
+  });
+
+  const beginSelection = (row: { program_key: string; name?: string; status?: string }) => {
+    const target = { key: row.program_key, label: row.name || program(row.program_key), status: row.status || "blocked" };
+    if (target.status === "blocked") {
+      setSelectionTarget(target);
+      return;
+    }
+    selectProgram.mutate({ key: target.key });
+  };
+
   const alreadyRequested = (ruleKey: string) => data.exception_requests.find(
     (item) => item.rule_key === ruleKey && item.status === "pending",
   );
@@ -165,6 +211,44 @@ export default function Step4Resolution({
             <span>{program(recommendation?.recommended_program ?? data.working_program)}</span>
             {recommendation && recommendation.supported_min !== null && recommendation.supported_max !== null && <small>Supported range {money(recommendation.supported_min)}–{money(recommendation.supported_max)}</small>}
           </section>
+        </div>
+
+        <div className="programSelectionControl">
+          <div>
+            <span className="lbl">Effective submission program</span>
+            <b>{program(data.program_selection.effective_program_key)}</b>
+            <small>
+              System result: {program(data.program_selection.system_program_key)} · {data.program_selection.system_program_status || "No direct route"}
+            </small>
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {data.programs.filter((row) => PROGRAM_LABELS[row.program_key]).map((row) => (
+              <button
+                key={row.program_key}
+                type="button"
+                className={`btn${data.program_selection.effective_program_key === row.program_key ? " pri" : ""}`}
+                disabled={selectProgram.isPending || data.program_selection.effective_program_key === row.program_key}
+                onClick={() => beginSelection(row)}
+              >
+                {PROGRAM_LABELS[row.program_key]} · {row.status || "blocked"}
+              </button>
+            ))}
+            {data.program_selection.manually_selected && (
+              <button type="button" className="btn" disabled={clearProgram.isPending} onClick={() => clearProgram.mutate()}>
+                Return to system selection
+              </button>
+            )}
+          </div>
+          {data.program_selection.manually_selected && (
+            <div className="note">
+              <div>
+                <b>Staff-selected submission path.</b> The system result remains {data.program_selection.system_program_status || "unresolved"}; its blockers have not been erased.
+                {data.program_selection.selected_by_name ? ` Selected by ${data.program_selection.selected_by_name}.` : ""}
+                {data.program_selection.note ? ` Note: ${data.program_selection.note}` : ""}
+              </div>
+            </div>
+          )}
+          {(selectProgram.error || clearProgram.error) && <div className="warnline">{(selectProgram.error || clearProgram.error) instanceof Error ? (selectProgram.error || clearProgram.error)?.message : "The program selection could not be changed."}</div>}
         </div>
 
         {recommendation?.status === "pending" && (
@@ -215,6 +299,20 @@ export default function Step4Resolution({
 
         {data.blockers.length === 0 && <div className="note"><div className="row"><CheckCircle2 size={18} /><b>No current routing blockers</b></div></div>}
       </div>
+      {selectionTarget && (
+        <Modal title={`Select ${selectionTarget.label} submission path`} onClose={() => !selectProgram.isPending && setSelectionTarget(null)}>
+          <div className="resolutionCompare">
+            <section className="resolutionSide current"><span className="lbl">System result</span><strong>{program(data.program_selection.system_program_key)}</strong><span>{data.program_selection.system_program_status || "No direct route"}</span></section>
+            <ArrowRight className="resolutionArrow" aria-hidden />
+            <section className="resolutionSide recommended pending"><span className="lbl">Selected submission path</span><strong>{selectionTarget.label}</strong><span>{selectionTarget.status}</span></section>
+          </div>
+          <div className="warnline mt">
+            This unlocks the selected program package for review and signing. It does not mark the program eligible, remove system blockers, or approve an exception.
+          </div>
+          <label style={{ display: "block", marginTop: 12 }}><span className="lbl">Staff note <span className="sub">Optional</span></span><textarea className="field" rows={3} value={selectionNote} onChange={(event) => setSelectionNote(event.target.value)} placeholder="Document the client discussion or submission rationale." /></label>
+          <div className="row mt" style={{ justifyContent: "flex-end" }}><button type="button" className="btn" disabled={selectProgram.isPending} onClick={() => setSelectionTarget(null)}>Cancel</button><button type="button" className="btn pri" disabled={selectProgram.isPending} onClick={() => selectProgram.mutate({ key: selectionTarget.key, note: selectionNote })}>{selectProgram.isPending ? "Applying…" : "Acknowledge and select"}</button></div>
+        </Modal>
+      )}
     </div>
   );
 }

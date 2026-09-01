@@ -22,6 +22,21 @@ export type ContractEnvelope = {
   signer_name: string | null; signer_title: string | null; sent_at: string | null;
   completed_at: string | null; bundle_sha256: string | null; bundle_download_url: string | null;
   delivery_history: Array<{ at?: string; ok?: boolean; detail?: string }>;
+  funding_profile: {
+    original_requested_amount?: number | null;
+    working_funding_goal?: number | null;
+    program_key?: string;
+    system_status?: string | null;
+    annual_sales?: number | null;
+    annual_cash_flow_available_for_debt?: number | null;
+    monthly_debt_payments?: number | null;
+    dscr?: number | null;
+    verified_bank_months?: string[];
+    bank_evidence_target?: number;
+    credit?: Array<{ owner?: string; status?: string; quality?: string }>;
+    debt_count?: number;
+    unresolved_conditions?: string[];
+  };
   documents: EnvelopeDocument[];
 };
 type SendResult = { url: string; passcode: string | null; delivered: boolean; emailed: boolean; detail: string | null };
@@ -39,6 +54,12 @@ function statusLabel(status: MasterApplicationStatus): string {
   if (status === "draft") return "Source fields missing";
   if (status === "void") return "Voided";
   return "Not generated";
+}
+
+function money(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "Unavailable"
+    : Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
 export default function ApplicationSigningPanel({ dealerId, packageReady, blockers = [], routeKey, onStatusChange }: {
@@ -61,7 +82,7 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
   const envelope = envelopes.data?.find((item) => item.status !== "void") ?? envelopes.data?.[0];
   const status = envelope?.status ?? "not_generated";
   const decisionByKey = useMemo(() => new Map((decision.data?.programs ?? []).map((item) => [item.program_key || item.key || "", item])), [decision.data?.programs]);
-  const selectedViable = ["recommended", "potential"].includes(decisionByKey.get(programKey)?.status ?? (routeKey === programKey ? "recommended" : "blocked"));
+  const selectedViable = routeKey === programKey || ["recommended", "potential"].includes(decisionByKey.get(programKey)?.status ?? "blocked");
   useEffect(() => {
     if (envelope && envelope.status !== "void") setProgramKey(envelope.program_key);
     else if (routeKey) setProgramKey(routeKey);
@@ -100,7 +121,7 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
       <div className="contractProgramBar">
         <label className="grow"><span className="lbl">Program</span><select className="field" value={envelope && status !== "void" ? envelope.program_key : programKey} disabled={Boolean(envelope && ["out_for_signature", "executed"].includes(status))} onChange={(event) => setProgramKey(event.target.value)}>
           {PROGRAMS.map((program) => {
-            const viable = ["recommended", "potential"].includes(decisionByKey.get(program.key)?.status ?? (routeKey === program.key ? "recommended" : "blocked"));
+            const viable = routeKey === program.key || ["recommended", "potential"].includes(decisionByKey.get(program.key)?.status ?? "blocked");
             return <option key={program.key} value={program.key} disabled={!viable}>{program.label}{viable ? " · viable" : " · blocked"}</option>;
           })}
         </select></label>
@@ -108,6 +129,21 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
       </div>
       {!selectedViable && !envelope && <div className="warnline mt">This route is blocked by the current screening result. A super admin can document an exception in Step 5, then return the file here for client review and signing.</div>}
       {!packageReady && status !== "executed" && <div className="warnline mt">Complete the route evidence before building the signing package.{blockers.length ? ` Open: ${blockers.slice(0, 3).join("; ")}.` : ""}</div>}
+      {envelope?.funding_profile && Object.keys(envelope.funding_profile).length > 0 && (
+        <div className="packageFundingProfile mt">
+          <div className="row"><b>Funding profile included in this package</b><span className="sp" /><span className={`cellchip ${envelope.funding_profile.system_status === "blocked" ? "c-warn" : "c-ok"}`}>{envelope.funding_profile.system_status || "System route"}</span></div>
+          <div className="packageFundingGrid">
+            <div><span>Original request</span><b>{money(envelope.funding_profile.original_requested_amount)}</b></div>
+            <div><span>Working goal</span><b>{money(envelope.funding_profile.working_funding_goal)}</b></div>
+            <div><span>Annual sales</span><b>{money(envelope.funding_profile.annual_sales)}</b></div>
+            <div><span>Available cash flow</span><b>{money(envelope.funding_profile.annual_cash_flow_available_for_debt)}</b></div>
+            <div><span>Monthly debt service</span><b>{money(envelope.funding_profile.monthly_debt_payments)}</b></div>
+            <div><span>Verified bank coverage</span><b>{envelope.funding_profile.verified_bank_months?.length ?? 0} of {envelope.funding_profile.bank_evidence_target ?? 6} accepted months</b></div>
+          </div>
+          {(envelope.funding_profile.credit ?? []).map((credit, index) => <div className="packageCreditRow" key={`${credit.owner}:${index}`}><span>{credit.owner || "Required owner"}</span><b>{credit.quality || credit.status || "Verification pending"}</b></div>)}
+          {(envelope.funding_profile.unresolved_conditions ?? []).length > 0 && <span className="sub">Conditions retained: {envelope.funding_profile.unresolved_conditions?.slice(0, 4).join("; ")}</span>}
+        </div>
+      )}
       {missing.length > 0 && <div className="warnline mt"><b>{missing.length} source field{missing.length === 1 ? " is" : "s are"} missing.</b> {missing.slice(0, 5).join("; ")}. Open the package to use the Edit source links.</div>}
       {envelope && <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}><button type="button" className="btn pri" onClick={() => setReviewOpen(true)}><FileSignature size={16} /> {status === "executed" ? "View executed package" : "Review package"}</button>{envelope.bundle_download_url && <a className="btn" href={envelope.bundle_download_url} download>Download executed package</a>}</div>}
       {sendResult && <div className="note mt"><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><b>{sendResult.emailed ? "Signature invitation emailed." : "Secure room created; email delivery needs attention."}</b><span className="sp" /><button type="button" className="btn sm" onClick={() => void copy("room", sendResult.url)}><Copy size={14} /> {copied === "room" ? "Link copied" : "Copy secure link"}</button>{sendResult.passcode && <button type="button" className="btn sm num" onClick={() => void copy("pin", sendResult.passcode)}><Copy size={14} /> {copied === "pin" ? "PIN copied" : `PIN ${sendResult.passcode}`}</button>}</div></div>}

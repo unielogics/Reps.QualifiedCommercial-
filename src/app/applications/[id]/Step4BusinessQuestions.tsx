@@ -56,6 +56,7 @@ export default function Step4BusinessQuestions({
       void qc.invalidateQueries({ queryKey: ["application-pre-screen", dealerId] });
       void qc.invalidateQueries({ queryKey: ["underwriting-resolution", dealerId] });
       void qc.invalidateQueries({ queryKey: ["submission-readiness", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
     },
     onSettled: () => setSavingKey(null),
   });

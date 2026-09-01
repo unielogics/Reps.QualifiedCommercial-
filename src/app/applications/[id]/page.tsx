@@ -45,7 +45,7 @@ export default function ApplicationPage() {
   const search = useSearchParams();
   const { getToken } = useAuth();
   const { id: meId, isSuperAdmin } = useMe();
-  const { dealer, decision, verification, unlocked, isLoading, notFound } = useCase(id);
+  const { dealer, decision, verification, workflow, unlocked, isLoading, notFound } = useCase(id);
   const workflowUngated = Boolean(dealer?.workflow_ungated);
 
   const raw = Number(search.get("step") || "1");
@@ -76,35 +76,20 @@ export default function ApplicationPage() {
   // Clamp rather than trust: a hand-typed ?step=9 should land on the sequence,
   // and ?step=4 on a locked file should land on the step that is actually next.
   const step = Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : 1;
-  const intakeReady = Boolean(
-    dealer?.name
-      && dealer?.entity_type
-      && dealer?.funding_goal
-      && dealer?.funding_purpose
-      && dealer?.use_of_proceeds_note?.trim()
-      && dealer?.industry_entry_id
-      && dealer?.subindustry_entry_id
-      && dealer?.activity_entry_id
-      && dealer?.naics_code
-      && verification.ownership_complete
-      && verification.owner_contact_complete
-      && verification.required_credit_owner_count > 0
-      && verification.pre_screen_complete,
-  );
   const packageReady = Boolean(readiness.data?.package_ready);
   const applicationExecuted = Boolean(contractEnvelopes.data?.some(
     (envelope) => envelope.status === "executed",
   ));
   const reviewTimesReady = Boolean(activeUnderwritingReviewPreference(reviewPreferences.data));
-  const effective = workflowUngated
-    ? (step === 5 && !isSuperAdmin ? 4 : step)
-    : step >= 2 && !intakeReady
-      ? 1
-      : step >= 3 && step <= 4 && !unlocked
-        ? 2
-      : step === 5 && !isSuperAdmin
-        ? 4
-        : step;
+  const availableSteps = [1, 2, 3, 4].filter((number) => (
+    number === 1 || workflow[`step_${number}` as "step_1" | "step_2" | "step_3" | "step_4"].available
+  ));
+  const latestAvailable = availableSteps.at(-1) ?? 1;
+  const effective = step === 5
+    ? (isSuperAdmin ? 5 : latestAvailable)
+    : workflowUngated || workflow[`step_${step}` as "step_1" | "step_2" | "step_3" | "step_4"].available
+      ? step
+      : Math.min(step, latestAvailable);
 
   const go = useCallback(
     (n: number) => router.push(`/applications/${id}?step=${n}`, { scroll: false }),
@@ -160,16 +145,13 @@ export default function ApplicationPage() {
       <div className="s3">
         <StepRail
           step={effective}
-          unlocked={unlocked}
-          intakeReady={intakeReady}
+          workflow={workflow}
           reviewTimesReady={reviewTimesReady}
           packageReady={packageReady}
           applicationExecuted={applicationExecuted}
           canOpenStep5={isSuperAdmin}
           workflowUngated={workflowUngated}
-          gateLabel={workflowUngated
-            ? "Ungated by super admin"
-            : unlocked ? "Unlocked by verification" : "Locked until verification returns"}
+          gateLabel={workflowUngated ? "Ungated by super admin" : "Readiness enforced"}
           onGo={go}
         />
 

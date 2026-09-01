@@ -45,6 +45,7 @@ export type Verification = {
 export type Program = {
   key: string;
   label: string;
+  status?: "recommended" | "potential" | "blocked" | string;
   eligible: boolean;
   needs: string[];
   blocked_by: string[];
@@ -62,6 +63,37 @@ export type Decision = {
   ready_for_forms: boolean;
   programs: Program[];
   verification: Verification;
+  workflow: ApplicationWorkflow;
+};
+
+export type ProgramSelection = {
+  system_program_key: string | null;
+  system_program_status: string | null;
+  effective_program_key: string | null;
+  effective_program_status: string | null;
+  manually_selected: boolean;
+  selected_by_user_id: string | null;
+  selected_by_name: string | null;
+  selected_at: string | null;
+  note: string | null;
+  rules_version: string | null;
+  system_blockers?: string[];
+};
+
+export type WorkflowStep = {
+  available: boolean;
+  complete: boolean;
+  blockers: string[];
+  warnings: string[];
+};
+
+export type ApplicationWorkflow = {
+  workflow_ungated: boolean;
+  step_1: WorkflowStep;
+  step_2: WorkflowStep;
+  step_3: WorkflowStep;
+  step_4: WorkflowStep;
+  program_selection: ProgramSelection;
 };
 
 export type Dealer = {
@@ -132,6 +164,28 @@ const NO_VERIFICATION: Verification = {
   preliminary_program_fit: null,
 };
 
+const EMPTY_STEP: WorkflowStep = { available: false, complete: false, blockers: [], warnings: [] };
+const NO_WORKFLOW: ApplicationWorkflow = {
+  workflow_ungated: false,
+  step_1: { ...EMPTY_STEP, available: true },
+  step_2: { ...EMPTY_STEP },
+  step_3: { ...EMPTY_STEP },
+  step_4: { ...EMPTY_STEP },
+  program_selection: {
+    system_program_key: null,
+    system_program_status: null,
+    effective_program_key: null,
+    effective_program_status: null,
+    manually_selected: false,
+    selected_by_user_id: null,
+    selected_by_name: null,
+    selected_at: null,
+    note: null,
+    rules_version: null,
+    system_blockers: [],
+  },
+};
+
 export function useCase(id: string) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const authReady = isLoaded && Boolean(isSignedIn) && Boolean(id);
@@ -162,11 +216,13 @@ export function useCase(id: string) {
   // snapping shut a moment later would show a rep three steps that then
   // vanish, which reads as a bug rather than as a gate.
   const verification = decision.data?.verification ?? NO_VERIFICATION;
+  const workflow = decision.data?.workflow ?? NO_WORKFLOW;
 
   return {
     dealer: dealer.data,
     decision: decision.data,
     verification,
+    workflow,
     unlocked: verification.unlocked,
     isLoading: dealer.isLoading || decision.isLoading,
     isError: dealer.isError,

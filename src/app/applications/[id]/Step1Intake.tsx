@@ -23,6 +23,7 @@ import BusinessAddressFields from "@/components/BusinessAddressFields";
 import ProductFinderTaxonomy, { type ProductFinderTaxonomyValue } from "@/components/ProductFinderTaxonomy";
 import { type ApplicationProfileData } from "@/lib/applicationReadiness";
 import EligibilityCheckpoint, { type PreScreen } from "./EligibilityCheckpoint";
+import ProgramSourceFields, { programSourceFieldsComplete } from "./ProgramSourceFields";
 
 const ENTITY_TYPES = [
   "Limited liability company",
@@ -171,6 +172,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["application-profile", dealerId] });
       void qc.invalidateQueries({ queryKey: ["submission-readiness", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
     },
   });
 
@@ -310,6 +312,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
     val("name").trim()
       && val("entity_type").trim()
       && val("started_on").trim()
+      && validEmail(val("email"))
+      && validPhone(val("phone"))
       && val("address").trim()
       && val("city").trim()
       && val("state").trim()
@@ -323,8 +327,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       && profileVal("mailing_city").trim()
       && profileVal("mailing_state").trim()
       && profileVal("mailing_zip").trim()
-      && profileVal("signer_title").trim()
-      && Number(profileVal("annual_sales")) > 0,
+      && programSourceFieldsComplete(profile.data),
   );
   const rowsSaved = newOwners.length === 0 && Object.keys(ownerEdits).length === 0 && !Object.values(ownerSaveState).includes("saving") && !Object.values(ownerSaveState).includes("invalid");
   const contactComplete = ownershipComplete && !missingRequiredEmail && !missingRequiredPhone && !hasDuplicateEmail && rowsSaved;
@@ -340,6 +343,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       ein: val("ein").trim() || null,
       entity_type: val("entity_type").trim(),
       started_on: val("started_on").trim() || null,
+      email: val("email").trim() || null,
+      phone: val("phone").trim() || null,
       address: val("address").trim() || null,
       city: val("city").trim() || null,
       state: val("state").trim() || null,
@@ -356,8 +361,6 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       mailing_city: profileVal("mailing_city").trim(),
       mailing_state: profileVal("mailing_state").trim(),
       mailing_zip: profileVal("mailing_zip").trim(),
-      annual_sales: Number(profileVal("annual_sales")),
-      signer_title: profileVal("signer_title").trim(),
     });
     const refreshed = await preScreen.refetch();
     if (refreshed.data?.complete) {
@@ -497,6 +500,32 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                 onBlur={() => commit("started_on")}
               />
             </div>
+            <div>
+              <label className="lbl">Application email</label>
+              <input
+                className={`field required-field${validEmail(val("email")) ? "" : " field-invalid"}`}
+                style={{ width: "100%" }}
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={val("email")}
+                onChange={(e) => set("email", e.target.value)}
+                onBlur={() => commit("email")}
+              />
+            </div>
+            <div>
+              <label className="lbl">Application mobile</label>
+              <input
+                className={`field required-field${validPhone(val("phone")) ? "" : " field-invalid"}`}
+                style={{ width: "100%" }}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={val("phone")}
+                onChange={(e) => set("phone", e.target.value)}
+                onBlur={() => commit("phone")}
+              />
+            </div>
           </div>
           <div className="mt">
             <ProductFinderTaxonomy
@@ -535,7 +564,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
 
       <div className={`panel${profileComplete ? "" : " panel-invalid"}`}>
         <div className="panel-h">
-          Application identity and signer
+          Application identity and mailing
           <span style={{ flex: 1 }} />
           {chip(profileComplete)}
         </div>
@@ -562,14 +591,6 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                 <option value="home_based">Home based</option>
                 <option value="other">Other</option>
               </select>
-            </div>
-            <div>
-              <label className="lbl">Annual sales</label>
-              <input className={`field required-field num${Number(profileVal("annual_sales")) > 0 ? "" : " field-invalid"}`} style={{ width: "100%" }} type="number" min="1" inputMode="numeric" value={profileVal("annual_sales")} onChange={(event) => setProfile("annual_sales", event.target.value)} onBlur={() => commitProfile("annual_sales", (value) => Number(value) || null)} />
-            </div>
-            <div>
-              <label className="lbl">Authorized signer title</label>
-              <input className={`field required-field${profileVal("signer_title").trim() ? "" : " field-invalid"}`} style={{ width: "100%" }} placeholder="President, Managing Member, CEO" value={profileVal("signer_title")} onChange={(event) => setProfile("signer_title", event.target.value)} onBlur={() => commitProfile("signer_title")} />
             </div>
           </div>
           <div className="mt">
@@ -603,6 +624,8 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
           </div>
         </div>
       </div>
+
+      <ProgramSourceFields dealerId={dealerId} />
 
       <div className={`panel${contactComplete ? "" : " panel-invalid"}`}>
         <div className="panel-h">
@@ -862,7 +885,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
           !entityComplete
             ? "Complete the red entity, physical address, and NAICS classification fields."
             : !profileComplete
-              ? "Complete the red formation, mailing, annual sales, and signer fields."
+              ? "Complete the formation, mailing, and required program application source fields."
             : !contactComplete
               ? !rowsSaved
                 ? "Save or remove every incomplete owner row."

@@ -1,5 +1,7 @@
 "use client";
 
+import type { ApplicationWorkflow } from "@/lib/useCase";
+
 // The application sequence, and where this file has got to.
 //
 // Five steps with the gate sitting between 2 and 3, which is the whole shape of
@@ -20,9 +22,9 @@ export type Step = { n: number; title: string; blurb: string };
 
 export const STEPS: Step[] = [
   { n: 1, title: "Applicant intake", blurb: "Entity, principals, request" },
-  { n: 2, title: "Verification", blurb: "Bank link · credit authorization" },
-  { n: 3, title: "Financial profile", blurb: "Metrics, credit band, capacity" },
-  { n: 4, title: "Underwriting package", blurb: "Route evidence · calculations" },
+  { n: 2, title: "Verification and underwriting", blurb: "Bank · credit · business questions" },
+  { n: 3, title: "Financial profile", blurb: "Cash flow · debt · review windows" },
+  { n: 4, title: "Routing and execution", blurb: "Program · package · signing" },
   { n: 5, title: "Super-admin desk review", blurb: "Decision · status · closing" },
 ];
 
@@ -31,8 +33,7 @@ export const GATED_FROM = 3;
 
 export default function StepRail({
   step,
-  unlocked,
-  intakeReady,
+  workflow,
   reviewTimesReady,
   applicationExecuted,
   canOpenStep5,
@@ -41,8 +42,7 @@ export default function StepRail({
   onGo,
 }: {
   step: number;
-  unlocked: boolean;
-  intakeReady: boolean;
+  workflow: ApplicationWorkflow;
   reviewTimesReady: boolean;
   packageReady: boolean;
   applicationExecuted: boolean;
@@ -60,8 +60,10 @@ export default function StepRail({
       </div>
       <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {STEPS.map((s) => {
-          const processLocked = (s.n === 2 && !intakeReady)
-            || (s.n >= GATED_FROM && s.n <= 4 && !unlocked);
+          const readiness = s.n <= 4
+            ? workflow[`step_${s.n}` as "step_1" | "step_2" | "step_3" | "step_4"]
+            : null;
+          const processLocked = s.n <= 4 && !readiness?.available;
           const locked = (workflowUngated ? false : processLocked)
             || (s.n === 5 && !canOpenStep5);
           const cur = s.n === step;
@@ -85,13 +87,13 @@ export default function StepRail({
                     style={{
                       flex: 1,
                       height: 1,
-                      background: unlocked ? "var(--ok)" : "var(--line2)",
-                      opacity: unlocked ? 0.45 : 1,
+                      background: workflow.step_2.complete ? "var(--ok)" : "var(--line2)",
+                      opacity: workflow.step_2.complete ? 0.45 : 1,
                     }}
                   />
                   <span
                     className="lbl"
-                    style={{ color: unlocked ? "var(--ok)" : "var(--muted)", whiteSpace: "nowrap" }}
+                    style={{ color: workflow.step_2.complete ? "var(--ok)" : "var(--muted)", whiteSpace: "nowrap" }}
                   >
                     {gateLabel}
                   </span>
@@ -100,8 +102,8 @@ export default function StepRail({
                     style={{
                       flex: 1,
                       height: 1,
-                      background: unlocked ? "var(--ok)" : "var(--line2)",
-                      opacity: unlocked ? 0.45 : 1,
+                      background: workflow.step_2.complete ? "var(--ok)" : "var(--line2)",
+                      opacity: workflow.step_2.complete ? 0.45 : 1,
                     }}
                   />
                 </div>
@@ -125,10 +127,8 @@ export default function StepRail({
                 className={`rung${cur ? " cur" : ""}${done ? " done" : ""}`}
                 disabled={locked}
                 onClick={() => !locked && onGo(s.n)}
-                title={s.n === 2 && !intakeReady && !workflowUngated
-                  ? "Complete all required Step 1 fields"
-                  : s.n >= GATED_FROM && s.n <= 4 && !unlocked && !workflowUngated
-                    ? "Complete bank and credit verification"
+                title={s.n <= 4 && locked && !workflowUngated
+                  ? readiness?.blockers.slice(0, 3).join(" ") || "Complete the prior workflow requirements"
                   : s.n === 5 && !canOpenStep5
                           ? "Step 5 is reserved for the super admin"
                       : locked ? gateLabel : undefined}
