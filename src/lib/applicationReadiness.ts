@@ -76,7 +76,6 @@ export function applicationProfileReady(
       && profile.mailing_zip?.trim()
       && profile.signer_title?.trim()
       && profile.guaranty_type?.trim()
-      && profile.office_space?.trim()
       && profile.business_stage?.trim()
       && profile.existing_mca_balance !== null
       && profile.existing_sba_balance !== null

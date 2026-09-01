@@ -8,7 +8,6 @@ import type { ApplicationProfileData } from "@/lib/applicationReadiness";
 
 type SourceField =
   | "guaranty_type"
-  | "office_space"
   | "business_stage"
   | "signer_title"
   | "existing_mca_balance"
@@ -21,7 +20,6 @@ type Draft = Record<SourceField, string>;
 
 const EMPTY: Draft = {
   guaranty_type: "",
-  office_space: "",
   business_stage: "",
   signer_title: "",
   existing_mca_balance: "",
@@ -34,7 +32,6 @@ const EMPTY: Draft = {
 export function programSourceFieldsComplete(profile: ApplicationProfileData | null | undefined): boolean {
   return Boolean(
     profile?.guaranty_type?.trim()
-      && profile.office_space?.trim()
       && profile.business_stage?.trim()
       && profile.signer_title?.trim()
       && profile.existing_mca_balance !== null
@@ -54,7 +51,6 @@ function draftFromProfile(profile: ApplicationProfileData | null | undefined): D
   if (!profile) return EMPTY;
   return {
     guaranty_type: profile.guaranty_type ?? "",
-    office_space: profile.office_space ?? "",
     business_stage: profile.business_stage ?? "",
     signer_title: profile.signer_title ?? "",
     existing_mca_balance: profile.existing_mca_balance?.toString() ?? "",
@@ -126,7 +122,6 @@ export default function ProgramSourceFields({ dealerId }: { dealerId: string }) 
         </p>
         <div className="step4SourceGrid">
           <label><span className="lbl">Guaranty type</span><select className={`field${draft.guaranty_type ? "" : " field-invalid"}`} value={draft.guaranty_type} onChange={(event) => select("guaranty_type", event.target.value)}><option value="">Select</option><option value="personal">Personal</option><option value="business">Business only</option><option value="limited">Limited</option><option value="none">None</option></select></label>
-          <label><span className="lbl">Office / operating space</span><input className={`field${draft.office_space.trim() ? "" : " field-invalid"}`} value={draft.office_space} placeholder="Owned, leased, home office, or N/A" onChange={(event) => update("office_space", event.target.value)} onBlur={() => commit("office_space")} /></label>
           <label><span className="lbl">Business stage</span><select className={`field${draft.business_stage ? "" : " field-invalid"}`} value={draft.business_stage} onChange={(event) => select("business_stage", event.target.value)}><option value="">Select</option><option value="startup">Startup</option><option value="existing">Existing business</option><option value="acquisition">Acquisition</option></select></label>
           <label><span className="lbl">Authorized signer title</span><input className={`field${draft.signer_title.trim() ? "" : " field-invalid"}`} value={draft.signer_title} placeholder="President, Managing Member, CEO" onChange={(event) => update("signer_title", event.target.value)} onBlur={() => commit("signer_title")} /></label>
           <label><span className="lbl">Outstanding MCA balance</span><input className={`field${draft.existing_mca_balance.trim() ? "" : " field-invalid"}`} type="number" min="0" inputMode="decimal" placeholder="Enter 0 when none" value={draft.existing_mca_balance} onChange={(event) => update("existing_mca_balance", event.target.value)} onBlur={() => commit("existing_mca_balance")} /></label>

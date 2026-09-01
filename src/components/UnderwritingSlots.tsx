@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Check, ChevronRight, Clock3, X } from "lucide-react";
+import { CalendarClock, Check, ChevronRight, Clock3, RefreshCw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
   UnderwritingReviewPreference,
@@ -21,6 +21,11 @@ type Availability = {
 };
 
 type SlotDay = { label: string; slots: UnderwritingReviewSlot[] };
+
+function startKey(value: string): string {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? String(parsed) : value;
+}
 
 function groupSlots(slots: UnderwritingReviewSlot[] | undefined): SlotDay[] {
   const days: SlotDay[] = [];
@@ -48,6 +53,7 @@ export default function UnderwritingSlots({
   const [selected, setSelected] = useState<string[]>([]);
   const [dayIndex, setDayIndex] = useState(0);
   const [seeded, setSeeded] = useState(false);
+  const [availabilityNotice, setAvailabilityNotice] = useState<string | null>(null);
 
   const availability = useQuery({
     queryKey: ["underwriting-review-availability", dealerId],
@@ -56,13 +62,16 @@ export default function UnderwritingSlots({
         `/dealer-os/dealers/${dealerId}/underwriting-review-preferences/availability`,
         { authToken: (await getToken()) ?? undefined },
       ),
+    staleTime: 0,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
   const days = useMemo(() => groupSlots(availability.data?.slots), [availability.data?.slots]);
   const activeDay = days[Math.min(dayIndex, Math.max(days.length - 1, 0))] ?? null;
   const selectedSlots = useMemo(
     () =>
       selected
-        .map((startsAt) => availability.data?.slots.find((slot) => slot.starts_at === startsAt))
+        .map((startsAt) => availability.data?.slots.find((slot) => startKey(slot.starts_at) === startKey(startsAt)))
         .filter((slot): slot is UnderwritingReviewSlot => Boolean(slot)),
     [availability.data?.slots, selected],
   );
@@ -73,13 +82,27 @@ export default function UnderwritingSlots({
 
   useEffect(() => {
     if (seeded || !availability.data) return;
-    const available = new Set(availability.data.slots.map((slot) => slot.starts_at));
+    const available = new Map(
+      availability.data.slots.map((slot) => [startKey(slot.starts_at), slot.starts_at]),
+    );
     const retained = (existing?.slots ?? [])
-      .map((slot) => slot.starts_at)
-      .filter((startsAt) => available.has(startsAt));
+      .map((slot) => available.get(startKey(slot.starts_at)))
+      .filter((startsAt): startsAt is string => Boolean(startsAt));
     setSelected(retained.slice(0, 3));
     setSeeded(true);
   }, [availability.data, existing?.slots, seeded]);
+
+  useEffect(() => {
+    if (!seeded || !availability.data || selected.length === 0) return;
+    const available = new Set(availability.data.slots.map((slot) => startKey(slot.starts_at)));
+    const retained = selected.filter((startsAt) => available.has(startKey(startsAt)));
+    if (retained.length === selected.length) return;
+    const removed = selected.length - retained.length;
+    setSelected(retained);
+    setAvailabilityNotice(
+      `${removed} selected window${removed === 1 ? " was" : "s were"} removed because the shared calendar changed.`,
+    );
+  }, [availability.data, seeded, selected]);
 
   const submit = useMutation({
     mutationFn: async () =>
@@ -106,6 +129,12 @@ export default function UnderwritingSlots({
       );
       onComplete(preference);
     },
+    onError: (error) => {
+      if (error instanceof Error && /no longer available|current openings/i.test(error.message)) {
+        setAvailabilityNotice("The shared calendar changed while you were choosing. Current openings are being refreshed.");
+        void availability.refetch();
+      }
+    },
   });
 
   const toggle = (startsAt: string) => {
@@ -126,6 +155,19 @@ export default function UnderwritingSlots({
             <h2 id="review-window-title">Choose three client review windows</h2>
             <p>Use real openings on the shared team calendar. The desk will confirm one time with the client.</p>
           </div>
+          <button
+            type="button"
+            className="iconAction"
+            onClick={() => {
+              setAvailabilityNotice(null);
+              void availability.refetch();
+            }}
+            disabled={availability.isFetching}
+            aria-label="Refresh shared-calendar openings"
+            title="Refresh shared-calendar openings"
+          >
+            <RefreshCw size={18} className={availability.isFetching ? "systemStatusSpin" : undefined} />
+          </button>
           <button type="button" className="iconAction" onClick={onClose} aria-label="Close review-window checkpoint"><X size={18} /></button>
         </header>
 
@@ -165,6 +207,7 @@ export default function UnderwritingSlots({
           {availability.isError && <div className="reviewWindowState error">{availability.error instanceof Error ? availability.error.message : "Calendar availability could not be loaded."}</div>}
           {!availability.isLoading && availability.data?.calendar_sync_status !== "connected" && <div className="reviewWindowState error">The shared calendar must be connected before review windows can be selected.</div>}
           {!availability.isLoading && availability.data?.calendar_sync_status === "connected" && days.length === 0 && <div className="reviewWindowState">No open weekday windows remain in the next 48 hours after skipping the weekend. Adjust the shared calendar availability and retry.</div>}
+          {availabilityNotice && <div className="reviewWindowState" role="status">{availabilityNotice}</div>}
 
           {days.length > 0 && (
             <section className="reviewWindowCalendar">

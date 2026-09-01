@@ -1440,7 +1440,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .reviewWindowHead > div { min-width: 0; }
 .reviewWindowHead h2 { margin: 3px 0 4px; font: 760 clamp(21px, 2vw, 28px)/1.08 var(--fh); letter-spacing: 0; }
 .reviewWindowHead p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
-.reviewWindowHead .iconAction { margin-left: auto; flex: 0 0 auto; }
+.reviewWindowHead .iconAction { flex: 0 0 auto; }
+.reviewWindowHead > div + .iconAction { margin-left: auto; }
+.reviewWindowHead .iconAction + .iconAction { margin-left: 0; }
 .reviewWindowIcon { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: var(--accent); color: #fff; }
 .reviewWindowBody { display: grid; gap: 16px; padding: 18px 20px; }
 .reviewWindowPolicy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid rgba(27, 75, 158, .2); border-radius: 8px; background: var(--accent-100); color: var(--ink2); }

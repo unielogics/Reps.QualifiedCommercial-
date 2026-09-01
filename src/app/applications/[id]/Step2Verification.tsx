@@ -517,10 +517,15 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const missingStatementMonths =
     evidenceData?.missing_statement_months ?? verification.missing_statement_months;
   const bankLinked = evidenceData?.bank_linked ?? verification.bank_linked;
-  const bankExceptionAvailable =
-    evidenceData?.bank_exception_available ?? verification.bank_exception_available;
-  const bankExceptionActive =
-    evidenceData?.bank_exception_active ?? verification.bank_exception_active;
+  const belowStandardCoverage = statementMonths.length >= 3 && statementMonths.length < 6;
+  const bankExceptionAvailable = Boolean(
+    belowStandardCoverage
+      && (evidenceData?.bank_exception_available ?? verification.bank_exception_available),
+  );
+  const bankExceptionActive = Boolean(
+    statementMonths.length < 6
+      && (evidenceData?.bank_exception_active ?? verification.bank_exception_active),
+  );
   const canAcknowledgeBankException = Boolean(
     bankExceptionAvailable &&
       !bankExceptionActive &&

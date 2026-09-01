@@ -125,10 +125,10 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
             return <option key={program.key} value={program.key} disabled={!viable}>{program.label}{viable ? " · viable" : " · blocked"}</option>;
           })}
         </select></label>
-        {(!envelope || ["draft", "ready"].includes(status)) && <button type="button" className="btn pri" disabled={!packageReady || generate.isPending || !selectedViable} onClick={() => generate.mutate()}>{envelope ? <RefreshCw size={16} /> : <FileSignature size={16} />}{generate.isPending ? "Building package..." : envelope ? "Refresh from application" : "Generate package"}</button>}
+        {(!envelope || ["draft", "ready"].includes(status)) && <button type="button" className="btn pri" disabled={generate.isPending || !selectedViable} onClick={() => generate.mutate()}>{envelope ? <RefreshCw size={16} /> : <FileSignature size={16} />}{generate.isPending ? "Building package..." : envelope ? "Refresh from application" : "Generate package"}</button>}
       </div>
-      {!selectedViable && !envelope && <div className="warnline mt">This route is blocked by the current screening result. A super admin can document an exception in Step 5, then return the file here for client review and signing.</div>}
-      {!packageReady && status !== "executed" && <div className="warnline mt">Complete the route evidence before building the signing package.{blockers.length ? ` Open: ${blockers.slice(0, 3).join("; ")}.` : ""}</div>}
+      {!selectedViable && !envelope && <div className="warnline mt">Select an effective EZ Term or MicroCap submission path in the resolution panel before building its forms. System blockers remain visible after a manual selection.</div>}
+      {!packageReady && status !== "executed" && <div className="warnline mt">You may build and review a populated draft now. Live delivery remains controlled by required source fields and an accepted bank-evidence standard or exception.{blockers.length ? ` Open: ${blockers.slice(0, 3).join("; ")}.` : ""}</div>}
       {envelope?.funding_profile && Object.keys(envelope.funding_profile).length > 0 && (
         <div className="packageFundingProfile mt">
           <div className="row"><b>Funding profile included in this package</b><span className="sp" /><span className={`cellchip ${envelope.funding_profile.system_status === "blocked" ? "c-warn" : "c-ok"}`}>{envelope.funding_profile.system_status || "System route"}</span></div>
