@@ -644,7 +644,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
             ) : (
               <span className="sub">
                 {roomLink
-                  ? "The PIN chosen when this application was opened is active. It is stored only as a secure hash and does not expire."
+                  ? "The PIN chosen when this application was opened is active and does not expire. Authorized staff can view it from the agreement workspace."
                   : "This legacy file has no client room yet. Generate a new PIN to create one."}
               </span>
             )}
@@ -675,7 +675,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
           {accessCode && (
             <span className="sub" style={{ display: "block", marginTop: 8 }}>
               Read it to the client now. It remains valid until another replacement is generated
-              and is not shown again after you leave this screen.
+              and can be viewed later from the agreement workspace.
             </span>
           )}
           {rotateCode.isError && (
@@ -1369,7 +1369,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         <Modal title="Generate a new client-room PIN?" onClose={() => !rotateCode.isPending && setReplacePinOpen(false)}>
           <p style={{ marginTop: 0 }}>
             The current PIN will stop working immediately. The replacement will be six digits,
-            will not expire, and will be displayed only once.
+            will not expire, and remains available to authorized staff.
           </p>
           <div className="row mt" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn" disabled={rotateCode.isPending} onClick={() => setReplacePinOpen(false)}>Keep current PIN</button>

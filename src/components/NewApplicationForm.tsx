@@ -534,7 +534,7 @@ export default function NewApplicationForm({
                 <span className="validation-hint">Enter the same six digits in both fields.</span>
               )}
               <span className="sub" style={{ display: "block", marginTop: 8 }}>
-                The PIN is stored only as a secure hash and cannot be displayed again. Use Generate new only when replacing it.
+                Authentication uses a secure hash. An encrypted copy lets authorized staff view the current PIN when assisting the client.
               </span>
             </div>
           </div>

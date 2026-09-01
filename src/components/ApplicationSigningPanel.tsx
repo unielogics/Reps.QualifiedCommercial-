@@ -44,6 +44,7 @@ export type ContractEnvelope = {
   documents: EnvelopeDocument[];
 };
 type SendResult = { url: string; passcode: string | null; delivered: boolean; emailed: boolean; detail: string | null };
+export type RoomAccessResult = { url: string; passcode: string | null };
 type DecisionProgram = {
   program_key?: string;
   key?: string;
@@ -115,6 +116,14 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
     refetchInterval: reviewOpen ? false : 15_000,
   });
   const decision = useQuery({ queryKey: ["decision", dealerId], queryFn: () => authenticated<Decision>(`/dealer-os/dealers/${dealerId}/decision`) });
+  const roomAccess = useQuery({
+    queryKey: ["client-room-access", dealerId],
+    queryFn: () => authenticated<RoomAccessResult>(`/dealer-os/dealers/${dealerId}/room/access-code`),
+    enabled: reviewOpen,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+  });
   const envelope = envelopes.data?.find((item) => item.status !== "void") ?? envelopes.data?.[0];
   const status = envelope?.status ?? "not_generated";
   const immutable = Boolean(envelope && ["out_for_signature", "executed"].includes(status));
@@ -191,6 +200,13 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
       void qc.invalidateQueries({ queryKey: ["contract-envelopes", dealerId] });
     },
   });
+  const createRoomPin = useMutation({
+    mutationFn: () => authenticated<RoomAccessResult>(`/dealer-os/dealers/${dealerId}/room/access-code`, { method: "POST" }),
+    onSuccess: (result) => {
+      qc.setQueryData(["client-room-access", dealerId], result);
+      setSendResult((current) => current ? { ...current, url: result.url, passcode: result.passcode } : current);
+    },
+  });
   const refreshReview = async () => {
     if (!reviewEnvelope) return;
     setReviewRefreshing(true);
@@ -210,6 +226,7 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
   const closeReview = () => {
     setReviewOpen(false);
     setReviewEnvelope(null);
+    qc.removeQueries({ queryKey: ["client-room-access", dealerId] });
     void envelopes.refetch();
   };
   const copy = async (key: string, value: string | null | undefined) => {
@@ -330,7 +347,7 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
       {status === "executed" && <div className="note mt"><div className="row" style={{ gap: 8 }}><CheckCircle2 size={18} /><b>Package executed</b></div><div className="sub mt">Every configured document has its own visible signature, certificate, and hash.</div></div>}
       {error && <div className="warnline mt">{error instanceof Error ? error.message : "The package action did not complete."}</div>}
     </div>
-    {reviewOpen && reviewEnvelope && <AgreementReviewWorkspace envelope={reviewEnvelope} sendResult={sendResult} sendPending={send.isPending} refreshPending={reviewRefreshing} copied={copied} onSend={() => send.mutate()} onRefresh={() => void refreshReview()} onCopy={(key, value) => void copy(key, value)} onClose={closeReview} />}
+    {reviewOpen && reviewEnvelope && <AgreementReviewWorkspace envelope={reviewEnvelope} roomAccess={roomAccess.data ?? null} roomAccessPending={roomAccess.isPending} roomAccessError={roomAccess.isError ? (roomAccess.error instanceof Error ? roomAccess.error.message : "The current PIN could not be loaded.") : null} createPinPending={createRoomPin.isPending} createPinError={createRoomPin.isError ? (createRoomPin.error instanceof Error ? createRoomPin.error.message : "A new PIN could not be created.") : null} sendResult={sendResult} sendPending={send.isPending} refreshPending={reviewRefreshing} copied={copied} onSend={() => send.mutate()} onCreatePin={async () => { await createRoomPin.mutateAsync(); }} onRefresh={() => void refreshReview()} onCopy={(key, value) => void copy(key, value)} onClose={closeReview} />}
     {overrideTarget && targetProgram && <Drawer title={`Override ${targetProgram.label} package gate?`} width={580} dismissOnBackdrop={false} onClose={() => setOverrideTarget(null)}>
       <div className="contractOverrideConfirm">
         <div className="contractOverrideIcon"><ShieldAlert size={25} /></div>

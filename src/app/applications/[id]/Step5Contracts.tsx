@@ -542,7 +542,7 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
             <div className="panel-h"><FolderLock size={17} /> Secure bucket and information requests</div>
             <div className="panel-b">
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <div><b>{dealer?.bucket_name || "Secure client room"}</b><div className="sub">The initial PIN remains active without expiring. Generate new replaces it immediately and displays the replacement once.</div></div>
+                <div><b>{dealer?.bucket_name || "Secure client room"}</b><div className="sub">The current PIN remains active without expiring. Generate new replaces it immediately; authorized staff can view it from the agreement workspace.</div></div>
                 <span className="sp" />
                 {dealer?.bucket_id && <button type="button" className="btn" onClick={() => window.open(`https://app.qualifiedcommercial.com/admin/buckets?bucket=${dealer.bucket_id}`, "_blank", "noopener,noreferrer")}><ExternalLink size={16} /> Open bucket</button>}
                 <button type="button" className="btn pri" disabled={rotateRoom.isPending} onClick={() => rotateRoom.mutate()}><RefreshCw size={16} /> {rotateRoom.isPending ? "Generating…" : "Generate new PIN"}</button>

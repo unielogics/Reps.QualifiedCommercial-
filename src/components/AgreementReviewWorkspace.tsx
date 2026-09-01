@@ -7,15 +7,19 @@ import {
   ChevronRight,
   Copy,
   Download,
+  Eye,
+  EyeOff,
   ExternalLink,
   FileCheck2,
   FileSignature,
   Mail,
+  KeyRound,
   RefreshCw,
   TriangleAlert,
 } from "lucide-react";
-import type { ContractEnvelope, EnvelopeDocument } from "./ApplicationSigningPanel";
+import type { ContractEnvelope, EnvelopeDocument, RoomAccessResult } from "./ApplicationSigningPanel";
 import Drawer from "./Drawer";
+import Modal from "./Modal";
 
 type SendResult = {
   url: string;
@@ -44,26 +48,40 @@ function money(value: number | null | undefined): string {
 
 export default function AgreementReviewWorkspace({
   envelope,
+  roomAccess,
+  roomAccessPending,
+  roomAccessError,
+  createPinPending,
+  createPinError,
   sendResult,
   sendPending,
   refreshPending,
   copied,
   onSend,
+  onCreatePin,
   onRefresh,
   onCopy,
   onClose,
 }: {
   envelope: ContractEnvelope;
+  roomAccess: RoomAccessResult | null;
+  roomAccessPending: boolean;
+  roomAccessError: string | null;
+  createPinPending: boolean;
+  createPinError: string | null;
   sendResult: SendResult | null;
   sendPending: boolean;
   refreshPending: boolean;
   copied: string | null;
   onSend: () => void;
+  onCreatePin: () => Promise<void>;
   onRefresh: () => void;
   onCopy: (key: string, value: string | null | undefined) => void;
   onClose: () => void;
 }) {
   const [activeId, setActiveId] = useState(envelope.documents[0]?.id ?? "");
+  const [pinVisible, setPinVisible] = useState(true);
+  const [replacePinOpen, setReplacePinOpen] = useState(false);
   useEffect(() => {
     if (!envelope.documents.some((document) => document.id === activeId)) {
       setActiveId(envelope.documents[0]?.id ?? "");
@@ -85,7 +103,18 @@ export default function AgreementReviewWorkspace({
     setActiveId(envelope.documents[next].id);
   };
 
+  const replacePin = async () => {
+    try {
+      await onCreatePin();
+      setPinVisible(true);
+      setReplacePinOpen(false);
+    } catch {
+      // The mutation error stays in the confirmation dialog for a retry.
+    }
+  };
+
   return (
+    <>
     <Drawer
       title={`${envelope.title} · v${envelope.package_version}`}
       onClose={onClose}
@@ -195,6 +224,14 @@ export default function AgreementReviewWorkspace({
 
         <footer className="agreementReviewFooter">
           <div className="agreementReviewHash"><FileCheck2 size={17} /><span><b>Document integrity</b><small>{active?.filled_sha256 ? `SHA-256 ${active.filled_sha256.slice(0, 24)}...` : "Hash recorded when generated."}</small></span></div>
+          <div className="agreementRoomPin" aria-label="Client room PIN">
+            <KeyRound size={17} />
+            <span><small>Client room PIN</small><b className="num">{roomAccessPending ? "Loading..." : roomAccess?.passcode ? (pinVisible ? roomAccess.passcode : "••••••") : "Unavailable"}</b></span>
+            {roomAccess?.passcode && <button type="button" className="iconBtn" onClick={() => setPinVisible((current) => !current)} title={pinVisible ? "Hide PIN" : "Show PIN"} aria-label={pinVisible ? "Hide PIN" : "Show PIN"}>{pinVisible ? <EyeOff size={16} /> : <Eye size={16} />}</button>}
+            {roomAccess?.passcode && <button type="button" className="iconBtn" onClick={() => onCopy("room-pin", roomAccess.passcode)} title={copied === "room-pin" ? "PIN copied" : "Copy PIN"} aria-label={copied === "room-pin" ? "PIN copied" : "Copy PIN"}>{copied === "room-pin" ? <CheckCircle2 size={16} /> : <Copy size={16} />}</button>}
+            {roomAccessError && <span className="agreementPinError" title={roomAccessError}>Needs attention</span>}
+            <button type="button" className="btn sm" disabled={createPinPending} onClick={() => setReplacePinOpen(true)}><RefreshCw size={15} /> Create new PIN</button>
+          </div>
           {sendResult ? (
             <div className="agreementDeliveryState">
               <div><b>{sendResult.emailed ? "Signature invitation emailed" : "Secure room created"}</b><small>{sendResult.detail || "Use the backup link and PIN only if needed."}</small></div>
@@ -205,5 +242,16 @@ export default function AgreementReviewWorkspace({
         </footer>
       </div>
     </Drawer>
+    {replacePinOpen && (
+      <Modal title="Create a new client-room PIN?" width={520} onClose={() => !createPinPending && setReplacePinOpen(false)}>
+        <p style={{ marginTop: 0 }}>The current PIN will stop working immediately. The new six-digit PIN will remain valid until it is replaced again.</p>
+        {createPinError && <div className="warnline mt">{createPinError}</div>}
+        <div className="row mt" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <button type="button" className="btn" disabled={createPinPending} onClick={() => setReplacePinOpen(false)}>Keep current PIN</button>
+          <button type="button" className="btn pri" disabled={createPinPending} onClick={() => void replacePin()}>{createPinPending ? "Creating..." : "Yes, create new PIN"}</button>
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }
