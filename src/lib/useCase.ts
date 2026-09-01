@@ -210,6 +210,8 @@ export function useCase(id: string) {
     queryKey: ["decision", id],
     enabled: authReady,
     queryFn: () => authenticatedGet<Decision>(`/dealer-os/dealers/${id}/decision`),
+    refetchOnWindowFocus: "always",
+    refetchInterval: 30_000,
   });
 
   // Default to locked while loading. Drawing the unlocked shape first and

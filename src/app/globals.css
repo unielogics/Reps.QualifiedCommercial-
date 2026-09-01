@@ -305,8 +305,24 @@ a { color: var(--accent); }
   border-radius: var(--r); background: var(--surface); box-shadow: var(--sh1);
 }
 .step-actions.invalid { border-color: rgba(180, 35, 24, 0.35); }
-.step-actions .step-message { color: var(--muted); font-size: 12px; line-height: 1.45; flex: 1; min-width: 220px; }
+.step-action-copy { display: grid; gap: 8px; flex: 1; min-width: 220px; }
+.step-actions .step-message { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .step-actions.invalid .step-message { color: var(--danger); }
+.guided-issues { display: grid; gap: 6px; }
+.guided-issues button, .req.req-action {
+  width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--surface); color: var(--ink2); font: inherit; text-align: left;
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+}
+.guided-issues button { padding: 8px 10px; font-size: 12px; }
+.guided-issues button span, .req.req-action .req-copy { flex: 1; min-width: 0; }
+.guided-issues button:hover, .guided-issues button:focus-visible,
+.req.req-action:hover, .req.req-action:focus-visible { border-color: var(--accent-400); background: var(--accent-100); outline: none; }
+.req.req-action { padding: 8px; }
+.req.req-action .req-copy { display: grid; gap: 2px; }
+.req.req-action small { color: var(--muted); font-size: 10.5px; line-height: 1.35; }
+.guided-target { scroll-margin-top: 92px; }
+.guided-target:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 3px; }
 .requirement-row { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .requirement-row.invalid { border-color: rgba(180, 35, 24, 0.48); background: var(--danger-tint); }
 

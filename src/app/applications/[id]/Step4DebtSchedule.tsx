@@ -169,7 +169,7 @@ export default function Step4DebtSchedule({ dealerId }: { dealerId: string }) {
   );
 
   return (
-    <div className="panel">
+    <div id="debt-schedule" className="panel guided-target" tabIndex={-1}>
       <div className="panel-h">
         Debt schedule
         <span className="sp" />

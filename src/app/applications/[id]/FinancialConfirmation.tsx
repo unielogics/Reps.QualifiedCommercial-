@@ -78,7 +78,7 @@ export default function FinancialConfirmation({ dealerId }: { dealerId: string }
   };
 
   return (
-    <div className="panel">
+    <div id="financial-confirmation" className="panel guided-target" tabIndex={-1}>
       <div className="panel-h">Cash flow and financial confirmation</div>
       <div className="panel-b">
         <p className="sub" style={{ marginTop: 0, lineHeight: 1.55 }}>

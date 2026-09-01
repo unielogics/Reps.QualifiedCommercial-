@@ -105,6 +105,18 @@ export default function ApplicationPage() {
     });
   }, [dealer?.name, effective, id, meId]);
 
+  useEffect(() => {
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    if (!targetId) return;
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.focus({ preventScroll: true });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [effective]);
+
   if (notFound) {
     return (
       <div className="card">

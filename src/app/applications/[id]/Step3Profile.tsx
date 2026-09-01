@@ -18,7 +18,7 @@ import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import {
@@ -302,7 +302,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
   const { getToken } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
-  const { decision, workflow } = useCase(dealerId);
+  const { decision, workflow, verification } = useCase(dealerId);
   const { uploads } = useUploadManager();
   const [reviewWindowsOpen, setReviewWindowsOpen] = useState(false);
 
@@ -312,6 +312,8 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
       api<RawPeriod[]>(`/dealer-os/dealers/${dealerId}/periods`, {
         authToken: (await getToken()) ?? undefined,
       }),
+    refetchOnWindowFocus: "always",
+    refetchInterval: 30_000,
   });
 
   const health = useQuery({
@@ -320,6 +322,8 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
       api<Health>(`/dealer-os/dealers/${dealerId}/health`, {
         authToken: (await getToken()) ?? undefined,
       }),
+    refetchOnWindowFocus: "always",
+    refetchInterval: 30_000,
   });
 
   const coverage = useQuery({
@@ -328,6 +332,8 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
       api<Coverage>(`/dealer-os/dealers/${dealerId}/documents/coverage`, {
         authToken: (await getToken()) ?? undefined,
       }),
+    refetchOnWindowFocus: "always",
+    refetchInterval: 30_000,
   });
   const reviewPreferences = useQuery({
     queryKey: ["underwriting-review-preferences", dealerId],
@@ -342,35 +348,76 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
     (item) => item.dealerId === dealerId && ["queued", "uploading", "extracting"].includes(item.status),
   );
 
+  const focusSection = (id: string) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.focus({ preventScroll: true });
+  };
+  const openBankEvidence = () => router.push(`/applications/${dealerId}?step=2#bank-evidence`);
+  const openDocuments = () => router.push(`/applications/${dealerId}/documents`);
+  const guidedStepIssues = workflow.step_3.blockers.map((blocker) => ({
+    label: blocker,
+    onSelect: /review windows/i.test(blocker)
+      ? () => setReviewWindowsOpen(true)
+      : /debt schedule|business debt/i.test(blocker)
+        ? () => focusSection("debt-schedule")
+        : () => focusSection("financial-confirmation"),
+  }));
+
   const m = health.data?.snapshot?.metrics ?? {};
   // Business-level rows only, newest six, oldest first so the chart reads left
   // to right the way a person would.
   const rows = combinedBusinessPeriods((periods.data ?? []).map(normalizePeriod)).slice(-6);
-  const statementCount = coverage.data?.statement_months.length ?? rows.length;
+  const statementMonths = [...new Set([
+    ...verification.statement_months,
+    ...(coverage.data?.statement_months ?? []),
+  ])].sort();
+  const statementCount = statementMonths.length || rows.length;
+  const standardStatementTarget = coverage.data?.statement_target ?? 6;
+  const bankExceptionActive = Boolean(
+    verification.bank_exception_active && statementCount < standardStatementTarget,
+  );
+  const acceptedStatementTarget = bankExceptionActive
+    ? verification.statement_target
+    : standardStatementTarget;
+  const bankEvidenceAccepted = statementCount >= standardStatementTarget || (
+    bankExceptionActive && statementCount >= acceptedStatementTarget
+  );
   const profileState = activeUploads.length
     ? "Processing statements"
     : periods.isError || health.isError
       ? "Evidence needs attention"
-      : statementCount >= 6
-        ? "Six months verified"
-        : statementCount > 0
-          ? `${statementCount} of 6 months`
-          : "Awaiting evidence";
+      : statementCount >= standardStatementTarget
+        ? `${standardStatementTarget} months verified`
+        : bankExceptionActive && bankEvidenceAccepted
+          ? `${statementCount} months accepted · exception`
+          : statementCount > 0
+            ? `${statementCount} of ${standardStatementTarget} months`
+            : "Awaiting evidence";
 
   const dscr = metricNumber(m.dscr, ["current", "coverage", "value"]);
   const adb = metricNumber(m.adb, ["current", "average", "value"]);
   const nsf = rows.reduce((a, r) => a + (r.nsf_count ?? 0), 0);
 
-  const flags: Array<{ ok: boolean; text: string }> = [
-    ...(decision?.balance_reasons ?? []).map((r) => ({ ok: false, text: r })),
+  const flags: Array<{ ok: boolean; text: string; onSelect: () => void }> = [
+    ...(decision?.balance_reasons ?? []).map((r) => ({ ok: false, text: r, onSelect: () => focusSection("monthly-balance-trend") })),
     ...(nsf > 0
-      ? [{ ok: false, text: `${nsf} returned item${nsf === 1 ? "" : "s"} in the observed months` }]
-      : [{ ok: true, text: "No returned items in the observed months" }]),
+      ? [{ ok: false, text: `${nsf} returned item${nsf === 1 ? "" : "s"} in the observed months`, onSelect: () => focusSection("monthly-balance-trend") }]
+      : [{ ok: true, text: "No returned items in the observed months", onSelect: () => focusSection("monthly-balance-trend") }]),
     ...(decision?.balance_passed === true
-      ? [{ ok: true, text: "Ending balances holding or growing" }]
+      ? [{ ok: true, text: "Ending balances holding or growing", onSelect: () => focusSection("monthly-balance-trend") }]
       : []),
   ];
   const openFlags = flags.filter((f) => !f.ok).length;
+  const bankChecklistLabel = bankExceptionActive && bankEvidenceAccepted
+    ? `${statementCount} current bank months accepted by exception`
+    : `${standardStatementTarget} current months from Plaid Assets or bank-produced PDF statements`;
+  const bankChecklistDetail = bankExceptionActive && bankEvidenceAccepted
+    ? `${standardStatementTarget}-month standard remains open. Accepted target: ${acceptedStatementTarget} months.`
+    : verification.missing_statement_months.length
+      ? `Missing ${verification.missing_statement_months.join(", ")}`
+      : "Open bank evidence to connect another account, refresh Plaid, or upload statements.";
 
   return (
     <>
@@ -378,7 +425,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         <div className="panel-h">
           Verified financial profile
           <span style={{ flex: 1 }} />
-          <span className={`cellchip ${statementCount >= 6 && !activeUploads.length ? "c-ok" : periods.isError || health.isError ? "c-bad" : "c-warn"}`}>{profileState}</span>
+          <span className={`cellchip ${bankEvidenceAccepted && !bankExceptionActive && !activeUploads.length ? "c-ok" : periods.isError || health.isError ? "c-bad" : "c-warn"}`}>{profileState}</span>
         </div>
         <div className="panel-b">
           <div className="kpis">
@@ -414,7 +461,7 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className="panel">
+      <div id="monthly-balance-trend" className="panel guided-target" tabIndex={-1}>
         <div className="panel-h">
           Monthly balance trend · up to six months
           <span style={{ flex: 1 }} />
@@ -567,10 +614,11 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
             </div>
             <div className="panel-b">
               {flags.map((f, i) => (
-                <div className="req" key={i}>
+                <button type="button" className="req req-action" key={i} onClick={f.onSelect}>
                   <span className={`ic ${f.ok ? "ok" : "no"}`}>{f.ok ? "✓" : "!"}</span>
-                  {f.text}
-                </div>
+                  <span className="req-copy">{f.text}</span>
+                  <ChevronRight size={16} aria-hidden />
+                </button>
               ))}
               {flags.length === 0 && <span className="sub">Nothing flagged yet.</span>}
             </div>
@@ -583,19 +631,22 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
               <span style={{ flex: 1 }} />
               {coverage.data && (
                 <span className="sub num">
-                  {coverage.data.statement_months.length} of {coverage.data.statement_target} verified months
+                  {bankExceptionActive && bankEvidenceAccepted
+                    ? `${statementCount} accepted · ${standardStatementTarget} standard`
+                    : `${statementCount} of ${standardStatementTarget} verified months`}
                 </span>
               )}
             </div>
             <div className="panel-b">
               {coverage.data && [
-                { label: "Six current months from Plaid Assets or bank-produced PDF statements", met: coverage.data.statement_months.length >= 6 },
-                { label: "Current-year profit and loss statement", met: coverage.data.has_pl },
+                { label: bankChecklistLabel, detail: bankChecklistDetail, met: bankEvidenceAccepted, onSelect: openBankEvidence },
+                { label: "Current-year profit and loss statement", detail: coverage.data.has_pl ? "Verified document on file." : "Open Documents to upload or review the current-year P&L.", met: coverage.data.has_pl, onSelect: openDocuments },
               ].map((item) => (
-                <div className="req" key={item.label}>
+                <button type="button" className="req req-action" key={item.label} onClick={item.onSelect}>
                   <span className={`ic ${item.met ? "ok" : "no"}`}>{item.met ? "✓" : "!"}</span>
-                  {item.label}
-                </div>
+                  <span className="req-copy"><span>{item.label}</span><small>{item.detail}</small></span>
+                  <ChevronRight size={16} aria-hidden />
+                </button>
               ))}
               {!coverage.data && (
                 <span className="sub">
@@ -624,6 +675,8 @@ export default function Step3Profile({ dealerId }: { dealerId: string }) {
           ? "The financial profile, debt schedule, and client review windows are ready."
           : workflow.step_3.blockers[0] || "Complete the financial profile before Step 4."}
         buttonLabel={activeReviewPreference ? "Continue to Step 4" : "Choose three review windows"}
+        actionEnabled={!activeReviewPreference}
+        issues={guidedStepIssues}
         onContinue={() => activeReviewPreference
           ? router.push(`/applications/${dealerId}?step=4`)
           : setReviewWindowsOpen(true)}

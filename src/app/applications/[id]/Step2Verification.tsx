@@ -681,7 +681,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className={`panel${bankLinked ? "" : " panel-invalid"}`}>
+      <div id="bank-evidence" className={`panel guided-target${bankLinked ? "" : " panel-invalid"}`} tabIndex={-1}>
         <div className="panel-h">
           <IconTile tone={bankLinked ? "ok" : "warn"}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
