@@ -23,12 +23,14 @@ export function ConversationBubbles({
   emptyLabel = "No messages in this conversation yet.",
   /** Who the other side is, when the message itself does not name them. */
   counterpartName,
+  onRetry,
 }: {
   messages: UnifiedCommunicationMessage[];
   isLoading?: boolean;
   isError?: boolean;
   emptyLabel?: string;
   counterpartName?: string | null;
+  onRetry?: (message: UnifiedCommunicationMessage) => void;
 }) {
   const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -62,6 +64,10 @@ export function ConversationBubbles({
                 <time dateTime={message.created_at}>{clock(message.created_at)}</time>
                 {mine && message.delivery_status ? (
                   <span className={`rc-st ${message.delivery_status}`}>{message.delivery_status}</span>
+                ) : null}
+                {mine && message.delivery_detail ? <span className="rc-delivery-detail">{message.delivery_detail}</span> : null}
+                {mine && onRetry && ["failed", "blocked", "undelivered"].includes(message.delivery_status || "") ? (
+                  <button type="button" className="linky" onClick={() => onRetry(message)}>Retry</button>
                 ) : null}
               </span>
             </div>

@@ -9,9 +9,10 @@
 // route, its own ground, and a composer that names the recipient.
 
 import { useParams } from "next/navigation";
+import { CheckCircle2, Mail, MessageSquareText, Phone } from "lucide-react";
 import { useMe } from "@/lib/useMe";
 import { useCase } from "@/lib/useCase";
-import Conversation from "@/components/Conversation";
+import CaseMessagingWorkspace from "@/components/CaseMessagingWorkspace";
 import RequestPanel from "@/components/RequestPanel";
 
 type Consent = {
@@ -45,47 +46,32 @@ export default function MessagesTab() {
   const mkt = grants.find((c) => c.consent_kind === "marketing");
 
   return (
-    <div className="cg">
-      <div className="s8">
-        <Conversation dealerId={id} meId={meId} />
+    <div className="caseMessagingLayout">
+      <div className="caseMessagingMain">
+        {dealer ? <CaseMessagingWorkspace dealerId={id} meId={meId} canText={Boolean(txn)} dealer={{ name: dealer.name, case_ref: dealer.case_ref, email: dealer.email, phone: dealer.phone }} /> : <div className="panel panel-b">Loading client communications...</div>}
       </div>
 
-      <div className="s4">
+      <aside className="caseMessagingAside">
         <div className="panel">
-          <div className="panel-h">Contact and consent</div>
-          <div className="panel-b">
-            <div className="kv">
-              <span>Email</span>
-              <b>{dealer?.email || "none on file"}</b>
+          <div className="panel-h"><b>Contact and consent</b></div>
+          <div className="panel-b caseContactPanel">
+            <div className="caseContactRow">
+              <span className="caseContactIcon"><Mail size={17} /></span>
+              <span><small>Application email</small><b>{dealer?.email || "Not provided"}</b></span>
             </div>
-            <div className="kv">
-              <span>Mobile</span>
-              <b className="num">{dealer?.phone || "none on file"}</b>
+            <div className="caseContactRow">
+              <span className="caseContactIcon"><Phone size={17} /></span>
+              <span><small>Mobile</small><b className="num">{dealer?.phone || "Not provided"}</b></span>
             </div>
-            <div className="kv">
-              <span>Account and application SMS</span>
-              <span className={`cellchip ${txn ? "c-ok" : "c-mut"}`}>
-                {txn ? "Authorized" : "Not given"}
-              </span>
+            <div className="caseConsentRow">
+              <MessageSquareText size={17} />
+              <span><b>Application texts</b><small>{txn ? `Authorized ${new Date(txn.created_at).toLocaleDateString()}` : "Consent not recorded"}</small></span>
+              <span className={`cellchip ${txn ? "c-ok" : "c-warn"}`}>{txn ? "Active" : "Unavailable"}</span>
             </div>
-            <div className="kv">
-              <span>Promotional SMS</span>
-              <span className={`cellchip ${mkt ? "c-ok" : "c-mut"}`}>
-                {mkt ? "Authorized" : "Declined"}
-              </span>
-            </div>
-            <div className="kv">
-              <span>Captured</span>
-              <span className="sub num">
-                {txn
-                  ? new Date(txn.created_at).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })
-                  : "—"}
-              </span>
+            <div className="caseConsentRow">
+              <CheckCircle2 size={17} />
+              <span><b>Program texts</b><small>{mkt ? "Marketing consent recorded" : "Not authorized"}</small></span>
+              <span className={`cellchip ${mkt ? "c-ok" : "c-mut"}`}>{mkt ? "Active" : "Off"}</span>
             </div>
           </div>
         </div>
@@ -93,7 +79,7 @@ export default function MessagesTab() {
         <div className="mt">
           <RequestPanel dealerId={id} canText={Boolean(txn)} />
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

@@ -35,6 +35,7 @@ export type UnifiedCommunicationMessage = {
   created_at: string;
   seen: boolean;
   delivery_status: string | null;
+  delivery_detail?: string | null;
 };
 
 export type UnifiedCommunicationThreadDetail = {

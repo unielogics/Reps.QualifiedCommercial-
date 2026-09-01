@@ -95,6 +95,9 @@ export default function RequestPanel({
       setTitle("");
       setNote("");
       void qc.invalidateQueries({ queryKey: ["dealer", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["file-inbox-threads", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["file-inbox-messages", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["inbox-contacts"] });
     },
   });
 
