@@ -140,6 +140,14 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
       api<Owner[]>(`/dealer-os/dealers/${dealerId}/owners`, {
         authToken: (await getToken()) ?? undefined,
       }),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (owner) => owner.credit_required && !owner.credit_complete && !owner.credit_pulled_at,
+      )
+        ? 30_000
+        : false,
   });
 
   const consent = useQuery({
@@ -677,6 +685,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
               <tbody>
             {ownerRows.map((owner) => {
               const required = effectiveOwnership(owner) >= 20;
+              const creditComplete = owner.credit_complete || Boolean(owner.credit_pulled_at);
               const locked = Boolean(owner.invite_sent_at || owner.credit_pulled_at);
               const saveState = ownerSaveState[owner.id] ?? "saved";
               const duplicateEmail = Boolean(ownerValue(owner, "email")) && normalizedEmails.filter((email) => email === ownerValue(owner, "email").trim().toLowerCase()).length > 1;
@@ -703,10 +712,10 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
                     ) : <span className="cellchip c-mut">Not required</span>}
                   </td>
                   <td>
-                    <span className={`cellchip ${required ? "c-warn" : "c-mut"}`}>
-                      {required ? "Required" : "Not required"}
+                    <span className={`cellchip ${creditComplete ? "c-ok" : required ? "c-warn" : "c-mut"}`}>
+                      {creditComplete ? "Complete" : required ? "Required" : "Not required"}
                     </span>
-                    {required && (!validEmail(ownerValue(owner, "email")) || !validPhone(ownerValue(owner, "phone"))) && <span className="validation-hint">Valid email + phone needed</span>}
+                    {required && !creditComplete && (!validEmail(ownerValue(owner, "email")) || !validPhone(ownerValue(owner, "phone"))) && <span className="validation-hint">Valid email + phone needed</span>}
                   </td>
                   <td><span className={`cellchip ${saveState === "invalid" ? "c-warn" : saveState === "saved" ? "c-ok" : "c-mut"}`}>{saveState === "saving" ? "Saving…" : saveState === "invalid" ? "Fix row" : "Saved"}</span></td>
                   <td className="r">
