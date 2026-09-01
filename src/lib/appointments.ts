@@ -60,6 +60,8 @@ export type RepAppointment = {
   rep_notification_status: string | null;
   rep_reminder_status: string | null;
   delivery_error: string | null;
+  /** When that failure was recorded — a stale error should not read as live. */
+  delivery_error_at: string | null;
   notification_results: Record<string, string> | null;
   created_at: string;
   updated_at: string;

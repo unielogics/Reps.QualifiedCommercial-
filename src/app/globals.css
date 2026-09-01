@@ -2030,3 +2030,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .rc-row { max-width: 88%; }
   .composer .field { font-size: 16px; }
 }
+
+/* Appointment workspace: delivery trouble and the messages tab. */
+.appointmentCrmDelivery { display: grid; gap: 8px; margin-top: 10px; }
+.appointmentCrmDelivery .appointmentCrmInlineError { display: grid; gap: 2px; }
+.appointmentCrmDelivery .appointmentCrmInlineError small { color: var(--muted); font-weight: 500; }
+.appointmentCrmMessages .rc-msgs { max-height: 46vh; }
+.appointmentCrmMessages .composer { padding-top: 10px; border-top: 1px solid var(--line); }

@@ -32,13 +32,16 @@ import {
   type RepAppointment,
 } from "@/lib/appointments";
 import Drawer from "./Drawer";
+import { ConversationBubbles } from "./ConversationBubbles";
+import type { UnifiedCommunicationThreadDetail } from "@/lib/communications";
 
-type WorkspaceTab = "overview" | "notes" | "outcome" | "file" | "manage";
+type WorkspaceTab = "overview" | "messages" | "notes" | "outcome" | "file" | "manage";
 type EditorMode = "details" | "edit" | "reschedule";
 type FileAction = "none" | "update_linked" | "link_existing" | "create_ai_intake" | "create_funding_loan";
 
 const TAB_ITEMS: Array<{ key: WorkspaceTab; label: string; icon: typeof UserRound }> = [
   { key: "overview", label: "Overview", icon: UserRound },
+  { key: "messages", label: "Messages", icon: MessageSquareText },
   { key: "notes", label: "Notes", icon: MessageSquareText },
   { key: "outcome", label: "Outcome", icon: Flag },
   { key: "file", label: "File", icon: FileText },
@@ -147,6 +150,8 @@ export default function AppointmentCrmWorkspace({
   const tabs = useMemo(() => TAB_ITEMS.filter((item) => {
     const capabilities = workspace.data?.capabilities;
     if (!capabilities) return item.key === "overview";
+    // Nothing to show without a number to text.
+    if (item.key === "messages") return Boolean(workspace.data?.appointment.invitee_phone);
     if (item.key === "notes") return capabilities.can_add_notes;
     if (item.key === "outcome") return capabilities.can_manage_outcomes;
     if (item.key === "file") return capabilities.can_link_files || capabilities.can_start_application;
@@ -198,7 +203,8 @@ export default function AppointmentCrmWorkspace({
             ))}
           </nav>
           <main className="appointmentCrmContent">
-            {tab === "overview" ? <Overview workspace={workspace.data} onTab={setTab} /> : null}
+            {tab === "overview" ? <Overview workspace={workspace.data} onTab={setTab} callApi={callApi} refresh={refresh} /> : null}
+            {tab === "messages" ? <Messages workspace={workspace.data} callApi={callApi} /> : null}
             {tab === "notes" ? <Notes workspace={workspace.data} callApi={callApi} refresh={refresh} /> : null}
             {tab === "outcome" ? <Outcome workspace={workspace.data} outcomes={outcomes.data ?? []} callApi={callApi} refresh={refresh} onFile={() => setTab("file")} /> : null}
             {tab === "file" ? <FileWorkspace workspace={workspace.data} callApi={callApi} refresh={refresh} onOutcome={() => setTab("outcome")} /> : null}
@@ -210,7 +216,7 @@ export default function AppointmentCrmWorkspace({
   );
 }
 
-function Overview({ workspace, onTab }: { workspace: AppointmentWorkspace; onTab: (tab: WorkspaceTab) => void }) {
+function Overview({ workspace, onTab, callApi, refresh }: { workspace: AppointmentWorkspace; onTab: (tab: WorkspaceTab) => void; callApi: ApiCaller; refresh: () => Promise<void> }) {
   const appointment = workspace.appointment;
   return (
     <div className="appointmentCrmOverview">
@@ -239,7 +245,12 @@ function Overview({ workspace, onTab }: { workspace: AppointmentWorkspace; onTab
             <Status label="Google" value={appointment.google_sync_status || "Unavailable"} raw={appointment.google_sync_status || ""} />
             <Status label="Email" value={appointment.confirmation_email_status || "Not sent"} raw={appointment.confirmation_email_status || ""} />
             <Status label="SMS" value={appointment.confirmation_sms_status || "Not sent"} raw={appointment.confirmation_sms_status || ""} />
-            {appointment.delivery_error ? <div className="appointmentCrmInlineError">{appointment.delivery_error}</div> : null}
+            <DeliveryTrouble
+              appointment={appointment}
+              canRetry={workspace.capabilities.can_retry_delivery}
+              callApi={callApi}
+              refresh={refresh}
+            />
           </div>
         </section>
         <section className="panel">
@@ -258,6 +269,98 @@ function Overview({ workspace, onTab }: { workspace: AppointmentWorkspace; onTab
     </div>
   );
 }
+
+function Messages({
+  workspace,
+  callApi,
+}: {
+  workspace: AppointmentWorkspace;
+  callApi: <T,>(path: string, init?: RequestInit) => Promise<T>;
+}) {
+  const appointment = workspace.appointment;
+  const phone = appointment.invitee_phone ?? "";
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+
+  // Addressed by number, not by any stored thread id. The backend normalizes
+  // the number and resolves this whether or not the person has ever been
+  // texted, so a first message from an appointment works like any other.
+  const threadId = `sms:phone:${phone}`;
+  const key = ["appointment-sms", phone];
+
+  const thread = useQuery({
+    queryKey: key,
+    queryFn: () => callApi<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}`),
+    enabled: Boolean(phone),
+    refetchInterval: 10000,
+  });
+
+  const send = useMutation({
+    mutationFn: () =>
+      callApi<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ body: draft.trim() }),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(key, data);
+      setDraft("");
+      setError("");
+      // The same conversation is on the inbox screen; keep it in step.
+      void qc.invalidateQueries({ queryKey: ["inbox-contacts"] });
+    },
+    onError: (reason) =>
+      // Carries the real reason — an opted-out number is refused here with the
+      // same message the rest of the system gives.
+      setError(errorText(reason, "That message could not be sent.")),
+  });
+
+  return (
+    <div className="appointmentCrmMessages">
+      <section className="panel">
+        <div className="panel-h">
+          <b>Text messages</b>
+          <span className="sp" />
+          <span className="cellchip c-mut">{appointment.invitee_phone}</span>
+        </div>
+        <div className="panel-b">
+          <ConversationBubbles
+            messages={thread.data?.messages ?? []}
+            isLoading={thread.isLoading}
+            isError={thread.isError}
+            counterpartName={appointment.invitee_name}
+            emptyLabel="No texts with this number yet. The first one starts the conversation."
+          />
+          <div className="composer">
+            <textarea
+              className="field"
+              rows={3}
+              value={draft}
+              placeholder={`Text ${appointment.invitee_name || "the client"}...`}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            {error ? <div className="appointmentCrmInlineError">{error}</div> : null}
+            <div className="composer-row">
+              <button
+                type="button"
+                className="btn pri"
+                disabled={!draft.trim() || send.isPending}
+                onClick={() => send.mutate()}
+              >
+                <Check size={16} />
+                {send.isPending ? "Sending..." : "Send text"}
+              </button>
+              <span className="hint">
+                Goes out on the number above and lands in the inbox with this contact.
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 
 function Notes({ workspace, callApi, refresh }: { workspace: AppointmentWorkspace; callApi: ApiCaller; refresh: () => Promise<void> }) {
   const [body, setBody] = useState("");
@@ -509,6 +612,112 @@ function ActivityList({ rows }: { rows: AppointmentWorkspace["activities"] }) {
 function Detail({ label, value, wide = false }: { label: string; value: string | null | undefined; wide?: boolean }) {
   return <div className={wide ? "wide" : undefined}><span className="lbl">{label}</span><b>{value || "Not provided"}</b></div>;
 }
+
+/** When a delivery failed, and what to do about it.
+ *
+ * A stored failure outlives its cause: a provider swap left appointments
+ * reading "Configured but SMS_PRODUCTION is disabled" a day after it was
+ * re-enabled, with no hint the message was old and no way to act from the panel
+ * showing it. So the reason is dated, and retry lives here rather than only
+ * under Manage.
+ */
+function DeliveryTrouble({
+  appointment,
+  canRetry,
+  callApi,
+  refresh,
+}: {
+  appointment: RepAppointment;
+  canRetry: boolean;
+  callApi: ApiCaller;
+  refresh: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const failed: Array<{ action: "email_confirmation" | "sms_confirmation"; label: string }> = [
+    ...(appointment.confirmation_email_status === "failed"
+      ? [{ action: "email_confirmation" as const, label: "email" }]
+      : []),
+    ...(appointment.confirmation_sms_status === "failed"
+      ? [{ action: "sms_confirmation" as const, label: "text" }]
+      : []),
+  ];
+
+  if (!appointment.delivery_error && !failed.length) return null;
+
+  // A malformed address fails at the provider with a generic error. Say what is
+  // actually wrong, since the fix is to edit the appointment, not to retry.
+  const email = appointment.invitee_email ?? "";
+  const emailLooksInvalid = Boolean(email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const retryAll = async () => {
+    setBusy(true);
+    setError("");
+    const problems: string[] = [];
+    // Sequential, and each failure is collected rather than thrown: one channel
+    // refusing should not stop the other from being retried.
+    for (const item of failed) {
+      try {
+        await callApi(`/dealer-os/appointments/${appointment.id}/delivery/retry`, {
+          method: "POST",
+          body: JSON.stringify({ action: item.action }),
+        });
+      } catch (reason) {
+        problems.push(`${item.label}: ${errorText(reason, "could not be retried")}`);
+      }
+    }
+    await refresh();
+    setBusy(false);
+    if (problems.length) setError(problems.join(" · "));
+  };
+
+  return (
+    <div className="appointmentCrmDelivery">
+      {appointment.delivery_error ? (
+        <div className="appointmentCrmInlineError">
+          <span>{appointment.delivery_error}</span>
+          {appointment.delivery_error_at ? (
+            <small>Recorded {whenLabel(appointment.delivery_error_at)}</small>
+          ) : null}
+        </div>
+      ) : null}
+      {emailLooksInvalid ? (
+        <div className="appointmentCrmInlineInfo">
+          <b>{email}</b> is not a valid email address, so nothing can be delivered to it.
+          Correct it under Manage &rarr; Edit appointment.
+        </div>
+      ) : null}
+      {canRetry && failed.length ? (
+        <div className="row">
+          <button className="btn sm" type="button" disabled={busy} onClick={retryAll}>
+            <RefreshCw size={14} />
+            {busy
+              ? "Retrying..."
+              : failed.length > 1
+                ? "Retry all failed"
+                : `Retry ${failed[0].label}`}
+          </button>
+        </div>
+      ) : null}
+      {error ? <div className="appointmentCrmInlineError">{error}</div> : null}
+    </div>
+  );
+}
+
+/** "yesterday, 7:38 PM" — enough to tell a live failure from an old one. */
+function whenLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (date.toDateString() === today.toDateString()) return `today, ${time}`;
+  if (date.toDateString() === yesterday.toDateString()) return `yesterday, ${time}`;
+  return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+}
+
 
 function Status({ label, value, raw }: { label: string; value: string; raw: string }) {
   return <div><span>{label}</span><span className={`cellchip ${statusClass(raw)}`}>{value}</span></div>;

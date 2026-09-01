@@ -22,10 +22,8 @@ import { api } from "@/lib/api";
 import BookingDrawer from "@/components/BookingDrawer";
 import ContactShareDrawer from "@/components/ContactShareDrawer";
 import InboxComposeModal from "@/components/InboxComposeModal";
+import { ConversationBubbles } from "@/components/ConversationBubbles";
 import {
-  clock,
-  dayBreak,
-  dayLabel,
   shortDate,
   type UnifiedCommunicationThread,
   type UnifiedCommunicationThreadDetail,
@@ -229,39 +227,12 @@ export default function InboxPage() {
               {!selected && <span className="sub">Choose a contact.</span>}
               {selected && (
                 <>
-                  <div className="rc-msgs">
-                    {messages.isLoading && <div className="thr-empty">Loading...</div>}
-                    {(messages.data?.messages ?? []).map((message, index) => {
-                      const previous = index > 0 ? messages.data!.messages[index - 1] : null;
-                      const mine = message.direction === "outbound";
-                      return (
-                        <div key={message.id}>
-                          {dayBreak(previous?.created_at ?? null, message.created_at) && (
-                            <div className="thr-day">{dayLabel(message.created_at)}</div>
-                          )}
-                          <div className={`rc-row${mine ? " mine" : ""}`}>
-                            <div className="rc-bub">
-                              {!mine && message.sender_name && (
-                                <span className="rc-who">{message.sender_name}</span>
-                              )}
-                              <p>{message.body}</p>
-                            </div>
-                            <span className="rc-meta">
-                              <time dateTime={message.created_at}>{clock(message.created_at)}</time>
-                              {mine && message.delivery_status && (
-                                <span className={`rc-st ${message.delivery_status}`}>
-                                  {message.delivery_status}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {!messages.isLoading && !(messages.data?.messages ?? []).length && (
-                      <div className="thr-empty">No messages in this conversation yet.</div>
-                    )}
-                  </div>
+                  <ConversationBubbles
+                    messages={messages.data?.messages ?? []}
+                    isLoading={messages.isLoading}
+                    isError={messages.isError}
+                    counterpartName={selected.participant_name}
+                  />
 
                   <div className="composer">
                     <textarea
