@@ -1967,3 +1967,66 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .debtCollateral { grid-column: auto; }
   .recommendationActions .btn, .blockedCompletionActions .btn { width: 100%; }
 }
+
+/* ── Rep inbox ────────────────────────────────────────────────────────────
+   Contact list and conversation. Mobile-first: on a phone these are two
+   screens with a way back, and the side-by-side layout is the exception at
+   the wide breakpoint. Reuses .btn/.chip/.tag/.linky/.thr-day rather than
+   introducing a parallel vocabulary. */
+
+
+.rep-contact { border-bottom: 1px solid var(--line); }
+.rep-row { display: flex; align-items: flex-start; gap: 11px; width: 100%; min-height: 44px; padding: 12px 4px; border: 0; background: transparent; text-align: left; cursor: pointer; font: inherit; color: var(--ink); }
+.rep-row.on { background: var(--accent-100); }
+.rep-av { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--petrol-100); color: var(--petrol); font-size: 11px; font-weight: 800; }
+.rep-body { flex: 1; min-width: 0; }
+.rep-top { display: flex; align-items: baseline; gap: 8px; }
+.rep-top b { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rep-top time { color: var(--faint); font-size: 11px; }
+.rep-prev { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rep-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.rep-chips .tag.warn { background: var(--warn-tint); color: var(--warn); }
+.rep-threads { background: var(--sunken2); border-top: 1px dashed var(--line); }
+.rep-thread { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 9px 4px 9px 20px; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; font: inherit; font-size: 12.5px; color: var(--ink); }
+.rep-thread.on { background: var(--accent-100); }
+.rep-thread .grow, .rep-pick-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rep-thread time { color: var(--faint); font-size: 11px; }
+
+.rep-back { display: flex; align-items: center; min-height: 44px; padding: 10px 2px; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; }
+
+/* Conversation: theirs left on surface, ours right in accent. */
+.rc { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.rc-h { padding: 0 0 10px; border-bottom: 1px solid var(--line); }
+.rc-h b { display: block; font-size: 15px; }
+.rc-h span { color: var(--muted); font-size: 12px; }
+.rc-msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 12px 0; }
+.rc-row { display: flex; flex-direction: column; align-items: flex-start; max-width: 85%; margin: 3px 0; }
+.rc-row.mine { align-self: flex-end; align-items: flex-end; }
+.rc-bub { padding: 9px 13px; border-radius: 17px; font-size: 14.5px; line-height: 1.45; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 5px; word-break: break-word; }
+.rc-row.mine .rc-bub { background: var(--accent); border-color: var(--accent); color: #fff; border-bottom-left-radius: 17px; border-bottom-right-radius: 5px; }
+.rc-bub p { margin: 0; white-space: pre-wrap; }
+.rc-who { display: block; margin-bottom: 2px; font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.rc-meta { display: flex; gap: 6px; margin: 2px 5px 0; color: var(--faint); font-size: 10.5px; }
+.rc-st { text-transform: capitalize; }
+.rc-st.delivered { color: var(--ok); }
+.rc-st.failed, .rc-st.blocked { color: var(--danger); font-weight: 700; }
+.rc-compose { display: flex; gap: 8px; align-items: flex-end; padding: 10px 0; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--bg); }
+.rc-compose textarea, .rep-textarea { flex: 1; min-height: 44px; max-height: 140px; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); font: inherit; font-size: 15px; color: var(--ink); resize: vertical; }
+.rc-compose .btn { min-height: 44px; }
+.rc-err { color: var(--danger); font-size: 12.5px; padding: 6px 0; }
+
+/* Compose sheet — rises from the bottom, the way a phone expects. */
+
+@media (min-width: 900px) {
+  .rep-back { display: none; }
+}/* Master -> detail on a phone: the contact list and the conversation are two
+   screens, not two panes fighting for a short viewport. Above 900px their
+   existing .cg/.s4/.s8 grid takes over unchanged. */
+.rep-back { display: none; }
+@media (max-width: 899px) {
+  .inbox-2col.v-list .inbox-threadcol { display: none; }
+  .inbox-2col.v-thread .inbox-listcol { display: none; }
+  .rep-back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px 0 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; }
+  .rc-row { max-width: 88%; }
+  .composer .field { font-size: 16px; }
+}

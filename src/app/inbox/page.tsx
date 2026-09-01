@@ -1,119 +1,129 @@
 "use client";
 
+// The rep's inbox, grouped by person.
+//
+// Previously a flat list of rep-inbox threads. It now reads the shared
+// /communications endpoints, which means one row per contact across every
+// channel — text, email, and in-system — with a person's SMS and MMS in a
+// single conversation however their number happens to be written. The backend
+// scopes a FIELD_REP to the contacts they own, so there is no rep-specific
+// view to keep in step with the operator one.
+//
+// Booking, business-card sharing, compose and close are unchanged; they are the
+// reason a rep opens this screen. What changed is the list, the message
+// rendering, and the way it behaves on a phone.
+
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Paperclip, UserRound, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, Paperclip, UserRound, X } from "lucide-react";
 import { api } from "@/lib/api";
 import BookingDrawer from "@/components/BookingDrawer";
 import ContactShareDrawer from "@/components/ContactShareDrawer";
 import InboxComposeModal from "@/components/InboxComposeModal";
+import {
+  clock,
+  dayBreak,
+  dayLabel,
+  shortDate,
+  type UnifiedCommunicationThread,
+  type UnifiedCommunicationThreadDetail,
+  type UnifiedContactPage,
+} from "@/lib/communications";
 
 type ActionContext = "global" | "thread" | null;
 
-type Thread = {
-  id: string;
-  dealer_id: string | null;
-  subject: string;
-  channel: string;
-  source: string;
-  last_message_at: string | null;
-  unread_count: number;
-  contact_name: string | null;
-  contact_email: string | null;
-  contact_phone: string | null;
-  company: string | null;
-};
-
-type Message = {
-  id: string;
-  direction: string;
-  channel: string;
-  body: string;
-  delivery_status: string;
-  provider_error: string | null;
-  sender: string | null;
-  recipient: string | null;
-  created_at: string;
-};
-
-function when(iso: string | null): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function channelLabel(channel: string): string {
+  return ({ sms: "text", email: "email", client: "chat", desk: "desk" } as Record<string, string>)[channel] ?? channel;
 }
 
 export default function InboxPage() {
   const { getToken } = useAuth();
-  const searchParams = useSearchParams();
   const qc = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const params = useSearchParams();
+
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(params.get("thread"));
+  const [view, setView] = useState<"list" | "thread">("list");
   const [draft, setDraft] = useState("");
   const [compose, setCompose] = useState(false);
+  const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [bookingContext, setBookingContext] = useState<ActionContext>(null);
   const [shareContext, setShareContext] = useState<ActionContext>(null);
-  const [attachmentOpen, setAttachmentOpen] = useState(false);
-  const threads = useQuery({
-    queryKey: ["inbox-threads"],
+
+  const contacts = useQuery({
+    queryKey: ["inbox-contacts"],
     queryFn: async () =>
-      api<Thread[]>("/dealer-os/inbox/threads", { authToken: (await getToken()) ?? undefined }),
-  });
-  const selected = useMemo(() => {
-    const rows = threads.data ?? [];
-    return rows.find((t) => t.id === selectedId) ?? null;
-  }, [threads.data, selectedId]);
-  const messages = useQuery({
-    queryKey: ["inbox-messages", selected?.id],
-    queryFn: async () =>
-      api<Message[]>(`/dealer-os/inbox/threads/${selected?.id}/messages`, {
+      api<UnifiedContactPage>("/communications/contacts?limit=100", {
         authToken: (await getToken()) ?? undefined,
       }),
-    enabled: Boolean(selected?.id),
+    refetchInterval: 20000,
   });
+
+  const groups = useMemo(() => contacts.data?.items ?? [], [contacts.data]);
+  const selected: UnifiedCommunicationThread | null = useMemo(
+    () => groups.flatMap((g) => g.threads).find((t) => t.id === selectedId) ?? null,
+    [groups, selectedId],
+  );
+
+  const messages = useQuery({
+    queryKey: ["inbox-thread", selectedId],
+    queryFn: async () =>
+      api<UnifiedCommunicationThreadDetail>(`/communications/threads/${selectedId}`, {
+        authToken: (await getToken()) ?? undefined,
+      }),
+    enabled: Boolean(selectedId),
+    refetchInterval: 8000,
+  });
+
   const send = useMutation({
     mutationFn: async () =>
-      api<Message>(`/dealer-os/inbox/threads/${selected?.id}/messages`, {
+      api<UnifiedCommunicationThreadDetail>(`/communications/threads/${selectedId}/messages`, {
         method: "POST",
         body: JSON.stringify({ body: draft.trim() }),
         authToken: (await getToken()) ?? undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      qc.setQueryData(["inbox-thread", selectedId], data);
       setDraft("");
-      void qc.invalidateQueries({ queryKey: ["inbox-messages", selected?.id] });
-      void qc.invalidateQueries({ queryKey: ["inbox-threads"] });
+      void qc.invalidateQueries({ queryKey: ["inbox-contacts"] });
     },
   });
-  const rows = threads.data ?? [];
 
+  // Keep the selection valid as the list refreshes.
   useEffect(() => {
-    const requested = searchParams.get("thread");
-    if (!requested || !threads.data?.some((thread) => thread.id === requested)) return;
-    setSelectedId(requested);
-    setAttachmentOpen(false);
-  }, [searchParams, threads.data]);
+    if (!groups.length || !selectedId) return;
+    if (!groups.flatMap((g) => g.threads).some((t) => t.id === selectedId)) setSelectedId(null);
+  }, [groups, selectedId]);
 
+  // Their drawers seed from the conversation's contact. A unified thread
+  // carries the same facts under different names.
   const threadSeed = selected
     ? {
-        dealer_id: selected.dealer_id,
-        contact_name: selected.contact_name,
-        contact_email: selected.contact_email,
-        contact_phone: selected.contact_phone,
-        company: selected.company,
+        dealer_id: selected.source_kind === "rep" ? selected.source_id : null,
+        contact_name: selected.participant_name,
+        contact_email: selected.participant_email,
+        contact_phone: selected.participant_phone,
+        company: selected.source_label,
       }
     : null;
   const bookingSeed = bookingContext === "thread" ? threadSeed : null;
   const shareSeed = shareContext === "thread" ? threadSeed : null;
 
+  const openContact = (key: string, latestThreadId: string, threadCount: number) => {
+    setOpenKey(key);
+    setSelectedId(latestThreadId);
+    setAttachmentOpen(false);
+    // One conversation: go straight in. Several: let them pick.
+    if (threadCount <= 1) setView("thread");
+  };
+
   return (
     <>
       <div className="hd">
         <h2>Inbox</h2>
-        <p className="lede">Email and SMS replies from people you booked or shared your contact card with.</p>
+        <p className="lede">Everyone you talk to — text, email, and in-system — grouped by contact.</p>
       </div>
 
       <div className="row mt" style={{ justifyContent: "flex-end" }}>
@@ -128,94 +138,149 @@ export default function InboxPage() {
         </button>
       </div>
 
-      <div className="cg mt" style={{ alignItems: "stretch" }}>
-        <div className="s4">
+      <div className={`cg mt inbox-2col v-${view}`} style={{ alignItems: "stretch" }}>
+        <div className="s4 inbox-listcol">
           <div className="panel" style={{ height: "100%" }}>
             <div className="panel-h">
-              Threads
+              Contacts
               <span style={{ flex: 1 }} />
-              <span className="cellchip c-mut">{rows.length}</span>
+              <span className="cellchip c-mut">{contacts.data?.total ?? 0}</span>
             </div>
-            <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {threads.isLoading && <span className="sub">Loading...</span>}
-              {!threads.isLoading && rows.length === 0 && (
-                <span className="sub">No replies yet. Shared cards and booked appointments will start threads here.</span>
+            <div className="panel-b rep-rows">
+              {contacts.isLoading && <span className="sub">Loading...</span>}
+              {!contacts.isLoading && !groups.length && (
+                <span className="sub">
+                  No conversations yet. Shared cards, booked appointments and texts start threads here.
+                </span>
               )}
-              {rows.map((thread) => (
-                <button
-                  key={thread.id}
-                  type="button"
-                  className={`rung${selected?.id === thread.id ? " cur" : ""}`}
-                  style={{ textAlign: "left", font: "inherit", width: "100%" }}
-                  onClick={() => {
-                    setSelectedId((current) => current === thread.id ? null : thread.id);
-                    setAttachmentOpen(false);
-                  }}
-                >
-                  <span style={{ minWidth: 0, flex: 1 }}>
-                    <b style={{ display: "block", fontSize: 13.5 }}>{thread.contact_name ?? thread.subject}</b>
-                    <span className="sub">{thread.company || thread.contact_email || thread.contact_phone || thread.source}</span>
-                  </span>
-                  <span className={`cellchip ${thread.channel === "sms" ? "c-acc" : "c-mut"}`}>{thread.channel}</span>
-                  {thread.unread_count > 0 && <span className="navbadge">{thread.unread_count}</span>}
-                </button>
-              ))}
+              {groups.map((group) => {
+                const expanded = openKey === group.key && group.threads.length > 1;
+                return (
+                  <div key={group.key} className={expanded ? "rep-contact open" : "rep-contact"}>
+                    <button
+                      type="button"
+                      className={`rep-row${openKey === group.key ? " on" : ""}`}
+                      aria-expanded={expanded}
+                      onClick={() => openContact(group.key, group.latest_thread_id, group.threads.length)}
+                    >
+                      <span className="rep-av">{group.name.slice(0, 2).toUpperCase()}</span>
+                      <span className="rep-body">
+                        <span className="rep-top">
+                          <b>{group.name}</b>
+                          <time>{shortDate(group.latest_at)}</time>
+                        </span>
+                        <span className="rep-prev">{group.latest_snippet || "Conversation"}</span>
+                        <span className="rep-chips">
+                          {group.channels.map((channel) => (
+                            <span key={channel} className="tag">{channelLabel(channel)}</span>
+                          ))}
+                          {group.threads.length > 1 && (
+                            <span className="tag">{group.threads.length} conversations</span>
+                          )}
+                          {group.unread_total > 0 && <span className="navbadge">{group.unread_total}</span>}
+                        </span>
+                      </span>
+                    </button>
+                    {expanded && (
+                      <div className="rep-threads">
+                        {group.threads.map((thread) => (
+                          <button
+                            key={thread.id}
+                            type="button"
+                            className={`rep-thread${selectedId === thread.id ? " on" : ""}`}
+                            onClick={() => { setSelectedId(thread.id); setView("thread"); setAttachmentOpen(false); }}
+                          >
+                            <span className="tag">{channelLabel(thread.channel)}</span>
+                            <span className="grow">{thread.title}</span>
+                            <time>{shortDate(thread.latest_at)}</time>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
 
-        <div className="s8">
+        <div className="s8 inbox-threadcol">
           <div className="panel">
             <div className="panel-h">
-              {selected ? selected.subject : "Conversation"}
+              <button type="button" className="rep-back" onClick={() => setView("list")}>
+                <ChevronLeft size={16} /> All
+              </button>
+              {selected ? selected.participant_name || selected.title : "Conversation"}
               <span style={{ flex: 1 }} />
-              {selected && <span className="cellchip c-acc">{selected.channel}</span>}
+              {selected && <span className="cellchip c-acc">{channelLabel(selected.channel)}</span>}
               {selected && (
                 <button
                   type="button"
                   className="conversationClose"
                   aria-label="Close conversation"
                   title="Close conversation"
-                  onClick={() => {
-                    setSelectedId(null);
-                    setAttachmentOpen(false);
-                  }}
+                  onClick={() => { setSelectedId(null); setAttachmentOpen(false); }}
                 >
                   <X size={17} />
                 </button>
               )}
             </div>
             <div className="panel-b">
-              {!selected && <span className="sub">Choose a thread.</span>}
+              {!selected && <span className="sub">Choose a contact.</span>}
               {selected && (
                 <>
-                  <div className="thr" style={{ maxHeight: 460 }}>
+                  <div className="rc-msgs">
                     {messages.isLoading && <div className="thr-empty">Loading...</div>}
-                    {(messages.data ?? []).map((m) => (
-                      <div key={m.id} className={`msg${m.direction === "outbound" ? " mine" : ""}${m.channel === "sms" ? " client-ch" : ""}`}>
-                        <div className="msg-h">
-                          <span className="msg-who">{m.direction === "outbound" ? "You" : selected.contact_name ?? "Contact"}</span>
-                          <span className="msg-when">{when(m.created_at)}</span>
-                          <span className="msg-edit">{m.delivery_status}</span>
+                    {(messages.data?.messages ?? []).map((message, index) => {
+                      const previous = index > 0 ? messages.data!.messages[index - 1] : null;
+                      const mine = message.direction === "outbound";
+                      return (
+                        <div key={message.id}>
+                          {dayBreak(previous?.created_at ?? null, message.created_at) && (
+                            <div className="thr-day">{dayLabel(message.created_at)}</div>
+                          )}
+                          <div className={`rc-row${mine ? " mine" : ""}`}>
+                            <div className="rc-bub">
+                              {!mine && message.sender_name && (
+                                <span className="rc-who">{message.sender_name}</span>
+                              )}
+                              <p>{message.body}</p>
+                            </div>
+                            <span className="rc-meta">
+                              <time dateTime={message.created_at}>{clock(message.created_at)}</time>
+                              {mine && message.delivery_status && (
+                                <span className={`rc-st ${message.delivery_status}`}>
+                                  {message.delivery_status}
+                                </span>
+                              )}
+                            </span>
+                          </div>
                         </div>
-                        <div className="msg-b">{m.body}</div>
-                        {m.provider_error && <div className="note">{m.provider_error}</div>}
-                      </div>
-                    ))}
-                    {!messages.isLoading && (messages.data ?? []).length === 0 && (
-                      <div className="thr-empty">No messages in this thread yet.</div>
+                      );
+                    })}
+                    {!messages.isLoading && !(messages.data?.messages ?? []).length && (
+                      <div className="thr-empty">No messages in this conversation yet.</div>
                     )}
                   </div>
 
                   <div className="composer">
                     <textarea
                       className="field"
-                      rows={4}
+                      rows={3}
                       value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      placeholder={selected.channel === "sms" ? "Reply by SMS" : "Reply by email"}
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder={
+                        selected.can_reply
+                          ? selected.channel === "sms" ? "Reply by text" : "Reply"
+                          : "This conversation is read-only"
+                      }
+                      disabled={!selected.can_reply}
                     />
-                    {send.isError && <div className="note">{send.error instanceof Error ? send.error.message : "That reply did not send."}</div>}
+                    {send.isError && (
+                      <div className="note">
+                        {send.error instanceof Error ? send.error.message : "That reply did not send."}
+                      </div>
+                    )}
                     <div className="composer-row">
                       <div className="popwrap composerAttachment">
                         <button
@@ -234,31 +299,30 @@ export default function InboxPage() {
                               type="button"
                               className="mi composerAction"
                               role="menuitem"
-                              onClick={() => {
-                                setAttachmentOpen(false);
-                                setShareContext("thread");
-                              }}
+                              onClick={() => { setAttachmentOpen(false); setShareContext("thread"); }}
                             >
                               <UserRound size={17} />
-                              <span>Send business card<small>Use this conversation's contact.</small></span>
+                              <span>Send business card<small>Use this conversation&apos;s contact.</small></span>
                             </button>
                             <button
                               type="button"
                               className="mi composerAction"
                               role="menuitem"
-                              onClick={() => {
-                                setAttachmentOpen(false);
-                                setBookingContext("thread");
-                              }}
+                              onClick={() => { setAttachmentOpen(false); setBookingContext("thread"); }}
                             >
                               <CalendarDays size={17} />
-                              <span>Book appointment<small>Use this conversation's contact.</small></span>
+                              <span>Book appointment<small>Use this conversation&apos;s contact.</small></span>
                             </button>
                           </div>
                         )}
                       </div>
-                      <button type="button" className="btn pri" disabled={!draft.trim() || send.isPending} onClick={() => send.mutate()}>
-                        {send.isPending ? "Sending..." : selected.channel === "sms" ? "Send SMS" : "Send email"}
+                      <button
+                        type="button"
+                        className="btn pri"
+                        disabled={!draft.trim() || send.isPending || !selected.can_reply}
+                        onClick={() => send.mutate()}
+                      >
+                        {send.isPending ? "Sending..." : selected.channel === "sms" ? "Send text" : "Send"}
                       </button>
                       <span className="hint">Replies stay in this inbox and keep provider delivery status.</span>
                     </div>
@@ -276,6 +340,7 @@ export default function InboxPage() {
           onClose={() => setCompose(false)}
           onSent={(threadId) => {
             if (threadId) setSelectedId(threadId);
+            void qc.invalidateQueries({ queryKey: ["inbox-contacts"] });
           }}
         />
       )}
