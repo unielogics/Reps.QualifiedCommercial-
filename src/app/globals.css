@@ -250,6 +250,7 @@ a { color: var(--accent); }
 .popmenu .mi:hover { background: var(--sunken2); }
 .popmenu .mi:disabled { opacity: 0.55; cursor: default; }
 .popmenu .mi small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 1px; white-space: normal; }
+.caseActionMenu .mi { display: flex; align-items: center; gap: 9px; text-decoration: none; }
 .notificationWrap.mobile { display: none; }
 .notificationMenu { width: min(380px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 90px)); overflow-y: auto; }
 .sidebarNotificationMenu { top: auto; right: auto; bottom: 0; left: calc(100% + 8px); }

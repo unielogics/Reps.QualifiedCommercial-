@@ -47,7 +47,9 @@ export default function Modal({
         position: "fixed",
         inset: 0,
         background: "rgba(15,23,32,.38)",
-        zIndex: 50,
+        // Drawers sit at z-index 60. Confirmation dialogs can be launched
+        // from inside a drawer, so the shared modal must remain above it.
+        zIndex: 120,
         display: "grid",
         placeItems: "center",
         padding: 20,

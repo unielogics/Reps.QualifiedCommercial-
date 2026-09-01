@@ -130,12 +130,26 @@ export default function DocumentsTab() {
   const received = docs.data ?? [];
   const open = (requests.data ?? []).filter((request) => request.status === "open");
   const requestedLabels = new Set(open.map((request) => request.title.trim().toLowerCase()));
+  const bankEvidenceAccepted = Boolean(
+    decision?.verification.bank_exception_active
+      || (
+        decision?.verification.statement_months.length
+        && decision.verification.statement_months.length >= decision.verification.statement_target
+      ),
+  );
+  const isUnresolvedSixMonthStandard = (need: string) => (
+    /six current (verified bank|bank-produced statement) months|six current bank-produced statements/i.test(need)
+  );
   const screeningNeeds = Array.from(new Set(
     (decision?.programs ?? [])
       .filter((program) => program.eligible || program.blocked_by.length === 0)
       .flatMap((program) => program.needs)
       .map((need) => need.trim())
-      .filter((need) => need && !requestedLabels.has(need.toLowerCase())),
+      .filter((need) => (
+        need
+        && !requestedLabels.has(need.toLowerCase())
+        && !(bankEvidenceAccepted && isUnresolvedSixMonthStandard(need))
+      )),
   ));
   const total = received.length + open.length;
   const authError = [docs.error, requests.error].find((error) => error instanceof ApiError && error.status === 401);

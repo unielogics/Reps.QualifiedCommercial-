@@ -104,6 +104,7 @@ export default function AgreementReviewWorkspace({
   const ready = envelope.status === "ready" || envelope.status === "out_for_signature";
   const executed = envelope.status === "executed";
   const invitationSent = envelope.status === "out_for_signature" || Boolean(sendResult);
+  const hasRoomPin = Boolean(roomAccess?.passcode);
   const allMissing = useMemo(
     () => Array.from(new Set(envelope.documents.flatMap((document) => document.missing_data))),
     [envelope.documents],
@@ -244,11 +245,11 @@ export default function AgreementReviewWorkspace({
           <div className="agreementReviewHash"><FileCheck2 size={17} /><span><b>Document integrity</b><small>{active?.filled_sha256 ? `SHA-256 ${active.filled_sha256.slice(0, 24)}...` : "Hash recorded when generated."}</small></span></div>
           <div className="agreementRoomPin" aria-label="Client room PIN">
             <KeyRound size={17} />
-            <span><small>Client room PIN</small><b className="num">{roomAccessPending ? "Loading..." : roomAccess?.passcode ? (pinVisible ? roomAccess.passcode : "••••••") : "Unavailable"}</b></span>
+            <span><small>Client room PIN</small><b className="num">{roomAccessPending ? "Loading..." : roomAccess?.passcode ? (pinVisible ? roomAccess.passcode : "••••••") : "Not set up"}</b></span>
             {roomAccess?.passcode && <button type="button" className="iconBtn" onClick={() => setPinVisible((current) => !current)} title={pinVisible ? "Hide PIN" : "Show PIN"} aria-label={pinVisible ? "Hide PIN" : "Show PIN"}>{pinVisible ? <EyeOff size={16} /> : <Eye size={16} />}</button>}
             {roomAccess?.passcode && <button type="button" className="iconBtn" onClick={() => onCopy("room-pin", roomAccess.passcode)} title={copied === "room-pin" ? "PIN copied" : "Copy PIN"} aria-label={copied === "room-pin" ? "PIN copied" : "Copy PIN"}>{copied === "room-pin" ? <CheckCircle2 size={16} /> : <Copy size={16} />}</button>}
             {roomAccessError && <span className="agreementPinError" title={roomAccessError}>Needs attention</span>}
-            <button type="button" className="btn sm" disabled={createPinPending} onClick={() => setReplacePinOpen(true)}><RefreshCw size={15} /> Create new PIN</button>
+            <button type="button" className="btn sm" disabled={createPinPending || roomAccessPending} onClick={() => setReplacePinOpen(true)}><RefreshCw size={15} /> {hasRoomPin ? "Create new PIN" : "Set up PIN"}</button>
           </div>
           {sendResult ? (
             <div className="agreementDeliveryState">
@@ -261,12 +262,14 @@ export default function AgreementReviewWorkspace({
       </div>
     </Drawer>
     {replacePinOpen && (
-      <Modal title="Create a new client-room PIN?" width={520} onClose={() => !createPinPending && setReplacePinOpen(false)}>
-        <p style={{ marginTop: 0 }}>The current PIN will stop working immediately. The new six-digit PIN will remain valid until it is replaced again.</p>
+      <Modal title={hasRoomPin ? "Create a new client-room PIN?" : "Set up the client-room PIN?"} width={520} onClose={() => !createPinPending && setReplacePinOpen(false)}>
+        <p style={{ marginTop: 0 }}>{hasRoomPin
+          ? "The current PIN will stop working immediately. The new six-digit PIN will remain valid until it is replaced again."
+          : "No recoverable PIN exists for this file. Create a six-digit PIN now; it will remain valid until a new PIN is generated."}</p>
         {createPinError && <div className="warnline mt">{createPinError}</div>}
         <div className="row mt" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button type="button" className="btn" disabled={createPinPending} onClick={() => setReplacePinOpen(false)}>Keep current PIN</button>
-          <button type="button" className="btn pri" disabled={createPinPending} onClick={() => void replacePin()}>{createPinPending ? "Creating..." : "Yes, create new PIN"}</button>
+          <button type="button" className="btn" disabled={createPinPending} onClick={() => setReplacePinOpen(false)}>{hasRoomPin ? "Keep current PIN" : "Cancel"}</button>
+          <button type="button" className="btn pri" disabled={createPinPending} onClick={() => void replacePin()}>{createPinPending ? "Creating..." : hasRoomPin ? "Yes, create new PIN" : "Create PIN"}</button>
         </div>
       </Modal>
     )}
