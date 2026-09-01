@@ -1984,6 +1984,43 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .packageFundingGrid > div { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
 .packageFundingGrid span, .packageCreditRow span { color: var(--muted); font-size: 11px; }
 .packageCreditRow { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.contractProgramCards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.contractProgramCard {
+  position: relative; min-width: 0; min-height: 112px; overflow: hidden;
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center;
+  gap: 5px 11px; padding: 14px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink); text-align: left; cursor: pointer;
+  font: inherit; touch-action: manipulation; user-select: none;
+}
+.contractProgramCard:hover { border-color: var(--accent-400); background: var(--sunken2); }
+.contractProgramCard.selected { border-color: var(--accent); background: var(--accent-100); box-shadow: 0 0 0 2px var(--accent-100); }
+.contractProgramCard.gated:not(.selected) { border-color: rgba(192, 126, 5, .42); }
+.contractProgramCard:disabled { cursor: default; opacity: .74; }
+.contractProgramCheck { grid-row: 1 / span 2; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 8px; background: var(--sunken2); color: var(--muted); }
+.contractProgramCard.selected .contractProgramCheck { background: var(--accent); color: #fff; }
+.contractProgramCard.gated:not(.selected) .contractProgramCheck { background: var(--warn-tint); color: var(--warn); }
+.contractProgramCopy { min-width: 0; display: grid; gap: 2px; }
+.contractProgramCopy b { font-family: var(--fh); font-size: 15px; }
+.contractProgramCopy small, .contractProgramGuidance, .contractProgramCondition { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.contractProgramGuidance { grid-column: 2 / 4; font-weight: 700; color: var(--ink2); }
+.contractProgramCondition { grid-column: 2 / 4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bad); }
+.contractProgramHoldProgress { position: absolute; inset: auto 0 0; height: 4px; background: var(--warn); transform: scaleX(0); transform-origin: left; }
+.contractProgramCard.holding .contractProgramHoldProgress { animation: contract-program-hold 3s linear forwards; }
+@keyframes contract-program-hold { to { transform: scaleX(1); } }
+.contractPackageActions { min-height: 52px; display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 12px; }
+.contractPackageActions .sub { margin-right: auto; }
+.contractOverrideConfirm { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 14px; }
+.contractOverrideIcon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 8px; background: var(--warn-tint); color: var(--warn); }
+.contractOverrideConfirm > div:nth-child(2) { display: grid; gap: 5px; }
+.contractOverrideConfirm > div:nth-child(2) span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.contractOverrideCompare { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.contractOverrideCompare section { min-height: 72px; display: grid; align-content: center; gap: 5px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.contractOverrideConfirm ul { grid-column: 1 / -1; max-height: 180px; overflow-y: auto; margin: 0; padding: 12px 12px 12px 30px; border: 1px solid var(--line); border-radius: 8px; color: var(--bad); font-size: 12px; line-height: 1.5; }
+.contractOverrideActions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+
+@media (max-width: 900px) {
+  .contractProgramCards { grid-template-columns: 1fr; }
+}
 
 @media (max-width: 1180px) {
   .financialConfirmGrid, .step4SourceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2020,6 +2057,16 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .summaryToolbar > .btn { width: 100%; }
   .summaryCanvas iframe { height: calc(100dvh - 230px); min-height: 560px; }
   .packageFundingGrid { grid-template-columns: 1fr; }
+  .contractProgramCards, .contractOverrideCompare { grid-template-columns: 1fr; }
+  .contractProgramCard { min-height: 122px; }
+  .contractPackageActions { align-items: stretch; flex-direction: column; }
+  .contractPackageActions .btn { width: 100%; }
+  .contractOverrideActions { display: grid; grid-template-columns: 1fr 1fr; }
+  .contractOverrideActions .btn { min-height: 48px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contractProgramCard.holding .contractProgramHoldProgress { animation-timing-function: steps(6, end); }
 }
 
 /* ── Rep inbox ────────────────────────────────────────────────────────────
