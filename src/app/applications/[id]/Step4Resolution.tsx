@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, CheckCircle2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Pencil, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
-import Modal from "@/components/Modal";
 
 export type Recommendation = {
   id: string;
@@ -31,6 +30,9 @@ export type ResolutionBlocker = {
   explanation: string;
   corrective_action: string;
   hard: boolean;
+  correction_step?: number;
+  correction_anchor?: string;
+  correction_label?: string;
 };
 
 export type UnderwritingResolution = {
@@ -85,12 +87,22 @@ function program(value: string | null | undefined): string {
   return value ? PROGRAM_LABELS[value] ?? value.replaceAll("_", " ") : "Not selected";
 }
 
+function correctionHref(dealerId: string, blocker: ResolutionBlocker): string {
+  const step = blocker.correction_step && blocker.correction_step >= 1 && blocker.correction_step <= 3
+    ? blocker.correction_step
+    : 1;
+  const anchor = blocker.correction_anchor ? `#${blocker.correction_anchor}` : "";
+  return `/applications/${dealerId}?step=${step}${anchor}`;
+}
+
 export default function Step4Resolution({
   dealerId,
   data,
+  packageWorkspace,
 }: {
   dealerId: string;
   data: UnderwritingResolution;
+  packageWorkspace: ReactNode;
 }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
@@ -99,10 +111,9 @@ export default function Step4Resolution({
   const [amount, setAmount] = useState(recommendation?.recommended_amount?.toString() ?? "");
   const [programKey, setProgramKey] = useState(recommendation?.recommended_program ?? "");
   const [note, setNote] = useState("");
+  const [blockersOpen, setBlockersOpen] = useState(false);
   const [exceptionRule, setExceptionRule] = useState<string | null>(null);
   const [exceptionNote, setExceptionNote] = useState("");
-  const [selectionTarget, setSelectionTarget] = useState<{ key: string; label: string; status: string } | null>(null);
-  const [selectionNote, setSelectionNote] = useState("");
 
   useEffect(() => {
     setAmount(recommendation?.recommended_amount?.toString() ?? "");
@@ -151,168 +162,118 @@ export default function Step4Resolution({
     onSuccess: () => { setExceptionRule(null); setExceptionNote(""); refresh(); },
   });
 
-  const selectProgram = useMutation({
-    mutationFn: async ({ key, note }: { key: string; note?: string }) => api(
-      `/dealer-os/dealers/${dealerId}/program-selection`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ program_key: key, acknowledged: true, note: note?.trim() || null }),
-        authToken: (await getToken()) ?? undefined,
-      },
-    ),
-    onSuccess: () => {
-      setSelectionTarget(null);
-      setSelectionNote("");
-      refresh();
-    },
-  });
-  const clearProgram = useMutation({
-    mutationFn: async () => api(`/dealer-os/dealers/${dealerId}/program-selection`, {
-      method: "DELETE",
-      authToken: (await getToken()) ?? undefined,
-    }),
-    onSuccess: refresh,
-  });
-
-  const beginSelection = (row: { program_key: string; name?: string; status?: string }) => {
-    const target = { key: row.program_key, label: row.name || program(row.program_key), status: row.status || "blocked" };
-    if (target.status === "blocked") {
-      setSelectionTarget(target);
-      return;
-    }
-    selectProgram.mutate({ key: target.key });
-  };
-
   const alreadyRequested = (ruleKey: string) => data.exception_requests.find(
     (item) => item.rule_key === ruleKey && item.status === "pending",
   );
+  const hardCount = data.blockers.filter((blocker) => blocker.hard).length;
 
   return (
-    <div className="panel">
-      <div className="panel-h">
-        Current request and recommended structure
-        <span className="sp" />
-        <span className={`cellchip ${data.direct_program_viable ? "c-ok" : "c-warn"}`}>
-          {data.direct_program_viable ? "Direct path available" : "Review path required"}
-        </span>
-      </div>
-      <div className="panel-b step4Resolution">
-        <div className="resolutionCompare">
-          <section className="resolutionSide current">
-            <span className="lbl">Original client request</span>
-            <strong>{money(data.original_amount)}</strong>
-            <span>{program(data.original_program)}</span>
-            <small>Permanent historical record. This value is never overwritten.</small>
-          </section>
-          <ArrowRight className="resolutionArrow" aria-hidden />
-          <section className={`resolutionSide recommended${recommendation?.status === "pending" ? " pending" : ""}`}>
-            <span className="lbl">Working / recommended structure</span>
-            <strong>{money(recommendation?.recommended_amount ?? data.working_amount)}</strong>
-            <span>{program(recommendation?.recommended_program ?? data.working_program)}</span>
-            {recommendation && recommendation.supported_min !== null && recommendation.supported_max !== null && <small>Supported range {money(recommendation.supported_min)}–{money(recommendation.supported_max)}</small>}
-          </section>
+    <>
+      <div className="panel">
+        <div className="panel-h">
+          Current request and recommended structure
+          <span className="sp" />
+          <span className={`cellchip ${data.direct_program_viable ? "c-ok" : "c-warn"}`}>
+            {data.direct_program_viable ? "Direct path available" : "Staff review available"}
+          </span>
         </div>
+        <div className="panel-b step4Resolution">
+          <div className="resolutionCompare">
+            <section className="resolutionSide current">
+              <span className="lbl">Original client request</span>
+              <strong>{money(data.original_amount)}</strong>
+              <span>{program(data.original_program)}</span>
+              <small>Permanent historical record. This value is never overwritten.</small>
+            </section>
+            <ArrowRight className="resolutionArrow" aria-hidden />
+            <section className={`resolutionSide recommended${recommendation?.status === "pending" ? " pending" : ""}`}>
+              <span className="lbl">Working / recommended structure</span>
+              <strong>{money(recommendation?.recommended_amount ?? data.working_amount)}</strong>
+              <span>{program(recommendation?.recommended_program ?? data.working_program)}</span>
+              {recommendation && recommendation.supported_min !== null && recommendation.supported_max !== null && <small>Supported range {money(recommendation.supported_min)}–{money(recommendation.supported_max)}</small>}
+            </section>
+          </div>
 
-        <div className="programSelectionControl">
-          <div>
-            <span className="lbl">Effective submission program</span>
-            <b>{program(data.program_selection.effective_program_key)}</b>
-            <small>
-              System result: {program(data.program_selection.system_program_key)} · {data.program_selection.system_program_status || "No direct route"}
-            </small>
-          </div>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {data.programs.filter((row) => PROGRAM_LABELS[row.program_key]).map((row) => (
-              <button
-                key={row.program_key}
-                type="button"
-                className={`btn${data.program_selection.effective_program_key === row.program_key ? " pri" : ""}`}
-                disabled={selectProgram.isPending || data.program_selection.effective_program_key === row.program_key}
-                onClick={() => beginSelection(row)}
-              >
-                {PROGRAM_LABELS[row.program_key]} · {row.status || "blocked"}
-              </button>
-            ))}
-            {data.program_selection.manually_selected && (
-              <button type="button" className="btn" disabled={clearProgram.isPending} onClick={() => clearProgram.mutate()}>
-                Return to system selection
-              </button>
-            )}
-          </div>
-          {data.program_selection.manually_selected && (
-            <div className="note">
+          {recommendation?.status === "pending" && (
+            <div className="recommendationDecision">
               <div>
-                <b>Staff-selected submission path.</b> The system result remains {data.program_selection.system_program_status || "unresolved"}; its blockers have not been erased.
-                {data.program_selection.selected_by_name ? ` Selected by ${data.program_selection.selected_by_name}.` : ""}
-                {data.program_selection.note ? ` Note: ${data.program_selection.note}` : ""}
+                <b>Rep acknowledgment required</b>
+                <ul>{recommendation.reasons.map((reason, index) => <li key={`${reason.kind}:${index}`}>{reason.message ?? "A supported structure was drafted from current rules."}</li>)}</ul>
               </div>
+              {editMode && (
+                <div className="recommendationEdit">
+                  <label><span className="lbl">Edited working amount</span><input className="field" type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+                  <label><span className="lbl">Edited program</span><select className="field" value={programKey} onChange={(event) => setProgramKey(event.target.value)}><option value="">Select</option>{Object.entries(PROGRAM_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+                </div>
+              )}
+              <label><span className="lbl">Rep note (optional)</span><textarea className="field" rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain the client discussion or why the original should remain for review." /></label>
+              <div className="recommendationActions">
+                <button type="button" className="btn pri" disabled={respond.isPending} onClick={() => respond.mutate(editMode ? "edit" : "apply")}>{editMode ? "Apply edited structure" : "Acknowledge and apply"}</button>
+                <button type="button" className="btn" onClick={() => setEditMode((current) => !current)}>{editMode ? "Use system draft" : "Edit recommendation"}</button>
+                <button type="button" className="btn" disabled={respond.isPending} onClick={() => respond.mutate("keep_for_review")}>Keep original for super-admin review</button>
+              </div>
+              {respond.error && <div className="warnline">{respond.error instanceof Error ? respond.error.message : "The response could not be saved."}</div>}
             </div>
           )}
-          {(selectProgram.error || clearProgram.error) && <div className="warnline">{(selectProgram.error || clearProgram.error) instanceof Error ? (selectProgram.error || clearProgram.error)?.message : "The program selection could not be changed."}</div>}
         </div>
-
-        {recommendation?.status === "pending" && (
-          <div className="recommendationDecision">
-            <div>
-              <b>Rep acknowledgment required</b>
-              <ul>{recommendation.reasons.map((reason, index) => <li key={`${reason.kind}:${index}`}>{reason.message ?? "A supported structure was drafted from current rules."}</li>)}</ul>
-            </div>
-            {editMode && (
-              <div className="recommendationEdit">
-                <label><span className="lbl">Edited working amount</span><input className="field" type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
-                <label><span className="lbl">Edited program</span><select className="field" value={programKey} onChange={(event) => setProgramKey(event.target.value)}><option value="">Select</option>{Object.entries(PROGRAM_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-              </div>
-            )}
-            <label><span className="lbl">Rep note (optional)</span><textarea className="field" rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain the client discussion or why the original should remain for review." /></label>
-            <div className="recommendationActions">
-              <button type="button" className="btn pri" disabled={respond.isPending} onClick={() => respond.mutate(editMode ? "edit" : "apply")}>{editMode ? "Apply edited structure" : "Acknowledge and apply"}</button>
-              <button type="button" className="btn" onClick={() => setEditMode((current) => !current)}>{editMode ? "Use system draft" : "Edit recommendation"}</button>
-              <button type="button" className="btn" disabled={respond.isPending} onClick={() => respond.mutate("keep_for_review")}>Keep original for super-admin review</button>
-            </div>
-            {respond.error && <div className="warnline">{respond.error instanceof Error ? respond.error.message : "The response could not be saved."}</div>}
-          </div>
-        )}
-
-        {data.blockers.length > 0 && (
-          <div className="resolutionBlockers">
-            <div className="row"><AlertTriangle size={18} /><b>What is blocking or limiting the current structure</b></div>
-            {data.blockers.map((blocker) => (
-              <article key={`${blocker.program_key}:${blocker.rule_key}`} className={`resolutionBlocker${blocker.hard ? " hard" : ""}`}>
-                <div className="row">
-                  <span className={`cellchip ${blocker.hard ? "c-bad" : "c-warn"}`}>{KIND_LABELS[blocker.kind] ?? blocker.kind}</span>
-                  <b>{blocker.program_name}</b>
-                </div>
-                <p>{blocker.explanation}</p>
-                <dl><div><dt>Source</dt><dd>{blocker.source}</dd></div><div><dt>Corrective action</dt><dd>{blocker.corrective_action}</dd></div></dl>
-                {blocker.hard && (
-                  <div className="exceptionRequest">
-                    {alreadyRequested(blocker.rule_key) ? <span className="cellchip c-warn"><ShieldAlert size={14} /> Exception pending super-admin review</span> : exceptionRule === blocker.rule_key ? <>
-                      <textarea className="field" rows={2} value={exceptionNote} onChange={(event) => setExceptionNote(event.target.value)} placeholder="Document why this exception should be reviewed." />
-                      <div className="row"><button type="button" className="btn" onClick={() => setExceptionRule(null)}>Cancel</button><button type="button" className="btn pri" disabled={!exceptionNote.trim() || requestException.isPending} onClick={() => requestException.mutate(blocker)}>Submit exception request</button></div>
-                    </> : <button type="button" className="btn sm" onClick={() => setExceptionRule(blocker.rule_key)}>Request super-admin exception</button>}
-                  </div>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-
-        {data.blockers.length === 0 && <div className="note"><div className="row"><CheckCircle2 size={18} /><b>No current routing blockers</b></div></div>}
       </div>
-      {selectionTarget && (
-        <Modal title={`Select ${selectionTarget.label} submission path`} onClose={() => !selectProgram.isPending && setSelectionTarget(null)}>
-          <div className="resolutionCompare">
-            <section className="resolutionSide current"><span className="lbl">System result</span><strong>{program(data.program_selection.system_program_key)}</strong><span>{data.program_selection.system_program_status || "No direct route"}</span></section>
-            <ArrowRight className="resolutionArrow" aria-hidden />
-            <section className="resolutionSide recommended pending"><span className="lbl">Selected submission path</span><strong>{selectionTarget.label}</strong><span>{selectionTarget.status}</span></section>
-          </div>
-          <div className="warnline mt">
-            This unlocks the selected program package for review and signing. It does not mark the program eligible, remove system blockers, or approve an exception.
-          </div>
-          <label style={{ display: "block", marginTop: 12 }}><span className="lbl">Staff note <span className="sub">Optional</span></span><textarea className="field" rows={3} value={selectionNote} onChange={(event) => setSelectionNote(event.target.value)} placeholder="Document the client discussion or submission rationale." /></label>
-          <div className="row mt" style={{ justifyContent: "flex-end" }}><button type="button" className="btn" disabled={selectProgram.isPending} onClick={() => setSelectionTarget(null)}>Cancel</button><button type="button" className="btn pri" disabled={selectProgram.isPending} onClick={() => selectProgram.mutate({ key: selectionTarget.key, note: selectionNote })}>{selectProgram.isPending ? "Applying…" : "Acknowledge and select"}</button></div>
-        </Modal>
+
+      {packageWorkspace}
+
+      {data.blockers.length > 0 ? (
+        <div className={`panel resolutionConditions${hardCount ? " panel-invalid" : ""}`}>
+          <button
+            type="button"
+            className="panel-h resolutionConditionsToggle"
+            aria-expanded={blockersOpen}
+            onClick={() => setBlockersOpen((current) => !current)}
+          >
+            <AlertTriangle size={18} />
+            <span className="resolutionConditionsCopy">
+              <b>Conditions and corrections</b>
+              <small>Open a source field or review a documented package override.</small>
+            </span>
+            <span className="sp" />
+            <span className={`cellchip ${hardCount ? "c-bad" : "c-warn"}`}>{data.blockers.length} open</span>
+            <ChevronDown className={blockersOpen ? "open" : undefined} size={19} aria-hidden />
+          </button>
+          {blockersOpen && (
+            <div className="panel-b resolutionBlockers">
+              {data.blockers.map((blocker) => (
+                <article key={`${blocker.program_key}:${blocker.rule_key}`} className={`resolutionBlocker${blocker.hard ? " hard" : ""}`}>
+                  <div className="resolutionBlockerHeading">
+                    <span className={`cellchip ${blocker.hard ? "c-bad" : "c-warn"}`}>{KIND_LABELS[blocker.kind] ?? blocker.kind}</span>
+                    <b>{blocker.program_name}</b>
+                  </div>
+                  <p>{blocker.explanation}</p>
+                  <div className="resolutionBlockerSource"><span className="lbl">Current source</span><span>{blocker.source || "Application and verified evidence"}</span></div>
+                  <div className="resolutionBlockerActions">
+                    <a className="btn sm" href={correctionHref(dealerId, blocker)}><Pencil size={15} /> {blocker.correction_label || "Review source"}</a>
+                    <a
+                      className="btn sm"
+                      href="#program-application-package"
+                      onClick={() => window.requestAnimationFrame(() => document.getElementById("program-application-package")?.focus({ preventScroll: true }))}
+                    >
+                      <ShieldAlert size={15} /> Review package override
+                    </a>
+                  </div>
+                  {blocker.hard && (
+                    <div className="exceptionRequest">
+                      {alreadyRequested(blocker.rule_key) ? <span className="cellchip c-warn"><ShieldAlert size={14} /> Exception pending super-admin review</span> : exceptionRule === blocker.rule_key ? <>
+                        <textarea className="field" rows={2} value={exceptionNote} onChange={(event) => setExceptionNote(event.target.value)} placeholder="Document why this exception should be reviewed." />
+                        <div className="row"><button type="button" className="btn" onClick={() => setExceptionRule(null)}>Cancel</button><button type="button" className="btn pri" disabled={!exceptionNote.trim() || requestException.isPending} onClick={() => requestException.mutate(blocker)}>Submit exception request</button></div>
+                      </> : <button type="button" className="btn sm" onClick={() => setExceptionRule(blocker.rule_key)}>Request super-admin exception</button>}
+                    </div>
+                  )}
+                  {requestException.error && exceptionRule === blocker.rule_key && <div className="warnline">{requestException.error instanceof Error ? requestException.error.message : "The exception request could not be saved."}</div>}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="note"><div className="row"><CheckCircle2 size={18} /><b>No current routing conditions</b></div></div>
       )}
-    </div>
+    </>
   );
 }

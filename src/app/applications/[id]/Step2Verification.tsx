@@ -943,7 +943,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className={`panel${creditReturned ? "" : " panel-invalid"}`}>
+      <div id="credit-authorization" className={`panel guided-target${creditReturned ? "" : " panel-invalid"}`} tabIndex={-1}>
         <div className="panel-h">
           <IconTile tone={creditReturned ? "ok" : "warn"}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1066,7 +1066,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className={`panel${preScreen.data?.business_questions_complete ? "" : " panel-invalid"}`}>
+      <div id="business-underwriting" className={`panel guided-target${preScreen.data?.business_questions_complete ? "" : " panel-invalid"}`} tabIndex={-1}>
         <div className="panel-h">
           Business underwriting questions
           <span className="sp" />

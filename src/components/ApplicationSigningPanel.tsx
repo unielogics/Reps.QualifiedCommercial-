@@ -170,6 +170,8 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
       void qc.invalidateQueries({ queryKey: ["contract-envelopes", dealerId] });
       void qc.invalidateQueries({ queryKey: ["application-profile", dealerId] });
       void qc.invalidateQueries({ queryKey: ["submission-readiness", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["underwriting-resolution", dealerId] });
+      void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
     },
   });
   const send = useMutation({
@@ -231,7 +233,7 @@ export default function ApplicationSigningPanel({ dealerId, packageReady, blocke
   const targetProgram = overrideTarget ? PROGRAMS.find((program) => program.key === overrideTarget) : null;
   const targetConditions = overrideTarget ? programConditions(overrideTarget) : [];
 
-  return <div className={`panel${status === "draft" ? " panel-invalid" : ""}`}>
+  return <div id="program-application-package" className={`panel guided-target${status === "draft" ? " panel-invalid" : ""}`} tabIndex={-1}>
     <div className="panel-h"><FileSignature size={17} /> Program application package<span className="sp" /><span className={`cellchip ${status === "executed" ? "c-ok" : status === "out_for_signature" || status === "draft" ? "c-warn" : "c-acc"}`}>{statusLabel(status)}</span></div>
     <div className="panel-b">
       <p className="sub" style={{ marginTop: 0, lineHeight: 1.55 }}>Select one or both program forms, review the populated PDFs with the client, then send the package to the client&apos;s secure device for signature.</p>

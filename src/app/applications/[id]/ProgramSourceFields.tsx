@@ -110,7 +110,7 @@ export default function ProgramSourceFields({ dealerId }: { dealerId: string }) 
   const complete = programSourceFieldsComplete(profile.data);
 
   return (
-    <div className={`panel${complete ? "" : " panel-invalid"}`}>
+    <div id="program-source-fields" className={`panel guided-target${complete ? "" : " panel-invalid"}`} tabIndex={-1}>
       <div className="panel-h">
         Program application source fields
         <span className="sp" />

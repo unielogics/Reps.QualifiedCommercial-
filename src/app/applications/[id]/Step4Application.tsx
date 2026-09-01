@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, CheckCircle2, ExternalLink, FileCheck2, RefreshCw } from "lucide-react";
+import { CalendarClock, CheckCircle2, ExternalLink, FileCheck2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import ApplicationSigningPanel, { type MasterApplicationStatus } from "@/components/ApplicationSigningPanel";
@@ -87,6 +87,18 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
   const openItems = packageItems.filter((item) => item.status === "missing" || item.status === "supplemental");
   const summaryState = summary.data;
   const workflowComplete = workflow.step_4.complete || applicationStatus === "executed";
+  const packageWorkspace = (
+    <ApplicationSigningPanel
+      dealerId={dealerId}
+      packageReady={data.package_ready}
+      blockers={openItems.map((item) => item.requirement)}
+      routeKey={route.program_selection.effective_program_key || data.route_key}
+      onStatusChange={(status) => {
+        setApplicationStatus(status);
+        if (status === "executed") void qc.invalidateQueries({ queryKey: ["decision", dealerId] });
+      }}
+    />
+  );
 
   return (
     <>
@@ -111,7 +123,7 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <Step4Resolution dealerId={dealerId} data={route} />
+      <Step4Resolution dealerId={dealerId} data={route} packageWorkspace={packageWorkspace} />
 
       <div className="panel">
         <div className="panel-h">Route-specific evidence<span className="sp" /><span className="sub">{data.rules_version}</span></div>
@@ -119,13 +131,6 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
           <div className="tblwrap"><table className="tbl" style={{ minWidth: 720 }}><thead><tr><th>Requirement</th><th>Status</th><th>Evidence</th><th>Source</th></tr></thead><tbody>{packageItems.map((item) => { const state = STATUS[item.status] ?? STATUS.missing; return <tr key={`${item.route}:${item.requirement}`}><td><b>{item.requirement}</b><span className="sub" style={{ display: "block" }}>{item.route === "all" ? "All routes" : item.route}</span></td><td><span className={`cellchip ${state.cls}`}>{state.label}</span></td><td>{item.evidence}</td><td className="sub">{item.source || "Application record"}</td></tr>; })}</tbody></table></div>
         </div>
       </div>
-
-      {openItems.length > 0 && (
-        <div className="panel panel-invalid">
-          <div className="panel-h"><AlertTriangle size={17} /> Conditions before direct package release</div>
-          <div className="panel-b"><ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 8 }}>{openItems.map((item) => <li key={`open:${item.requirement}`}><b>{item.requirement}:</b> {item.evidence}</li>)}</ul></div>
-        </div>
-      )}
 
       <div className={`panel${summaryState?.stale ? " panel-invalid" : ""}`}>
         <div className="panel-h">
@@ -157,10 +162,6 @@ export default function Step4Application({ dealerId }: { dealerId: string }) {
           {generateSummary.error && <div className="warnline mt">{generateSummary.error instanceof Error ? generateSummary.error.message : "The summary PDF could not be generated."}</div>}
         </div>
       </div>
-
-      {route.signing_mode === "program_package" && (
-        <ApplicationSigningPanel dealerId={dealerId} packageReady={data.package_ready} blockers={openItems.map((item) => item.requirement)} routeKey={route.program_selection.effective_program_key || data.route_key} onStatusChange={(status) => { setApplicationStatus(status); if (status === "executed") void qc.invalidateQueries({ queryKey: ["decision", dealerId] }); }} />
-      )}
 
       <div className={workflowComplete ? "note" : "warnline"}>
         <div className="row" style={{ gap: 8 }}>

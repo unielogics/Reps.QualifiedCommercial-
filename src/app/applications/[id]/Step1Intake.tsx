@@ -447,7 +447,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
 
   return (
     <>
-      <div className={`panel${entityComplete ? "" : " panel-invalid"}`}>
+      <div id="business-profile" className={`panel guided-target${entityComplete ? "" : " panel-invalid"}`} tabIndex={-1}>
         <div className="panel-h">
           Applicant entity
           <span style={{ flex: 1 }} />
@@ -817,7 +817,7 @@ export default function Step1Intake({ dealerId }: { dealerId: string }) {
         </div>
       </div>
 
-      <div className={`panel${facilityComplete ? "" : " panel-invalid"}`}>
+      <div id="funding-request" className={`panel guided-target${facilityComplete ? "" : " panel-invalid"}`} tabIndex={-1}>
         <div className="panel-h">
           Facility request
           <span style={{ flex: 1 }} />

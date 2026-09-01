@@ -1959,15 +1959,22 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .recommendationDecision ul { margin: 8px 0 0; padding-left: 20px; }
 .recommendationEdit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .recommendationActions, .blockedCompletionActions { display: flex; flex-wrap: wrap; gap: 9px; }
-.resolutionBlockers { display: grid; gap: 10px; }
-.resolutionBlocker { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; }
+.resolutionConditions { overflow: hidden; }
+.resolutionConditionsToggle { width: 100%; min-height: 72px; border: 0; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
+.resolutionConditionsToggle:hover { background: var(--sunken2); }
+.resolutionConditionsCopy { min-width: 0; display: grid; gap: 3px; }
+.resolutionConditionsCopy small { color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.35; }
+.resolutionConditionsToggle > svg:last-child { transition: transform .16s ease; }
+.resolutionConditionsToggle > svg:last-child.open { transform: rotate(180deg); }
+.resolutionBlockers { display: grid; gap: 9px; }
+.resolutionBlocker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 14px; padding: 13px 14px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; }
 .resolutionBlocker.hard { border-left-color: var(--danger); }
-.resolutionBlocker p { margin: 0; line-height: 1.5; }
-.resolutionBlocker dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
-.resolutionBlocker dl > div { padding: 10px; border-radius: 7px; background: var(--sunken2); }
-.resolutionBlocker dt { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
-.resolutionBlocker dd { margin: 4px 0 0; font-size: 12px; line-height: 1.4; }
-.exceptionRequest { display: grid; gap: 9px; justify-items: start; }
+.resolutionBlockerHeading { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.resolutionBlocker p { grid-column: 1 / -1; margin: 0; line-height: 1.45; }
+.resolutionBlockerSource { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.resolutionBlockerSource > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resolutionBlockerActions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.exceptionRequest { grid-column: 1 / -1; display: grid; gap: 9px; justify-items: start; }
 .step4QuestionGroups, .step4QuestionList { display: grid; gap: 12px; }
 .step4QuestionGroup { display: grid; gap: 9px; }
 .step4QuestionGroup h4 { margin: 4px 0 0; font: 720 15px/1.2 var(--fh); }
@@ -1997,10 +2004,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 @media (max-width: 720px) { .bookingDocumentOptions { grid-template-columns: 1fr; } }
 .emptyStateCompact { min-height: 90px; display: grid; place-items: center; align-content: center; gap: 5px; border: 1px dashed var(--line2); border-radius: 8px; text-align: center; }
 .blockedCompletionPanel { border-color: rgba(192, 126, 5, .35); }
-.programSelectionControl { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.4fr); gap: 14px; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
-.programSelectionControl > div:first-child { display: grid; gap: 5px; }
-.programSelectionControl > div:first-child small { color: var(--muted); line-height: 1.4; }
-.programSelectionControl > .note, .programSelectionControl > .warnline { grid-column: 1 / -1; margin: 0; }
 
 /* Authenticated persistent underwriting-summary viewer. */
 .summaryWorkspace { min-height: calc(100dvh - 70px); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; }
@@ -2080,11 +2083,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 @media (max-width: 760px) {
   .resolutionCompare { grid-template-columns: 1fr; }
   .resolutionArrow { transform: rotate(90deg); }
-  .recommendationEdit, .resolutionBlocker dl, .financialConfirmGrid, .step4SourceGrid, .debtFieldGrid { grid-template-columns: 1fr; }
+  .recommendationEdit, .financialConfirmGrid, .step4SourceGrid, .debtFieldGrid { grid-template-columns: 1fr; }
   .step4Question { grid-template-columns: 1fr; }
   .debtCollateral { grid-column: auto; }
   .recommendationActions .btn, .blockedCompletionActions .btn { width: 100%; }
-  .programSelectionControl { grid-template-columns: 1fr; }
+  .resolutionConditionsToggle { min-height: 76px; padding: 12px; }
+  .resolutionBlocker { grid-template-columns: 1fr; }
+  .resolutionBlockerActions { justify-content: stretch; }
+  .resolutionBlockerActions .btn { width: 100%; }
   .summaryToolbar { position: static; flex-wrap: wrap; }
   .summaryToolbar > div { flex: 1 1 190px; }
   .summaryToolbar > .btn { width: 100%; }
