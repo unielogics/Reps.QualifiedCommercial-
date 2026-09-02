@@ -2210,6 +2210,29 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .caseConversationHead > div b { font-family: var(--fh); font-size: 14px; }
 .caseConversationHead > div span { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
 .caseDeliveryNotice { margin: 10px 16px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.caseConsentCapture { margin: 10px 16px 0; border-block: 1px solid var(--line); background: var(--surface); }
+.caseConsentPrompt { min-height: 58px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 0; }
+.caseConsentPrompt > svg { color: var(--accent); }
+.caseConsentPrompt > div, .caseConsentFormHead > div { min-width: 0; display: grid; gap: 2px; }
+.caseConsentPrompt b, .caseConsentFormHead b { font-size: 12.5px; }
+.caseConsentPrompt span, .caseConsentFormHead span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.caseConsentForm { display: grid; gap: 10px; padding: 12px 0; }
+.caseConsentFormHead, .caseConsentActions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.caseConsentMethod { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.caseConsentMethod button { min-height: 54px; display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.caseConsentMethod button.on { border-color: var(--accent); background: var(--accent-100); color: var(--accent); }
+.caseConsentMethod button span { color: var(--muted); font-size: 10.5px; }
+.caseConsentName { display: grid; grid-template-columns: minmax(140px, .35fr) minmax(0, 1fr); align-items: center; gap: 10px; color: var(--muted); font-size: 11px; font-weight: 750; }
+.caseConsentName .field { min-height: 40px; }
+.caseConsentChoices { display: grid; gap: 7px; }
+.caseConsentChoices > label { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); cursor: pointer; }
+.caseConsentChoices > label.on { border-color: var(--accent-200); background: var(--accent-100); }
+.caseConsentChoices input { margin-top: 2px; }
+.caseConsentChoices label > span { min-width: 0; display: grid; gap: 3px; }
+.caseConsentChoices b { font-size: 11.5px; }
+.caseConsentChoices small { color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.caseConsentChoices a { color: var(--accent); }
+.caseConsentActions .hint { max-width: 55%; }
 .caseSubject { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 8px; padding: 10px 16px 0; color: var(--muted); font-size: 11.5px; font-weight: 750; }
 .caseSubject .field { min-height: 40px; }
 .caseMessagingWorkspace > .rc-msgs { min-height: 320px; padding: 14px 16px; }
@@ -2227,4 +2250,4 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .caseContactRow b, .caseConsentRow b { font-size: 12.5px; overflow-wrap: anywhere; }
 .caseConsentRow > svg { margin-left: 8px; color: var(--muted); }
 @media (max-width: 1050px) { .caseMessagingLayout { grid-template-columns: 1fr; } .caseMessagingAside { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .caseMessagingWorkspace { min-height: calc(100dvh - 135px); } .caseMessagingAside { grid-template-columns: 1fr; } .caseMessagingTabs, .caseChannelTabs { padding-left: 8px; padding-right: 8px; } .caseMessagingTabs button, .caseChannelTabs button { padding: 0 10px; } .caseConversationHead, .caseMessageComposer { padding-left: 12px; padding-right: 12px; } .caseMessagingWorkspace > .rc-msgs { padding-left: 12px; padding-right: 12px; } }
+@media (max-width: 720px) { .caseMessagingWorkspace { min-height: calc(100dvh - 135px); } .caseMessagingAside { grid-template-columns: 1fr; } .caseMessagingTabs, .caseChannelTabs { padding-left: 8px; padding-right: 8px; } .caseMessagingTabs button, .caseChannelTabs button { padding: 0 10px; } .caseConversationHead, .caseMessageComposer { padding-left: 12px; padding-right: 12px; } .caseMessagingWorkspace > .rc-msgs { padding-left: 12px; padding-right: 12px; } .caseConsentCapture { margin-left: 12px; margin-right: 12px; } .caseConsentPrompt { grid-template-columns: auto minmax(0, 1fr); } .caseConsentPrompt .btn { grid-column: 1 / -1; width: 100%; } .caseConsentMethod, .caseConsentName { grid-template-columns: 1fr; } .caseConsentActions { align-items: stretch; flex-direction: column; } .caseConsentActions .hint { max-width: none; } }

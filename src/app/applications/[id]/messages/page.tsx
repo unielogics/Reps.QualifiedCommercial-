@@ -23,6 +23,13 @@ type Consent = {
   created_at: string;
 };
 
+function phoneE164(value: string | null | undefined): string | null {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return digits.length >= 11 ? `+${digits}` : null;
+}
+
 import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -41,7 +48,10 @@ export default function MessagesTab() {
       }),
   });
 
-  const grants = (consent.data ?? []).filter((c) => c.granted && !c.revoked_at);
+  const currentPhone = phoneE164(dealer?.phone);
+  const grants = (consent.data ?? []).filter(
+    (c) => c.granted && !c.revoked_at && Boolean(currentPhone) && c.phone_e164 === currentPhone,
+  );
   const txn = grants.find((c) => c.consent_kind === "transactional");
   const mkt = grants.find((c) => c.consent_kind === "marketing");
 
