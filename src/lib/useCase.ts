@@ -141,7 +141,8 @@ export type Dealer = {
   city: string | null;
   state: string | null;
   zip: string | null;
-  industry: string;
+  /** Unset until someone states it; a file no longer claims to be an auto dealer by default. */
+  industry: string | null;
   industry_label: string | null;
   subindustry: string | null;
   subindustry_label: string | null;

@@ -23,6 +23,11 @@ export type RepAppointment = {
   program_name: string | null;
   requested_amount: string | null;
   full_address: string | null;
+  /** The address as typed; full_address is the joined display string. */
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
   join_url: string | null;
   notes: string | null;
   status: AppointmentStatus;

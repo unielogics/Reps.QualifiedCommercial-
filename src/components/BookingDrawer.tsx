@@ -154,6 +154,13 @@ export default function BookingDrawer({
             address.address.trim(),
             [address.city.trim(), address.state.trim(), address.zip.trim()].filter(Boolean).join(" "),
           ].filter(Boolean).join(", ") || null,
+          // The parts as typed, not only the joined string. The client file
+          // needs city, state and ZIP; joining them threw them away and left
+          // three address blockers on a file the rep had already filled in.
+          street: address.address.trim() || null,
+          city: address.city.trim() || null,
+          state: address.state.trim() || null,
+          zip: address.zip.trim() || null,
           transactional_sms_consent: smsConsent,
           // The field desk books here; that is what opens the draft file.
           origin: "field_desk",
