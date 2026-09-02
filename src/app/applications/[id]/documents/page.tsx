@@ -5,9 +5,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, Eye, FileText, RefreshCw, TriangleAlert } from "lucide-react";
+import { Database, Download, ExternalLink, Eye, FileText, FolderSync, RefreshCw, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
 import { ApiError, api, apiUpload } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import { useMe } from "@/lib/useMe";
 import Drawer from "@/components/Drawer";
 
 type Doc = {
@@ -26,6 +27,21 @@ type DocumentUrl = {
   expires_in: number;
   filename: string;
   content_type: string;
+};
+
+type BucketSync = {
+  bucket_id: string | null;
+  bucket_name: string | null;
+  bucket_status: string | null;
+  active_bucket_files: number;
+  tracked_documents: number;
+  pending_documents: number;
+  tracked_document_ids: string[];
+  last_synced_at: string | null;
+  application_submitted: boolean;
+  package_evidence_exists: boolean;
+  can_delete_documents: boolean;
+  can_open_bucket: boolean;
 };
 
 type DocRequest = {
@@ -53,6 +69,8 @@ const DOCUMENT_KINDS = [
   ["loan_agreement", "Loan agreement"],
 ] as const;
 
+const FUNDING_URL = process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
+
 function when(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -75,17 +93,20 @@ export default function DocumentsTab() {
   const [kind, setKind] = useState("other");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [previewDocument, setPreviewDocument] = useState<Doc | null>(null);
-  const { decision } = useCase(id);
+  const [deleteDocument, setDeleteDocument] = useState<Doc | null>(null);
+  const { dealer, decision } = useCase(id);
+  const { isSuperAdmin } = useMe();
 
   const authReady = isLoaded && Boolean(isSignedIn);
-  const authenticatedGet = async <T,>(path: string): Promise<T> => {
+  const authenticatedRequest = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
     try {
-      return await api<T>(path, { authToken: (await getToken()) ?? undefined });
+      return await api<T>(path, { ...init, authToken: (await getToken()) ?? undefined });
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401) throw error;
-      return api<T>(path, { authToken: (await getToken({ skipCache: true })) ?? undefined });
+      return api<T>(path, { ...init, authToken: (await getToken({ skipCache: true })) ?? undefined });
     }
   };
+  const authenticatedGet = <T,>(path: string) => authenticatedRequest<T>(path);
   const docs = useQuery({
     queryKey: ["documents", id],
     enabled: authReady,
@@ -96,6 +117,13 @@ export default function DocumentsTab() {
     queryKey: ["doc-requests", id],
     enabled: authReady,
     queryFn: () => authenticatedGet<DocRequest[]>(`/dealer-os/dealers/${id}/doc-requests`),
+  });
+
+  const bucketSync = useQuery({
+    queryKey: ["document-bucket-sync", id],
+    enabled: authReady,
+    queryFn: () => authenticatedGet<BucketSync>(`/dealer-os/dealers/${id}/documents/bucket-status`),
+    refetchOnWindowFocus: "always",
   });
 
   const preview = useQuery({
@@ -115,6 +143,32 @@ export default function DocumentsTab() {
       window.document.body.appendChild(link);
       link.click();
       link.remove();
+    },
+  });
+
+  const syncBucket = useMutation({
+    mutationFn: () => authenticatedRequest<BucketSync>(`/dealer-os/dealers/${id}/documents/bucket-sync`, { method: "POST" }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["document-bucket-sync", id] }),
+        queryClient.invalidateQueries({ queryKey: ["dealer", id] }),
+      ]);
+    },
+  });
+
+  const removeDocument = useMutation({
+    mutationFn: (document: Doc) => authenticatedRequest<void>(`/dealer-os/dealers/${id}/documents/${document.id}`, { method: "DELETE" }),
+    onSuccess: async (_, document) => {
+      if (previewDocument?.id === document.id) closePreview();
+      setDeleteDocument(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["documents", id] }),
+        queryClient.invalidateQueries({ queryKey: ["document-bucket-sync", id] }),
+        queryClient.invalidateQueries({ queryKey: ["doc-requests", id] }),
+        queryClient.invalidateQueries({ queryKey: ["decision", id] }),
+        queryClient.invalidateQueries({ queryKey: ["document-coverage", id] }),
+        queryClient.invalidateQueries({ queryKey: ["pipeline-status", id] }),
+      ]);
     },
   });
 
@@ -156,6 +210,7 @@ export default function DocumentsTab() {
         queryClient.invalidateQueries({ queryKey: ["documents", id] }),
         queryClient.invalidateQueries({ queryKey: ["doc-requests", id] }),
         queryClient.invalidateQueries({ queryKey: ["decision", id] }),
+        queryClient.invalidateQueries({ queryKey: ["document-bucket-sync", id] }),
       ]);
     },
   });
@@ -197,6 +252,7 @@ export default function DocumentsTab() {
       )),
   ));
   const total = received.length + open.length;
+  const trackedDocumentIds = new Set(bucketSync.data?.tracked_document_ids ?? []);
   const authError = [docs.error, requests.error].find((error) => error instanceof ApiError && error.status === 401);
 
   return (
@@ -211,6 +267,45 @@ export default function DocumentsTab() {
         <span className={`cellchip ${open.length ? "c-warn" : "c-ok"}`}>{open.length} outstanding</span>
         <Link className="btn sm" href={`/applications/${id}/messages`}>Request documents</Link>
       </div>
+
+      <section className="documentBucketBar" aria-label="Connected bucket status">
+        <div className="documentBucketIdentity">
+          <span className="documentBucketIcon"><Database size={18} /></span>
+          <span>
+            <small>Connected bucket</small>
+            <b>{bucketSync.isLoading ? "Checking connection…" : bucketSync.data?.bucket_name || dealer?.name || "Not linked"}</b>
+          </span>
+        </div>
+        <div className="documentBucketStats">
+          <span><b>{bucketSync.data?.tracked_documents ?? 0}</b> of {received.length} tracked</span>
+          <span><b>{bucketSync.data?.active_bucket_files ?? 0}</b> bucket files</span>
+          <span className={bucketSync.data?.pending_documents ? "warn" : "ok"}>
+            {bucketSync.data?.pending_documents ? `${bucketSync.data.pending_documents} pending sync` : "In sync"}
+          </span>
+        </div>
+        <div className="documentBucketActions">
+          <button
+            type="button"
+            className="iconBtn"
+            onClick={() => syncBucket.mutate()}
+            disabled={syncBucket.isPending}
+            title="Repair document and bucket sync"
+            aria-label="Repair document and bucket sync"
+          >
+            <FolderSync size={17} className={syncBucket.isPending ? "spin" : undefined} />
+          </button>
+          {(bucketSync.data?.can_open_bucket || isSuperAdmin) && bucketSync.data?.bucket_id && (
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => window.open(`${FUNDING_URL}/admin/buckets?bucket=${bucketSync.data?.bucket_id}`, "_blank", "noopener,noreferrer")}
+            >
+              <ExternalLink size={15} /> Open bucket
+            </button>
+          )}
+        </div>
+        {syncBucket.error && <p className="documentBucketError">{syncBucket.error instanceof Error ? syncBucket.error.message : "Bucket sync failed."}</p>}
+      </section>
 
       <div className="documentIntakeBar">
         <div
@@ -299,7 +394,7 @@ export default function DocumentsTab() {
       <div className="tblwrap">
         <table className="tbl documentTable">
           <thead>
-            <tr><th>Document</th><th>Classification</th><th>Source</th><th>Status</th><th className="r">Received</th><th className="r">Pages</th><th className="r">Preview</th></tr>
+            <tr><th>Document</th><th>Classification</th><th>Source</th><th>Status</th><th>Bucket</th><th className="r">Received</th><th className="r">Pages</th><th className="r">Actions</th></tr>
           </thead>
           <tbody>
             {received.map((document) => (
@@ -314,19 +409,32 @@ export default function DocumentsTab() {
                 <td className="sub">{document.kind?.replaceAll("_", " ") || "Classifying"}</td>
                 <td className="sub">{document.source === "plaid" ? "Bank connection" : document.source || "Uploaded"}</td>
                 <td><span className={`cellchip ${document.status === "failed" ? "c-bad" : document.status === "extracted" ? "c-ok" : "c-acc"}`}>{document.status === "failed" ? "Could not read" : document.status === "extracted" ? "Indexed" : "Processing"}</span></td>
+                <td>
+                  <span className={`documentBucketState ${trackedDocumentIds.has(document.id) ? "synced" : "pending"}`}>
+                    {trackedDocumentIds.has(document.id) ? <ShieldCheck size={14} /> : <FolderSync size={14} />}
+                    {trackedDocumentIds.has(document.id) ? "Tracked" : "Pending"}
+                  </span>
+                </td>
                 <td className="r sub num">{when(document.created_at)}</td>
                 <td className="r num">{document.page_count ?? "—"}</td>
                 <td className="r">
-                  {isPdf(document) ? (
-                    <button type="button" className="iconBtn" onClick={() => openPreview(document)} title={`Preview ${document.filename}`} aria-label={`Preview ${document.filename}`}>
-                      <Eye size={16} />
-                    </button>
-                  ) : <span className="sub">—</span>}
+                  <span className="documentRowActions">
+                    {isPdf(document) && (
+                      <button type="button" className="iconBtn" onClick={() => openPreview(document)} title={`Preview ${document.filename}`} aria-label={`Preview ${document.filename}`}>
+                        <Eye size={16} />
+                      </button>
+                    )}
+                    {bucketSync.data?.can_delete_documents && (
+                      <button type="button" className="iconBtn danger" onClick={() => { removeDocument.reset(); setDeleteDocument(document); }} title={`Delete ${document.filename}`} aria-label={`Delete ${document.filename}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </span>
                 </td>
               </tr>
             ))}
             {total === 0 && !docs.isLoading && !authError && (
-              <tr><td colSpan={7} className="documentEmpty"><b>No evidence on this file yet</b><span>Upload documents above or request them from the applicant. Bank-connected statements appear here automatically.</span></td></tr>
+              <tr><td colSpan={8} className="documentEmpty"><b>No evidence on this file yet</b><span>Upload documents above or request them from the applicant. Bank-connected statements appear here automatically.</span></td></tr>
             )}
           </tbody>
         </table>
@@ -375,6 +483,27 @@ export default function DocumentsTab() {
               <span>{preview.data?.expires_in ? `Link refreshes on demand · ${Math.round(preview.data.expires_in / 60)} minute access window` : "Short-lived access link"}</span>
             </footer>
             {download.error && <div className="documentPreviewDownloadError">{download.error instanceof Error ? download.error.message : "The PDF could not be downloaded."}</div>}
+          </div>
+        </Drawer>
+      )}
+      {deleteDocument && (
+        <Drawer title="Remove document" onClose={() => !removeDocument.isPending && setDeleteDocument(null)} width={560} dismissOnBackdrop={false}>
+          <div className="documentDeleteConfirm">
+            <span className="documentDeleteIcon"><Trash2 size={22} /></span>
+            <div>
+              <b>{deleteDocument.filename}</b>
+              <p>This removes the document from the active file and its connected bucket. The archived evidence and audit record are retained.</p>
+            </div>
+            {(bucketSync.data?.application_submitted || bucketSync.data?.package_evidence_exists) && (
+              <div className="documentDeletePolicy"><ShieldCheck size={17} /><span><b>Submitted file</b> This action is restricted to a super admin and will be recorded.</span></div>
+            )}
+            {removeDocument.error && <div className="documentError">{removeDocument.error instanceof Error ? removeDocument.error.message : "The document could not be removed."}</div>}
+            <div className="documentDeleteActions">
+              <button type="button" className="btn" onClick={() => setDeleteDocument(null)} disabled={removeDocument.isPending}>Cancel</button>
+              <button type="button" className="btn danger" onClick={() => removeDocument.mutate(deleteDocument)} disabled={removeDocument.isPending}>
+                <Trash2 size={16} /> {removeDocument.isPending ? "Removing…" : "Remove document"}
+              </button>
+            </div>
           </div>
         </Drawer>
       )}

@@ -697,6 +697,18 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .documentWorkspace { min-height: min(690px, calc(100dvh - 190px)); }
 .documentWorkspaceHead > div:first-child { display: grid; gap: 2px; }
 .documentWorkspaceHead > div:first-child > b { font-family: var(--fh); font-size: 15px; }
+.documentBucketBar { min-height: 70px; display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; align-items: center; gap: 18px; padding: 11px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.documentBucketIdentity { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.documentBucketIdentity > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.documentBucketIdentity small { color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.documentBucketIdentity b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--fh); font-size: 13px; }
+.documentBucketIcon { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: var(--accent-100); color: var(--accent); }
+.documentBucketStats { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.documentBucketStats b { color: var(--ink); }
+.documentBucketStats .ok { color: var(--ok); font-weight: 750; }
+.documentBucketStats .warn { color: var(--warn); font-weight: 750; }
+.documentBucketActions, .documentRowActions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.documentBucketError { grid-column: 1 / -1; margin: -5px 0 0 48px; color: var(--danger); font-size: 11.5px; }
 .documentIntakeBar { display: grid; grid-template-columns: minmax(280px, .9fr) minmax(190px, .42fr) minmax(300px, 1fr); gap: 12px; align-items: end; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--sunken2); }
 .documentDrop { min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 13px; border: 1.5px dashed var(--line2); border-radius: 9px; background: var(--surface); cursor: pointer; }
 .documentDrop:hover, .documentDrop.drag { border-color: var(--accent); background: var(--accent-100); }
@@ -730,6 +742,19 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .documentNameButton:hover b, .documentNameButton:focus-visible b { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .documentNameButton:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 4px; border-radius: 3px; }
 .documentTable .iconBtn { margin-left: auto; }
+.documentBucketState { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.documentBucketState.synced { color: var(--ok); }
+.documentBucketState.pending { color: var(--warn); }
+.documentDeleteConfirm { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 12px; padding: 20px; }
+.documentDeleteIcon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 8px; background: var(--danger-tint); color: var(--danger); }
+.documentDeleteConfirm > div:nth-child(2) { display: grid; gap: 7px; }
+.documentDeleteConfirm p { margin: 0; color: var(--muted); line-height: 1.5; }
+.documentDeletePolicy { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.documentDeletePolicy svg { flex: 0 0 auto; color: var(--accent); }
+.documentDeletePolicy span { display: grid; gap: 2px; color: var(--muted); }
+.documentDeletePolicy b { color: var(--ink); }
+.documentDeleteConfirm > .documentError { grid-column: 1 / -1; margin: 0; }
+.documentDeleteActions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .modalWorkspace .modalBody.documentPreviewBody { padding: 0; overflow: hidden; display: flex; }
 .documentPreviewWorkspace { min-width: 0; min-height: 0; flex: 1; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--sunken2); position: relative; }
 .documentPreviewToolbar { display: flex; align-items: center; gap: 16px; padding: 12px clamp(16px, 2vw, 28px); border-bottom: 1px solid var(--line); background: var(--surface); }
@@ -750,9 +775,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .documentPreviewDownloadError { position: absolute; right: 18px; bottom: 64px; max-width: min(520px, calc(100% - 36px)); padding: 10px 12px; border: 1px solid rgba(180, 35, 24, .3); border-radius: 8px; background: var(--danger-tint); color: var(--danger); box-shadow: var(--sh1); font-size: 12px; font-weight: 650; }
 .deliveryEditor { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .deliveryEditor label { display: grid; gap: 5px; }
-@media (max-width: 1100px) { .documentIntakeBar { grid-template-columns: 1fr 240px; } .uploadTray { grid-column: 1 / -1; } }
+@media (max-width: 1100px) { .documentBucketBar { grid-template-columns: 1fr auto; } .documentBucketStats { grid-column: 1 / -1; padding-left: 48px; } .documentIntakeBar { grid-template-columns: 1fr 240px; } .uploadTray { grid-column: 1 / -1; } }
 @media (max-width: 720px) {
   .documentWorkspace { min-height: auto; }
+  .documentBucketBar { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .documentBucketStats { padding-left: 0; grid-column: 1 / -1; flex-wrap: wrap; gap: 8px 14px; }
+  .documentBucketActions .btn { width: 44px; padding: 0; overflow: hidden; color: transparent; gap: 0; }
+  .documentBucketActions .btn svg { color: var(--ink); }
   .documentIntakeBar, .deliveryEditor { grid-template-columns: 1fr; }
   .uploadTray { grid-column: auto; }
   .documentTable { min-width: 820px; }
