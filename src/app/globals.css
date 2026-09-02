@@ -1565,6 +1565,173 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .reviewProposal b { font-size: 12px; }
 .reviewProposal small { color: var(--muted); font-size: 10px; }
 
+/* Final underwriting desk: evidence, meeting, decision, and disposition. */
+.underwritingDesk { overflow: hidden; }
+.underwritingDeskHeader { min-height: 118px; display: flex; align-items: center; gap: 24px; padding: 22px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.underwritingDeskHeader > div { min-width: 0; display: grid; gap: 5px; }
+.underwritingEyebrow { color: var(--accent); font-size: 10.5px; font-weight: 850; text-transform: uppercase; }
+.underwritingDeskHeader h2 { margin: 0; font-family: var(--fh); font-size: 24px; line-height: 1.15; }
+.underwritingDeskHeader p { max-width: 720px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.underwritingDecisionBadge { min-width: 154px; min-height: 64px; margin-left: auto; display: grid; align-content: center; gap: 3px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); }
+.underwritingDecisionBadge span { color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.underwritingDecisionBadge b { font-size: 14px; text-transform: capitalize; }
+.underwritingDecisionBadge.c-ok { border-color: rgba(3, 152, 85, .35); background: var(--ok-tint); color: var(--ok); }
+.underwritingDecisionBadge.c-warn { border-color: rgba(191, 128, 0, .35); background: var(--warn-tint); color: var(--warn); }
+.underwritingDecisionBadge.c-bad { border-color: rgba(180, 35, 24, .35); background: var(--danger-tint); color: var(--danger); }
+.underwritingStatusStrip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); background: var(--sunken2); }
+.underwritingStatusStrip > div { min-width: 0; min-height: 64px; display: grid; align-content: center; gap: 3px; padding: 10px 16px; border-right: 1px solid var(--line); }
+.underwritingStatusStrip > div:last-child { border-right: 0; }
+.underwritingStatusStrip span { color: var(--muted); font-size: 10px; font-weight: 700; }
+.underwritingStatusStrip b { font-size: 12px; overflow-wrap: anywhere; }
+.underwritingEvidenceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.underwritingEvidenceGroup { min-width: 0; padding: 18px 20px 20px; border-bottom: 1px solid var(--line); }
+.underwritingEvidenceGroup:nth-child(odd) { border-right: 1px solid var(--line); }
+.underwritingEvidenceGroup:nth-last-child(-n + 2) { border-bottom: 0; }
+.underwritingEvidenceGroup > header { min-height: 34px; display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.underwritingEvidenceGroup > header > b { font-family: var(--fh); font-size: 13px; }
+.underwritingEvidenceIcon { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 7px; background: var(--accent-100); color: var(--accent); }
+.underwritingEvidenceRows { display: grid; }
+.underwritingEvidenceRows .kv { min-height: 39px; gap: 14px; }
+.underwritingEvidenceRows .kv span { font-size: 11px; }
+.underwritingEvidenceRows .kv b { max-width: 62%; font-size: 11.5px; text-align: right; overflow-wrap: anywhere; }
+
+.underwritingMeetingPanel .panel-b { padding: 18px; }
+.underwritingMeetingIntro { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.underwritingMeetingIntro > div { min-width: 0; display: grid; gap: 3px; }
+.underwritingMeetingIntro b { font-size: 13px; }
+.underwritingMeetingIntro span:not(.cellchip) { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.underwritingSlotGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.underwritingSlot { min-width: 0; min-height: 126px; display: grid; align-content: center; gap: 5px; padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.underwritingSlot:hover { border-color: var(--accent-200); background: var(--accent-100); box-shadow: inset 3px 0 0 var(--accent); }
+.underwritingSlot.selected { border-color: var(--accent); background: var(--accent-100); box-shadow: inset 3px 0 0 var(--accent); }
+.underwritingSlot > span { color: var(--accent); font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.underwritingSlot > b { font-size: 13px; overflow-wrap: anywhere; }
+.underwritingSlot > strong { font-size: 18px; line-height: 1.1; }
+.underwritingSlot > small { color: var(--muted); font-size: 10.5px; }
+.underwritingEmptyState { padding: 22px; border: 1px dashed var(--line); border-radius: 7px; color: var(--muted); text-align: center; }
+.underwritingBookedMeeting { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.underwritingBookedIcon { width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 7px; background: var(--ok-tint); color: var(--ok); }
+.underwritingBookedMeeting > div:nth-child(2), .underwritingBookingSelection > div { min-width: 0; display: grid; gap: 3px; }
+.underwritingBookedMeeting span:not(.underwritingBookedIcon), .underwritingBookingSelection span:not(.underwritingBookedIcon, .cellchip) { color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.underwritingBookedMeeting b, .underwritingBookingSelection b { font-size: 14px; overflow-wrap: anywhere; }
+.underwritingBookedMeeting small, .underwritingBookingSelection small { color: var(--muted); font-size: 10.5px; overflow-wrap: anywhere; }
+.underwritingBookedActions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.modalBody.underwritingBookingModalBody { padding: 0; }
+.underwritingBookingReview { display: grid; gap: 0; }
+.underwritingBookingSelection { min-height: 86px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: var(--sunken2); }
+.underwritingBookingSection { display: grid; gap: 12px; padding: 18px; border-bottom: 1px solid var(--line); }
+.underwritingBookingSection > header { display: grid; gap: 3px; }
+.underwritingBookingSection > header b { font-size: 13px; }
+.underwritingBookingSection > header span { color: var(--muted); font-size: 10.5px; }
+.underwritingBookingFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.underwritingBookingFields label, .underwritingBookingSection > label { display: grid; gap: 5px; }
+.underwritingBookingSection textarea { resize: vertical; min-height: 78px; }
+.underwritingBookingEffects { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.underwritingBookingEffects > div { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px; padding: 11px; border-right: 1px solid var(--line); }
+.underwritingBookingEffects > div:last-child { border-right: 0; }
+.underwritingBookingEffects svg { color: var(--accent); }
+.underwritingBookingEffects span { min-width: 0; display: grid; gap: 3px; }
+.underwritingBookingEffects b { font-size: 11px; }
+.underwritingBookingEffects small { color: var(--muted); font-size: 9.5px; line-height: 1.4; }
+.underwritingBookingConfirm { margin: 16px 18px 0; min-height: 62px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); cursor: pointer; }
+.underwritingBookingConfirm.on { border-color: var(--accent-200); background: var(--accent-100); }
+.underwritingBookingConfirm span { display: grid; gap: 2px; }
+.underwritingBookingConfirm b { font-size: 11.5px; }
+.underwritingBookingConfirm small { color: var(--muted); font-size: 10px; }
+.underwritingBookingReview > .warnline { margin: 12px 18px 0; }
+.underwritingBookingActions { position: sticky; bottom: 0; z-index: 1; display: flex; justify-content: flex-end; gap: 8px; padding: 16px 18px; border-top: 1px solid var(--line); background: var(--surface); }
+
+.underwritingDecisionBody { display: grid; gap: 14px; }
+.underwritingDecisionContext { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.underwritingDecisionContext > div { min-width: 0; min-height: 62px; display: grid; align-content: center; gap: 3px; padding: 10px 12px; border-right: 1px solid var(--line); }
+.underwritingDecisionContext > div:last-child { border-right: 0; }
+.underwritingDecisionContext span { color: var(--muted); font-size: 10px; }
+.underwritingDecisionContext b { font-size: 11.5px; overflow-wrap: anywhere; }
+.underwritingDecisionNote { display: grid; gap: 6px; }
+.underwritingDecisionNote textarea { resize: vertical; min-height: 94px; }
+.underwritingDecisionActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.underwritingDecisionActions .hint { margin-left: auto; max-width: 320px; text-align: right; }
+
+.underwritingAuthorizationList { display: grid; }
+.underwritingAuthorizationList > div { min-width: 0; min-height: 72px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.underwritingAuthorizationList > div:last-child { border-bottom: 0; }
+.underwritingAuthorizationIcon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 7px; background: var(--sunken2); color: var(--muted); }
+.underwritingAuthorizationIcon.ok { background: var(--ok-tint); color: var(--ok); }
+.underwritingAuthorizationIcon.warn { background: var(--warn-tint); color: var(--warn); }
+.underwritingAuthorizationList > div > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.underwritingAuthorizationList b { font-size: 12px; }
+.underwritingAuthorizationList small { color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+.underwritingPackageAction { min-height: 66px; display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid rgba(191, 128, 0, .35); border-radius: 7px; background: var(--warn-tint); }
+.underwritingPackageAction > div { min-width: 0; display: grid; gap: 3px; }
+.underwritingPackageAction b { font-size: 12px; }
+.underwritingPackageAction span { color: var(--muted); font-size: 10.5px; }
+.underwritingPackageAction .btn { margin-left: auto; flex: 0 0 auto; }
+.underwritingPackageAdmin .panel-b { display: grid; gap: 12px; }
+.underwritingPackageAdmin .panel-b > p { max-width: 860px; }
+.contractProgramBar { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(250px, 1fr) auto; align-items: end; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); }
+.contractProgramBar > label { min-width: 0; display: grid; gap: 5px; }
+.contractProgramBar .btn { min-height: 42px; }
+
+.underwritingRoomBody { display: grid; gap: 12px; }
+.underwritingRoomSummary { min-width: 0; display: flex; align-items: center; gap: 11px; }
+.underwritingRoomSummary > div { min-width: 0; display: grid; gap: 3px; }
+.underwritingRoomSummary b { font-size: 12.5px; }
+.underwritingRoomSummary span:not(.underwritingEvidenceIcon, .sp) { color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+.underwritingRoomCredentials { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.underwritingRoomCredentials > div { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.underwritingRoomCredentials > div:first-child { border-right: 1px solid var(--line); }
+.underwritingRoomCredentials span { color: var(--muted); font-size: 10.5px; font-weight: 700; }
+.underwritingRoomCredentials .btn { margin-left: auto; }
+
+.underwritingDispositionGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; padding: 0; }
+.underwritingDispositionGrid > section { min-width: 0; display: grid; align-content: start; gap: 14px; padding: 18px; }
+.underwritingDispositionGrid > section:first-child { border-right: 1px solid var(--line); }
+.underwritingDispositionGrid section > header { display: grid; gap: 3px; }
+.underwritingDispositionGrid section > header b { font-size: 13px; }
+.underwritingDispositionGrid section > header span { color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+.underwritingDispositionFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.underwritingDispositionFields label { display: grid; gap: 5px; }
+.underwritingDestinationActions { display: grid; gap: 8px; }
+.underwritingDestinationActions > .btn { min-height: 62px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 11px; text-align: left; }
+.underwritingDestinationActions .btn > span { min-width: 0; display: grid; gap: 2px; }
+.underwritingDestinationActions .btn b { font-size: 11.5px; }
+.underwritingDestinationActions .btn small { color: var(--muted); font-size: 9.5px; font-weight: 500; white-space: normal; }
+
+@media (max-width: 900px) {
+  .underwritingStatusStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .underwritingStatusStrip > div:nth-child(2) { border-right: 0; }
+  .underwritingStatusStrip > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .underwritingSlotGrid, .underwritingBookingEffects { grid-template-columns: 1fr; }
+  .underwritingBookingEffects > div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .underwritingBookingEffects > div:last-child { border-bottom: 0; }
+  .underwritingDispositionGrid { grid-template-columns: 1fr; }
+  .underwritingDispositionGrid > section:first-child { border-right: 0; border-bottom: 1px solid var(--line); }
+  .contractProgramBar { grid-template-columns: 1fr; align-items: stretch; }
+}
+@media (max-width: 640px) {
+  .underwritingDeskHeader { align-items: stretch; flex-direction: column; padding: 18px; }
+  .underwritingDecisionBadge { width: 100%; margin-left: 0; }
+  .underwritingStatusStrip, .underwritingEvidenceGrid, .underwritingBookingFields, .underwritingDecisionContext, .underwritingRoomCredentials, .underwritingDispositionFields { grid-template-columns: 1fr; }
+  .underwritingStatusStrip > div, .underwritingStatusStrip > div:nth-child(2) { border-right: 0; border-bottom: 1px solid var(--line); }
+  .underwritingStatusStrip > div:last-child { border-bottom: 0; }
+  .underwritingEvidenceGroup, .underwritingEvidenceGroup:nth-child(odd), .underwritingEvidenceGroup:nth-last-child(-n + 2) { border-right: 0; border-bottom: 1px solid var(--line); }
+  .underwritingEvidenceGroup:last-child { border-bottom: 0; }
+  .underwritingBookedMeeting, .underwritingBookingSelection { grid-template-columns: auto minmax(0, 1fr); }
+  .underwritingBookedActions, .underwritingBookingSelection > .cellchip { grid-column: 1 / -1; justify-content: stretch; }
+  .underwritingBookedActions .btn { flex: 1; }
+  .underwritingMeetingIntro, .underwritingRoomSummary, .underwritingPackageAction { align-items: stretch; flex-direction: column; }
+  .underwritingPackageAction .btn { width: 100%; margin-left: 0; }
+  .underwritingBookingActions { display: grid; grid-template-columns: 1fr; }
+  .underwritingBookingActions .btn { width: 100%; }
+  .underwritingDecisionActions { align-items: stretch; flex-direction: column; }
+  .underwritingDecisionActions .btn { width: 100%; }
+  .underwritingDecisionActions .hint { max-width: none; margin-left: 0; text-align: left; }
+  .underwritingAuthorizationList > div { grid-template-columns: auto minmax(0, 1fr); padding-block: 9px; }
+  .underwritingAuthorizationList .cellchip { grid-column: 2; justify-self: start; }
+  .underwritingRoomCredentials > div:first-child { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
 @media (max-width: 1050px) {
   .productRail { grid-auto-columns: minmax(300px, 45%); }
   .contactGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

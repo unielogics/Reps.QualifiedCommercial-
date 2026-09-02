@@ -16,8 +16,8 @@ import {
   RefreshCw,
   Route,
   ShieldCheck,
-  UserRound,
 } from "lucide-react";
+import Drawer from "@/components/Drawer";
 import RequestPanel from "@/components/RequestPanel";
 import AdminContractPackageControls from "@/components/AdminContractPackageControls";
 import ProgramSelect, {
@@ -26,7 +26,6 @@ import ProgramSelect, {
 } from "@/components/ProgramSelect";
 import { api } from "@/lib/api";
 import {
-  appointmentRsvpClass,
   appointmentRsvpLabel,
   appointmentRsvpTone,
   type RepAppointment,
@@ -127,22 +126,26 @@ function humanStatus(value: string | null | undefined): string {
   return (value || "pending").replace(/_/g, " ");
 }
 
-function SummarySection({
+function EvidenceGroup({
   title,
   icon,
+  status,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
+  status?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="note" style={{ margin: 0, minWidth: 0 }}>
-      <div className="row" style={{ gap: 8 }}>
-        {icon}
+    <section className="underwritingEvidenceGroup">
+      <header>
+        <span className="underwritingEvidenceIcon">{icon}</span>
         <b>{title}</b>
-      </div>
-      <div style={{ marginTop: 10 }}>{children}</div>
+        {status && <span className="sp" />}
+        {status}
+      </header>
+      <div className="underwritingEvidenceRows">{children}</div>
     </section>
   );
 }
@@ -164,6 +167,8 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
   const [reviewProgramKey, setReviewProgramKey] = useState(GENERAL_PROGRAM_KEY);
   const [reviewProgramName, setReviewProgramName] = useState(GENERAL_PROGRAM_NAME);
   const [reviewNotes, setReviewNotes] = useState("");
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingConfirmed, setBookingConfirmed] = useState(false);
 
   const authenticated = async <T,>(path: string, init?: RequestInit) =>
     api<T>(path, { ...init, authToken: (await getToken()) ?? undefined });
@@ -217,6 +222,9 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
     ? (appointments.data ?? []).find((appointment) => appointment.id === reviewPreference.appointment_id) ?? null
     : null;
   const financial = decision?.financial;
+  const selectedReviewOption = reviewPreference?.slots.find(
+    (slot) => slot.starts_at === selectedReviewSlot,
+  ) ?? null;
 
   useEffect(() => {
     if (!dealer) return;
@@ -316,6 +324,8 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
       },
     ),
     onSuccess: async () => {
+      setBookingOpen(false);
+      setBookingConfirmed(false);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["underwriting-review-preferences", dealerId] }),
         qc.invalidateQueries({ queryKey: ["appointments", dealerId] }),
@@ -343,106 +353,196 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
 
   return (
     <>
-      <div className="panel">
-        <div className="panel-h">
-          Step 5 · Super-admin desk review and closing
-          <span className="sp" />
-          <span className={`cellchip ${decisionTone}`}>
-            {humanStatus(readiness.data?.human_review_status)}
+      <div className="panel underwritingDesk">
+        <div className="underwritingDeskHeader">
+          <div>
+            <span className="underwritingEyebrow">Final decision workspace</span>
+            <h2>Underwriting desk review</h2>
+            <p>Review the verified file, resolve the client meeting, record the credit decision, and complete disposition.</p>
+          </div>
+          <span className={`underwritingDecisionBadge ${decisionTone}`}>
+            <span>Desk posture</span>
+            <b>{humanStatus(readiness.data?.human_review_status)}</b>
           </span>
         </div>
-        <div className="panel-b">
-          <p className="sub" style={{ marginTop: 0 }}>
-            One place to review the complete file, the client’s three proposed review windows,
-            the submitting agent, the desk decision, agreements, delivery, and closing status.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
-            <SummarySection title="Step 1 · Applicant and request" icon={<ClipboardCheck size={17} />}>
-              <div className="kv"><span>Business</span><b>{dealer?.legal_name || dealer?.name || "—"}</b></div>
-              <div className="kv"><span>NAICS</span><b>{dealer?.naics_code ? `${dealer.naics_code} · ${dealer.naics_label || "Classified"}` : "Awaiting classification"}</b></div>
-              <div className="kv"><span>Client requested</span><b>{money(dealer?.client_requested_amount ?? dealer?.funding_goal)}</b></div>
-              <div className="kv"><span>Working funding goal</span><b>{money(dealer?.funding_goal)}</b></div>
-              <div className="kv"><span>Use</span><b>{dealer?.use_of_proceeds_note || dealer?.funding_purpose?.replace(/_/g, " ") || "Awaiting detail"}</b></div>
-            </SummarySection>
-            <SummarySection title="Step 2 · Verification" icon={<ShieldCheck size={17} />}>
-              <div className="kv"><span>Required owners</span><b>{completedOwners} of {requiredOwners.length} completed</b></div>
-              <div className="kv"><span>Bank evidence</span><b>{verification.statement_months.length} qualifying months</b></div>
-              <div className="kv"><span>Credit</span><b>{verification.credit_returned ? "Returned for every required owner" : "Incomplete"}</b></div>
-            </SummarySection>
-            <SummarySection title="Step 3 · Financial profile" icon={<Route size={17} />}>
-              <div className="kv"><span>Annual sales</span><b>{money(financial?.annual_sales)}</b></div>
-              <div className="kv"><span>Cash flow for debt</span><b>{money(financial?.annual_cash_flow_available_for_debt)}</b></div>
-              <div className="kv"><span>Monthly debt</span><b>{money(financial?.monthly_debt_payments)}</b></div>
-              <div className="kv"><span>Calculated DSCR</span><b>{ratio(financial?.dscr)}</b></div>
-              <div className="kv"><span>Average daily balance</span><b>{money(financial?.avg_daily_balance)}</b></div>
-              <div className="kv"><span>Annualized deposits</span><b>{money(financial?.annualized_deposits)}</b></div>
-              <div className="kv"><span>Negative days / 90</span><b>{financial?.negative_balance_days_90 ?? "Awaiting evidence"}</b></div>
-              <div className="kv"><span>Returned items</span><b>{financial?.returned_items ?? "Awaiting evidence"}</b></div>
-            </SummarySection>
-            <SummarySection title="Step 4 · Package" icon={<CheckCircle2 size={17} />}>
-              <div className="kv"><span>Route</span><b>{readiness.data?.route_label || "Awaiting route"}</b></div>
-              <div className="kv"><span>Evidence package</span><b>{readiness.data?.package_ready ? "Complete" : "Conditions remain"}</b></div>
-              <div className="kv"><span>Signing package</span><b>{packageEnvelope ? `${packageEnvelope.title} · ${packageEnvelope.status.replace(/_/g, " ")}` : "Not generated"}</b></div>
-              <div className="kv"><span>Rules</span><b>{readiness.data?.rules_version || "—"}</b></div>
-            </SummarySection>
-            <SummarySection title="Client review windows" icon={<CalendarClock size={17} />}>
-              {(reviewPreference?.slots ?? []).map((slot, index) => (
-                <div
-                  className={`reviewProposal ${selectedReviewSlot === slot.starts_at ? "selected" : ""} ${
-                    reviewPreference?.selected_slot_at === slot.starts_at && reviewAppointment
-                      ? appointmentRsvpClass(reviewAppointment)
-                      : ""
-                  }`}
-                  key={slot.starts_at}
-                >
-                  <button
-                    type="button"
-                    disabled={!isSuperAdmin || Boolean(reviewAppointment && reviewAppointment.client_rsvp_status !== "declined")}
-                    onClick={() => setSelectedReviewSlot(slot.starts_at)}
-                  >
-                    <span>Option {index + 1}</span><b>{slot.date_label} · {slot.label}</b>
-                    <small>
-                      {reviewPreference?.selected_slot_at === slot.starts_at && reviewAppointment
-                        ? appointmentRsvpLabel(reviewAppointment)
-                        : reviewPreference?.selected_slot_at
-                          ? "Not selected"
-                          : "Proposed - does not reserve this time"}
-                    </small>
-                  </button>
-                </div>
-              ))}
-              {!reviewPreference && <span className="sub">No active three-window preference.</span>}
-              {reviewPreference && <div className="sub mt">{reviewPreference.timezone}</div>}
-              {reviewAppointment && (
-                <div className="mt">
-                  <span className={`cellchip ${appointmentRsvpTone(reviewAppointment)}`}>
-                    {appointmentRsvpLabel(reviewAppointment)}
-                  </span>
-                </div>
-              )}
-            </SummarySection>
-            <SummarySection title="Submitting agent" icon={<UserRound size={17} />}>
-              <div className="kv"><span>Name</span><b>{dealer?.submitting_agent_name || "Unassigned"}</b></div>
-              <div className="kv"><span>Email</span><b>{dealer?.submitting_agent_email || "Not available"}</b></div>
-              <div className="kv"><span>Primary signer</span><b>{primaryOwner?.full_name || "Awaiting owner record"}</b></div>
-            </SummarySection>
-          </div>
+        <div className="underwritingStatusStrip">
+          <div><span>System route</span><b>{readiness.data?.route_label || "Awaiting route"}</b></div>
+          <div><span>Verified bank evidence</span><b>{verification.statement_months.length} months</b></div>
+          <div><span>Application package</span><b>{packageEnvelope ? humanStatus(packageEnvelope.status) : "Not generated"}</b></div>
+          <div><span>Client meeting</span><b>{reviewAppointment ? appointmentRsvpLabel(reviewAppointment) : reviewPreference ? "Selection required" : "No windows submitted"}</b></div>
+        </div>
+        <div className="underwritingEvidenceGrid">
+          <EvidenceGroup title="Applicant and request" icon={<Route size={17} />} status={<span className="cellchip c-acc">Current file</span>}>
+            <div className="kv"><span>Business</span><b>{dealer?.legal_name || dealer?.name || "—"}</b></div>
+            <div className="kv"><span>NAICS</span><b>{dealer?.naics_code ? `${dealer.naics_code} · ${dealer.naics_label || "Classified"}` : "Awaiting classification"}</b></div>
+            <div className="kv"><span>Client requested</span><b>{money(dealer?.client_requested_amount ?? dealer?.funding_goal)}</b></div>
+            <div className="kv"><span>Working funding goal</span><b>{money(dealer?.funding_goal)}</b></div>
+            <div className="kv"><span>Use of funds</span><b>{dealer?.use_of_proceeds_note || dealer?.funding_purpose?.replace(/_/g, " ") || "Awaiting detail"}</b></div>
+          </EvidenceGroup>
+          <EvidenceGroup title="Verification and credit" icon={<ShieldCheck size={17} />} status={<span className={`cellchip ${verification.credit_returned ? "c-ok" : "c-warn"}`}>{verification.credit_returned ? "Returned" : "Incomplete"}</span>}>
+            <div className="kv"><span>Required owners</span><b>{completedOwners} of {requiredOwners.length} completed</b></div>
+            <div className="kv"><span>Bank evidence</span><b>{verification.statement_months.length} qualifying months</b></div>
+            <div className="kv"><span>Owner credit</span><b>{verification.credit_returned ? "Returned for every required owner" : "One or more results remain"}</b></div>
+            <div className="kv"><span>Primary signer</span><b>{primaryOwner?.full_name || "Awaiting owner record"}</b></div>
+          </EvidenceGroup>
+          <EvidenceGroup title="Financial capacity" icon={<CheckCircle2 size={17} />} status={<span className={`cellchip ${financial?.dscr ? "c-ok" : "c-warn"}`}>{financial?.dscr ? ratio(financial.dscr) : "Needs review"}</span>}>
+            <div className="kv"><span>Annual sales</span><b>{money(financial?.annual_sales)}</b></div>
+            <div className="kv"><span>Cash flow for debt</span><b>{money(financial?.annual_cash_flow_available_for_debt)}</b></div>
+            <div className="kv"><span>Monthly debt</span><b>{money(financial?.monthly_debt_payments)}</b></div>
+            <div className="kv"><span>Average daily balance</span><b>{money(financial?.avg_daily_balance)}</b></div>
+            <div className="kv"><span>Annualized deposits</span><b>{money(financial?.annualized_deposits)}</b></div>
+            <div className="kv"><span>Negative days / returned items</span><b>{financial?.negative_balance_days_90 ?? "—"} / {financial?.returned_items ?? "—"}</b></div>
+          </EvidenceGroup>
+          <EvidenceGroup title="Package and ownership" icon={<FileSignature size={17} />} status={<span className={`cellchip ${readiness.data?.package_ready ? "c-ok" : "c-warn"}`}>{readiness.data?.package_ready ? "Ready" : "Conditions"}</span>}>
+            <div className="kv"><span>Evidence package</span><b>{readiness.data?.package_ready ? "Complete" : "Conditions remain"}</b></div>
+            <div className="kv"><span>Signing package</span><b>{packageEnvelope ? `${packageEnvelope.title} · ${humanStatus(packageEnvelope.status)}` : "Not generated"}</b></div>
+            <div className="kv"><span>Rules version</span><b>{readiness.data?.rules_version || "—"}</b></div>
+            <div className="kv"><span>Submitting agent</span><b>{dealer?.submitting_agent_name || "Unassigned"}</b></div>
+            <div className="kv"><span>Agent email</span><b>{dealer?.submitting_agent_email || "Not available"}</b></div>
+          </EvidenceGroup>
         </div>
       </div>
 
-      {isSuperAdmin && (
-        <div className="panel">
-          <div className="panel-h"><ShieldCheck size={17} /> Human underwriting decision</div>
-          <div className="panel-b">
-            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-              <span className={`cellchip ${decisionTone}`}>{humanStatus(readiness.data?.human_review_status)}</span>
-              <span className="sub">Only a super admin records the final fundability decision and closing status.</span>
+      <div className="panel underwritingMeetingPanel">
+        <div className="panel-h">
+          <CalendarClock size={18} /> Client underwriting meeting
+          <span className="sp" />
+          <span className={`cellchip ${reviewAppointment ? appointmentRsvpTone(reviewAppointment) : reviewPreference ? "c-warn" : "c-mut"}`}>
+            {reviewAppointment ? appointmentRsvpLabel(reviewAppointment) : reviewPreference ? "Choose and book" : "No proposals"}
+          </span>
+        </div>
+        <div className="panel-b">
+          {reviewAppointment && reviewAppointment.client_rsvp_status !== "declined" ? (
+            <div className="underwritingBookedMeeting">
+              <span className="underwritingBookedIcon"><CheckCircle2 size={22} /></span>
+              <div>
+                <span>Booked meeting</span>
+                <b>{new Date(reviewAppointment.starts_at).toLocaleString(undefined, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}</b>
+                <small>{reviewAppointment.invitee_name} · {reviewAppointment.invitee_email || "No email"} · {reviewAppointment.timezone}</small>
+              </div>
+              <div className="underwritingBookedActions">
+                {reviewAppointment.join_url && <a className="btn" href={reviewAppointment.join_url} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Join meeting</a>}
+                <a className="btn" href={`/calendar?appointment=${reviewAppointment.id}`}><CalendarClock size={15} /> Manage appointment</a>
+              </div>
             </div>
-            <textarea className="field mt" style={{ width: "100%" }} rows={3} placeholder="Decision note, conditions, or reason this route is not fundable" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
-            <div className="row mt" style={{ gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="btn pri" disabled={review.isPending || !readiness.data?.package_ready} onClick={() => review.mutate("fundable")}><CheckCircle2 size={16} /> Mark fundable</button>
-              <button type="button" className="btn" disabled={review.isPending} onClick={() => review.mutate("pending")}>Return to pending</button>
-              <button type="button" className="btn danger" disabled={review.isPending || !reviewNote.trim()} onClick={() => review.mutate("not_fundable")}>Mark not fundable</button>
+          ) : (
+            <>
+              <div className="underwritingMeetingIntro">
+                <div><b>{reviewAppointment?.client_rsvp_status === "declined" ? "Select a replacement window" : "Select one proposed window"}</b><span>Choosing a window opens the booking review. Availability is checked again before the invitation is created.</span></div>
+                {reviewPreference && <span className="cellchip c-mut">{reviewPreference.timezone}</span>}
+              </div>
+              <div className="underwritingSlotGrid">
+                {(reviewPreference?.slots ?? []).map((slot, index) => (
+                  <button
+                    type="button"
+                    className={`underwritingSlot ${selectedReviewSlot === slot.starts_at ? "selected" : ""}`}
+                    key={slot.starts_at}
+                    disabled={!isSuperAdmin}
+                    onClick={() => {
+                      setSelectedReviewSlot(slot.starts_at);
+                      setBookingConfirmed(false);
+                      setBookingOpen(true);
+                    }}
+                  >
+                    <span>Option {index + 1}</span>
+                    <b>{slot.date_label}</b>
+                    <strong>{slot.label}</strong>
+                    <small>{slot.duration_min || 30} min · Proposed</small>
+                  </button>
+                ))}
+              </div>
+              {!reviewPreference && <div className="underwritingEmptyState">The submitting agent has not provided three review windows.</div>}
+              {reviewAppointment?.client_rsvp_status === "declined" && <div className="warnline mt">The previous invitation was declined. Booking a replacement preserves that appointment in the audit history.</div>}
+            </>
+          )}
+        </div>
+      </div>
+
+      {bookingOpen && reviewPreference && selectedReviewOption && (!reviewAppointment || reviewAppointment.client_rsvp_status === "declined") && (
+        <Drawer
+          title="Confirm underwriting review"
+          width={820}
+          dismissOnBackdrop={false}
+          onClose={() => {
+            setBookingOpen(false);
+            setBookingConfirmed(false);
+          }}
+          bodyClassName="underwritingBookingModalBody"
+        >
+          <div className="underwritingBookingReview">
+            <div className="underwritingBookingSelection">
+              <span className="underwritingBookedIcon"><CalendarClock size={22} /></span>
+              <div>
+                <span>Selected appointment</span>
+                <b>{selectedReviewOption.date_label} · {selectedReviewOption.label}</b>
+                <small>{selectedReviewOption.duration_min || 30} minutes · {reviewPreference.timezone}</small>
+              </div>
+              <span className="cellchip c-warn">Availability rechecked on booking</span>
+            </div>
+
+            <section className="underwritingBookingSection">
+              <header><b>Client and meeting details</b><span>The invitation is sent to this recipient.</span></header>
+              <div className="underwritingBookingFields">
+                <label><span className="lbl">Client name</span><input className="field" value={reviewInviteeName} onChange={(event) => setReviewInviteeName(event.target.value)} /></label>
+                <label><span className="lbl">Client email</span><input className="field" type="email" value={reviewInviteeEmail} onChange={(event) => setReviewInviteeEmail(event.target.value)} /></label>
+                <label><span className="lbl">Client phone</span><input className="field" type="tel" value={reviewInviteePhone} onChange={(event) => setReviewInviteePhone(event.target.value)} /></label>
+                <label><span className="lbl">Program</span><ProgramSelect programKey={reviewProgramKey} programName={reviewProgramName} onChange={(selection) => { setReviewProgramKey(selection.key); setReviewProgramName(selection.name); }} /></label>
+              </div>
+              <label><span className="lbl">Internal appointment notes</span><textarea className="field" rows={3} value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} /></label>
+            </section>
+
+            <section className="underwritingBookingSection">
+              <header><b>Booking effects</b><span>These actions occur together.</span></header>
+              <div className="underwritingBookingEffects">
+                <div><CalendarClock size={17} /><span><b>Reserve the live calendar</b><small>Create the appointment and Google Meet link when enabled.</small></span></div>
+                <div><Mail size={17} /><span><b>Send the client invitation</b><small>Email the confirmed time and track the client response.</small></span></div>
+                <div><FolderLock size={17} /><span><b>Prepare the secure review room</b><small>Link the appointment and required review documents to this file.</small></span></div>
+              </div>
+            </section>
+
+            <label className={`underwritingBookingConfirm ${bookingConfirmed ? "on" : ""}`}>
+              <input type="checkbox" checked={bookingConfirmed} onChange={(event) => setBookingConfirmed(event.target.checked)} />
+              <span><b>I reviewed the time and recipient</b><small>Book this appointment and send the client invitation now.</small></span>
+            </label>
+
+            {bookReview.isError && <div className="warnline">{bookReview.error instanceof Error ? bookReview.error.message : "The appointment could not be booked."}</div>}
+            <div className="underwritingBookingActions">
+              <button type="button" className="btn" onClick={() => { setBookingOpen(false); setBookingConfirmed(false); }}>Cancel</button>
+              <button
+                type="button"
+                className="btn pri"
+                disabled={!bookingConfirmed || !reviewInviteeName.trim() || !reviewInviteeEmail.trim() || bookReview.isPending}
+                onClick={() => bookReview.mutate()}
+              >
+                <CalendarClock size={16} /> {bookReview.isPending ? "Checking calendar..." : "Book meeting and send invitation"}
+              </button>
+            </div>
+          </div>
+        </Drawer>
+      )}
+
+      {isSuperAdmin && (
+        <div className="panel underwritingDecisionPanel">
+          <div className="panel-h">
+            <ShieldCheck size={18} /> Credit decision
+            <span className="sp" />
+            <span className={`cellchip ${decisionTone}`}>{humanStatus(readiness.data?.human_review_status)}</span>
+          </div>
+          <div className="panel-b underwritingDecisionBody">
+            <div className="underwritingDecisionContext">
+              <div><span>System route</span><b>{readiness.data?.route_label || "Awaiting route"}</b></div>
+              <div><span>Evidence posture</span><b>{readiness.data?.package_ready ? "Decision-ready package" : "Open conditions remain"}</b></div>
+              <div><span>Current desk status</span><b>{humanStatus(readiness.data?.human_review_status)}</b></div>
+            </div>
+            <label className="underwritingDecisionNote">
+              <span className="lbl">Decision rationale and retained conditions</span>
+              <textarea className="field" rows={4} placeholder="Record the approval rationale, retained conditions, exception basis, or decline reason." value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
+            </label>
+            <div className="underwritingDecisionActions">
+              <button type="button" className="btn pri" disabled={review.isPending || !readiness.data?.package_ready} onClick={() => review.mutate("fundable")}><CheckCircle2 size={16} /> Approve as fundable</button>
+              <button type="button" className="btn" disabled={review.isPending} onClick={() => review.mutate("pending")}>Hold for review</button>
+              <button type="button" className="btn danger" disabled={review.isPending || !reviewNote.trim()} onClick={() => review.mutate("not_fundable")}>Record not fundable</button>
+              {!readiness.data?.package_ready && <span className="hint">Fundable approval unlocks when the evidence package is decision-ready.</span>}
             </div>
           </div>
         </div>
@@ -452,52 +552,27 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
         <AdminContractPackageControls dealerId={dealerId} routeKey={readiness.data?.route_key} />
       )}
 
-      {isSuperAdmin && reviewPreference && (!reviewAppointment || reviewAppointment.client_rsvp_status === "declined") && (
-        <div className="panel">
-          <div className="panel-h"><CalendarClock size={17} /> Send underwriting-review invitation</div>
-          <div className="panel-b" style={{ display: "grid", gap: 12 }}>
-            <div className="note">
-              The three client proposals are not calendar holds. The selected time is checked against Franco&apos;s live calendar again before it is reserved.
-            </div>
-            {reviewAppointment?.client_rsvp_status === "declined" && (
-              <div className="warnline">The client declined the prior invitation. Select a different proposed window and send a new invitation.</div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-              <label><span className="lbl">Client name</span><input className="field" value={reviewInviteeName} onChange={(event) => setReviewInviteeName(event.target.value)} /></label>
-              <label><span className="lbl">Client email</span><input className="field" type="email" value={reviewInviteeEmail} onChange={(event) => setReviewInviteeEmail(event.target.value)} /></label>
-              <label><span className="lbl">Client phone</span><input className="field" type="tel" value={reviewInviteePhone} onChange={(event) => setReviewInviteePhone(event.target.value)} /></label>
-              <label><span className="lbl">Program</span><ProgramSelect programKey={reviewProgramKey} programName={reviewProgramName} onChange={(selection) => { setReviewProgramKey(selection.key); setReviewProgramName(selection.name); }} /></label>
-            </div>
-            <label><span className="lbl">Appointment notes</span><textarea className="field" rows={3} value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} /></label>
-            <div className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <span className="sub">{selectedReviewSlot ? "One invitation will be created for the selected option." : "Select one of the three options above."}</span>
-              <button
-                type="button"
-                className="btn pri"
-                disabled={!selectedReviewSlot || !reviewInviteeName.trim() || !reviewInviteeEmail.trim() || bookReview.isPending}
-                onClick={() => bookReview.mutate()}
-              >
-                <Mail size={16} /> {bookReview.isPending ? "Checking calendar…" : "Send invitation"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="panel">
-        <div className="panel-h"><FileSignature size={17} /> Agreements and authorizations</div>
+        <div className="panel-h"><FileSignature size={17} /> Authorization and execution record</div>
         <div className="panel-b">
-          <div className="tblwrap">
-            <table className="tbl" style={{ minWidth: 650 }}>
-              <thead><tr><th>Stage</th><th>Record</th><th>Who completes it</th><th>Purpose</th></tr></thead>
-              <tbody>
-                <tr><td>Step 2</td><td><b>FCRA / iSoftPull consent</b></td><td>Every 20%+ owner</td><td>Independent authorization for that owner’s soft credit inquiry. This is not the financing application.</td></tr>
-                <tr><td>Step 4</td><td><b>Configured program application package</b></td><td>Primary owner or authorized representative</td><td>Reviews every populated program form, acknowledges each required document, and applies one electronic signature to the listed package.</td></tr>
-                <tr><td>Step 5</td><td><b>No new client signature</b></td><td>Super admin</td><td>Reviews the executed application, records the decision and status, manages the bucket, and completes the file disposition.</td></tr>
-              </tbody>
-            </table>
+          <div className="underwritingAuthorizationList">
+            <div>
+              <span className={`underwritingAuthorizationIcon ${completedOwners === requiredOwners.length ? "ok" : "warn"}`}><ShieldCheck size={17} /></span>
+              <span><b>Owner credit authorization</b><small>Independent FCRA authorization for every required 20%+ owner.</small></span>
+              <span className={`cellchip ${completedOwners === requiredOwners.length ? "c-ok" : "c-warn"}`}>{completedOwners} of {requiredOwners.length}</span>
+            </div>
+            <div>
+              <span className={`underwritingAuthorizationIcon ${executed ? "ok" : "warn"}`}><FileSignature size={17} /></span>
+              <span><b>Client application package</b><small>The authorized signer reviews the populated forms and executes the listed package.</small></span>
+              <span className={`cellchip ${executed ? "c-ok" : "c-warn"}`}>{executed ? "Executed" : "Execution required"}</span>
+            </div>
+            <div>
+              <span className="underwritingAuthorizationIcon"><ClipboardCheck size={17} /></span>
+              <span><b>Desk disposition</b><small>No additional client signature. The decision team records final status, destination, and funded amount.</small></span>
+              <span className={`cellchip ${decisionTone}`}>{humanStatus(readiness.data?.human_review_status)}</span>
+            </div>
           </div>
-          <p className="sub mt">The active package is controlled by the versioned Forms and Packages configuration. Executed documents remain immutable even if a later package version is published.</p>
+          <p className="sub mt">Executed documents remain immutable even when a later form or package revision is published.</p>
         </div>
       </div>
 
@@ -506,18 +581,18 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
           Program application package
           <span className="sp" />
           <span className={`cellchip ${executed ? "c-ok" : "c-warn"}`}>
-            {executed ? "Executed" : "Step 4 execution required"}
+            {executed ? "Executed" : "Client execution required"}
           </span>
         </div>
         <div className="panel-b">
           <p className="sub" style={{ marginTop: 0 }}>
-            Generation, joint review, and signature delivery are completed in Step 4. Step 5 keeps
-            the exact executed program forms available for super-admin review without creating a
-            second signing path.
+            Client-facing package review and signature delivery remain in the execution workspace.
+            The decision desk reviews the exact frozen or executed forms here without creating a second signing path.
           </p>
           {!executed && (
-            <div className="warnline">
-              Return to Step 4 and complete the primary signer&apos;s execution before final desk review.
+            <div className="underwritingPackageAction">
+              <div><b>Client execution is incomplete</b><span>Review the populated application package and send it to the primary signer before final disposition.</span></div>
+              <a className="btn" href={`/applications/${dealerId}?step=4`}><ExternalLink size={15} /> Open execution workspace</a>
             </div>
           )}
           {executed && (packageEnvelope?.bundle_download_url || caseDoc?.filled_sha256) && (
@@ -533,36 +608,40 @@ export default function Step5Contracts({ dealerId }: { dealerId: string }) {
 
       {isSuperAdmin && (
         <>
-          <div className="panel">
-            <div className="panel-h"><FolderLock size={17} /> Secure bucket and information requests</div>
-            <div className="panel-b">
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <div><b>{dealer?.bucket_name || "Secure client room"}</b><div className="sub">The current PIN remains active without expiring. Generate new replaces it immediately; authorized staff can view it from the agreement workspace.</div></div>
+          <div className="panel underwritingRoomPanel">
+            <div className="panel-h"><FolderLock size={17} /> Secure room and information requests <span className="sp" /> <span className={`cellchip ${dealer?.bucket_id ? "c-ok" : "c-warn"}`}>{dealer?.bucket_id ? "Room active" : "Room not created"}</span></div>
+            <div className="panel-b underwritingRoomBody">
+              <div className="underwritingRoomSummary">
+                <span className="underwritingEvidenceIcon"><FolderLock size={18} /></span>
+                <div><b>{dealer?.bucket_name || "Secure client room"}</b><span>The active PIN does not expire. Generating a replacement invalidates the prior PIN immediately.</span></div>
                 <span className="sp" />
                 {dealer?.bucket_id && <button type="button" className="btn" onClick={() => window.open(`https://app.qualifiedcommercial.com/admin/buckets?bucket=${dealer.bucket_id}`, "_blank", "noopener,noreferrer")}><ExternalLink size={16} /> Open bucket</button>}
                 <button type="button" className="btn pri" disabled={rotateRoom.isPending} onClick={() => rotateRoom.mutate()}><RefreshCw size={16} /> {rotateRoom.isPending ? "Generating…" : "Generate new PIN"}</button>
               </div>
-              {roomResult?.url && <div className="note mt"><div className="kv"><span>Secure link</span><button type="button" className="btn" onClick={() => void copy("link", roomResult.url)}><Copy size={15} /> {copied === "link" ? "Copied" : "Copy link"}</button></div><div className="kv"><span>Replacement PIN</span><button type="button" className="btn" disabled={!roomResult.passcode} onClick={() => void copy("pin", roomResult.passcode)}><Copy size={15} /> {roomResult.passcode || "Generate to display"}</button></div></div>}
+              {roomResult?.url && <div className="underwritingRoomCredentials"><div><span>Secure link</span><button type="button" className="btn" onClick={() => void copy("link", roomResult.url)}><Copy size={15} /> {copied === "link" ? "Copied" : "Copy link"}</button></div><div><span>Replacement PIN</span><button type="button" className="btn" disabled={!roomResult.passcode} onClick={() => void copy("pin", roomResult.passcode)}><Copy size={15} /> {roomResult.passcode || "Generate to display"}</button></div></div>}
             </div>
           </div>
           <RequestPanel dealerId={dealerId} canText={false} />
 
-          <div className="panel">
-            <div className="panel-h">Super-admin file controls</div>
-            <div className="panel-b">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-                <label><span className="lbl">File status</span><select className="field" style={{ width: "100%" }} value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)}>{STATUS_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                <label><span className="lbl">Amount funded</span><input className="field" style={{ width: "100%" }} type="number" min="1" inputMode="decimal" disabled={statusDraft !== "complete"} value={fundedAmount} onChange={(event) => setFundedAmount(event.target.value)} placeholder={statusDraft === "complete" ? "Enter final funded amount" : "Available when status is Funded"} /></label>
+          <div className="panel underwritingDispositionPanel">
+            <div className="panel-h"><CheckCircle2 size={17} /> Final disposition <span className="sp" /> <span className="cellchip c-acc">Super admin</span></div>
+            <div className="panel-b underwritingDispositionGrid">
+              <section>
+                <header><b>File status</b><span>Record the operational outcome after the credit decision.</span></header>
+                <div className="underwritingDispositionFields">
+                  <label><span className="lbl">Status</span><select className="field" value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)}>{STATUS_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                  <label><span className="lbl">Amount funded</span><input className="field" type="number" min="1" inputMode="decimal" disabled={statusDraft !== "complete"} value={fundedAmount} onChange={(event) => setFundedAmount(event.target.value)} placeholder={statusDraft === "complete" ? "Enter final funded amount" : "Enabled when status is Funded"} /></label>
+                </div>
+                <button type="button" className="btn pri" disabled={finalize.isPending || (statusDraft === "complete" && Number(fundedAmount) <= 0)} onClick={() => finalize.mutate()}>{finalize.isPending ? "Saving…" : "Save disposition"}</button>
+              </section>
+              <section>
+                <header><b>File destination</b><span>Continue the same evidence and audit history in the appropriate downstream workspace.</span></header>
+                <div className="underwritingDestinationActions">
+                  <button type="button" className="btn" disabled={startHandoff.isPending} onClick={() => handoff.data?.url ? window.open(handoff.data.url, "_blank", "noopener,noreferrer") : startHandoff.mutate()}><Route size={16} /> <span><b>{handoff.data?.url ? "Open AI underwriting file" : "Create AI underwriting file"}</b><small>Continue advanced underwriting analysis.</small></span></button>
+                  <button type="button" className="btn" disabled={Boolean(dealer?.audit_client_since) || convertAudit.isPending} onClick={() => convertAudit.mutate()}><ExternalLink size={16} /> <span><b>{dealer?.audit_client_since ? "Full audit client enabled" : "Convert to full audit client"}</b><small>Graduate the verified file into the audit system.</small></span></button>
+                </div>
+              </section>
               </div>
-              <button type="button" className="btn pri mt" disabled={finalize.isPending || (statusDraft === "complete" && Number(fundedAmount) <= 0)} onClick={() => finalize.mutate()}>{finalize.isPending ? "Saving…" : "Save status"}</button>
-
-              <div className="panel-h" style={{ margin: "22px -16px 0", borderTop: "1px solid var(--line)" }}>File destination</div>
-              <p className="sub">Continue the same client record in the AI underwriting workspace or graduate the current file into the full audit system. Both actions preserve its evidence and audit history.</p>
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="btn" disabled={startHandoff.isPending} onClick={() => handoff.data?.url ? window.open(handoff.data.url, "_blank", "noopener,noreferrer") : startHandoff.mutate()}><Route size={16} /> {handoff.data?.url ? "Open AI underwriting file" : "Create AI underwriting file"}</button>
-                <button type="button" className="btn" disabled={Boolean(dealer?.audit_client_since) || convertAudit.isPending} onClick={() => convertAudit.mutate()}><ExternalLink size={16} /> {dealer?.audit_client_since ? "Full audit client enabled" : "Convert to full audit client"}</button>
-              </div>
-            </div>
           </div>
         </>
       )}

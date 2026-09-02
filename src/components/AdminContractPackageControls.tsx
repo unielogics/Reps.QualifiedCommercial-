@@ -84,7 +84,7 @@ export default function AdminContractPackageControls({
       },
     ),
     onSuccess: async (result) => {
-      setMessage(`${result.title} was generated for Step 4. The rep can now review it with the client.`);
+      setMessage(`${result.title} was generated and is ready for rep review and client delivery.`);
       setOverrideReason("");
       await refreshQueries();
     },
@@ -114,7 +114,7 @@ export default function AdminContractPackageControls({
     : "Generate package";
 
   return (
-    <div className="panel">
+    <div className="panel underwritingPackageAdmin">
       <div className="panel-h">
         <ShieldCheck size={17} /> Program package administration
         <span className="sp" />
@@ -122,9 +122,9 @@ export default function AdminContractPackageControls({
       </div>
       <div className="panel-b">
         <p className="sub" style={{ marginTop: 0, lineHeight: 1.55 }}>
-          Step 4 is the rep-and-client execution workspace. Use this Step 5 control only to
-          document a blocked-route exception, replace an unsent package, or void an active
-          package. The rep then returns to Step 4 to review and send the exact forms.
+          Use this administrative control to document a blocked-route exception, replace an
+          unsent package, or void an active package. Client review and signature delivery remain
+          in the execution workspace so the decision desk never creates a second signing path.
         </p>
         <div className="contractProgramBar">
           <label className="grow">
