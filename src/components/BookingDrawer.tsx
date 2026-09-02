@@ -155,6 +155,8 @@ export default function BookingDrawer({
             [address.city.trim(), address.state.trim(), address.zip.trim()].filter(Boolean).join(" "),
           ].filter(Boolean).join(", ") || null,
           transactional_sms_consent: smsConsent,
+          // The field desk books here; that is what opens the draft file.
+          origin: "field_desk",
           requested_document_keys: kind === "underwriting_review" ? requestedDocumentKeys : [],
         }),
         authToken: (await getToken()) ?? undefined,

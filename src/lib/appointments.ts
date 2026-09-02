@@ -37,6 +37,8 @@ export type RepAppointment = {
   archived_at: string | null;
   cancellation_reason: string | null;
   conversion_target: "field_desk" | "ai_intake" | "funding_loan" | null;
+  /** Where the booking came from: field_desk | calendar | public | intake; null before origins existed. */
+  origin: string | null;
   converted_dealer_id: string | null;
   converted_intake_id: string | null;
   linked_loan_id: string | null;

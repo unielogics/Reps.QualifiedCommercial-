@@ -194,6 +194,7 @@ export default function AppointmentCrmWorkspace({
             </div>
             <span className={`cellchip ${appointmentRsvpTone(workspace.data.appointment)}`}>{appointmentRsvpLabel(workspace.data.appointment)}</span>
             <span className={`cellchip ${statusClass(workspace.data.appointment.crm_status)}`}>{appointmentCrmLabel(workspace.data.appointment.crm_status)}</span>
+            {workspace.data.appointment.origin ? <span className="cellchip c-mut" title="Where this booking came from">{workspace.data.appointment.origin === "field_desk" ? "Field desk" : workspace.data.appointment.origin === "calendar" ? "Calendar" : workspace.data.appointment.origin === "public" ? "Public page" : workspace.data.appointment.origin}</span> : null}
             {workspace.data.appointment.join_url ? <a className="btn pri" href={workspace.data.appointment.join_url} target="_blank" rel="noreferrer"><ExternalLink size={16} />Join</a> : null}
           </header>
           <nav className="appointmentCrmTabs" aria-label="Appointment CRM sections">
