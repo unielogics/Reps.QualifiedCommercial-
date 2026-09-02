@@ -2418,3 +2418,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .caseConsentRow > svg { margin-left: 8px; color: var(--muted); }
 @media (max-width: 1050px) { .caseMessagingLayout { grid-template-columns: 1fr; } .caseMessagingAside { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .caseMessagingWorkspace { min-height: calc(100dvh - 135px); } .caseMessagingAside { grid-template-columns: 1fr; } .caseMessagingTabs, .caseChannelTabs { padding-left: 8px; padding-right: 8px; } .caseMessagingTabs button, .caseChannelTabs button { padding: 0 10px; } .caseConversationHead, .caseMessageComposer { padding-left: 12px; padding-right: 12px; } .caseMessagingWorkspace > .rc-msgs { padding-left: 12px; padding-right: 12px; } .caseConsentCapture { margin-left: 12px; margin-right: 12px; } .caseConsentPrompt { grid-template-columns: auto minmax(0, 1fr); } .caseConsentPrompt .btn { grid-column: 1 / -1; width: 100%; } .caseConsentMethod, .caseConsentName { grid-template-columns: 1fr; } .caseConsentActions { align-items: stretch; flex-direction: column; } .caseConsentActions .hint { max-width: none; } }
+
+/* Pre-call prep panel in the appointment workspace */
+.appointmentCrmActionsRow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.appointmentCrmInline { margin-top: 8px; font-size: 13px; line-height: 1.5; }
+.appointmentCrmInline.emph { padding: 10px 12px; border-radius: 10px; background: var(--acc-tint, rgba(56, 189, 248, .12)); }
+.appointmentCrmInline .num { font-size: 18px; letter-spacing: .12em; }
+.appointmentCrmTimeline { margin-top: 6px; }
+.appointmentCrmTimeline ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 12.5px; }
+.appointmentCrmTimeline .cellchip { margin-right: 4px; }

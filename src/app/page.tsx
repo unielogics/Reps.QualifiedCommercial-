@@ -18,6 +18,7 @@ type Row = {
   audit_client_since: string | null; created_at: string; updated_at: string;
   archived_at: string | null; owners: OwnerSummary[];
   application_lifecycle: "active" | "draft";
+  draft_source?: string | null;
   client_requested_amount: number | null;
   is_training: boolean;
   workflow_ungated: boolean;
@@ -191,7 +192,7 @@ export default function Portfolio() {
                   <td><b>{row.name}</b>{row.is_training && <span className="cellchip c-gold">Training</span>}{row.workflow_ungated && <span className="cellchip c-acc">Ungated</span>}<span className="sub num" style={{ display: "block" }}>{row.case_ref || "No case reference"}</span></td>
                   <td className="ownerSummary">{row.owners.length ? row.owners.slice(0, 2).map((owner) => owner.name).join(", ") : "—"}{row.owners.length > 2 && <span className="sub"> +{row.owners.length - 2}</span>}</td>
                   <td className="sub">{[row.city, row.state].filter(Boolean).join(", ") || row.address || "—"}</td>
-                  <td>{row.application_lifecycle === "draft" ? <span className="cellchip c-mut">Draft</span> : stageChip(row)}{unreadCount > 0 && <span className="cellchip c-acc">{unreadCount} new</span>}</td>
+                  <td>{row.application_lifecycle === "draft" ? <span className="cellchip c-mut">{row.draft_source === "booking" ? "Draft · booked" : "Draft"}</span> : stageChip(row)}{unreadCount > 0 && <span className="cellchip c-acc">{unreadCount} new</span>}</td>
                   <td><span className={`cellchip ${row.bank_linked ? "c-ok" : "c-warn"}`}>{row.bank_linked ? "Linked" : "Awaiting"}</span></td>
                   <td><span className={`cellchip ${row.credit_returned ? "c-ok" : "c-warn"}`}>{row.credit_returned ? "Returned" : "Awaiting"}</span></td>
                   <td className="r num">{money(row.funding_goal)}</td><td className="sub num">{new Date(row.updated_at).toLocaleDateString()}</td>

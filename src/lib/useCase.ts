@@ -129,6 +129,8 @@ export type ApplicationWorkflow = {
 export type Dealer = {
   id: string;
   case_ref: string | null;
+  application_lifecycle?: "active" | "draft";
+  draft_source?: string | null;
   name: string;
   legal_name: string | null;
   ein: string | null;

@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { CalendarSlotDay } from "@/lib/repWorkflows";
+import type { RepAppointment } from "@/lib/appointments";
 import BusinessAddressFields from "./BusinessAddressFields";
 import Drawer from "./Drawer";
 import ProgramSelect, { GENERAL_PROGRAM_KEY, GENERAL_PROGRAM_NAME } from "./ProgramSelect";
@@ -96,6 +97,10 @@ export default function BookingDrawer({
   const [requestedAmount, setRequestedAmount] = useState("");
   const [address, setAddress] = useState<AddressParts>({ address: "", city: "", state: "", zip: "" });
   const [smsConsent, setSmsConsent] = useState(false);
+  // After booking: the room kit to read out or copy. The drawer stays open so a
+  // rep sitting with the client can hand over the PIN before closing.
+  const [booked, setBooked] = useState<RepAppointment | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   const [requestedDocumentKeys, setRequestedDocumentKeys] = useState<string[]>([]);
 
   const files = useQuery({
@@ -132,7 +137,7 @@ export default function BookingDrawer({
 
   const book = useMutation({
     mutationFn: async () =>
-      api(sourceMode === "file" && dealerId ? `/dealer-os/dealers/${dealerId}/appointments` : "/dealer-os/appointments", {
+      api<RepAppointment>(sourceMode === "file" && dealerId ? `/dealer-os/dealers/${dealerId}/appointments` : "/dealer-os/appointments", {
         method: "POST",
         body: JSON.stringify({
           kind,
@@ -154,13 +159,18 @@ export default function BookingDrawer({
         }),
         authToken: (await getToken()) ?? undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       void qc.invalidateQueries({ queryKey: ["appointments", dealerId] });
       void qc.invalidateQueries({ queryKey: ["rep-appointments"] });
       void qc.invalidateQueries({ queryKey: ["inbox-threads"] });
-      onClose();
+      void qc.invalidateQueries({ queryKey: ["dealers"] });
+      if (created?.room_url) setBooked(created);
+      else onClose();
     },
   });
+  const copy = async (label: string, value: string) => {
+    try { await navigator.clipboard.writeText(value); setCopied(label); window.setTimeout(() => setCopied(null), 1600); } catch { /* clipboard unavailable */ }
+  };
 
   const needsCompany = sourceMode === "lead";
   const canBook = Boolean(
@@ -169,6 +179,44 @@ export default function BookingDrawer({
       (!needsCompany || company.trim()) &&
       (inviteeEmail.trim() || inviteePhone.trim()),
   );
+
+  if (booked) {
+    const pinVia = booked.precall?.pin_delivered_via;
+    return (
+      <Drawer title="Appointment booked" width={640} onClose={onClose} variant="workspace" dismissOnBackdrop={false}>
+        <div className="panel">
+          <div className="panel-h">Draft file opened · secure room ready</div>
+          <div className="panel-b" style={{ display: "grid", gap: 14 }}>
+            <p className="sub" style={{ margin: 0 }}>
+              {booked.invitee_name} is booked. A draft file{booked.precall?.case_ref ? ` (${booked.precall.case_ref})` : ""} and a secure room were opened for this call; the confirmation carries the room link and the “Before your call” checklist (owners → bank → soft credit).
+            </p>
+            <div>
+              <label className="lbl">Secure room link</label>
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <code style={{ fontSize: 12, wordBreak: "break-all" }}>{booked.room_url}</code>
+                <button type="button" className="btn sm" onClick={() => void copy("link", booked.room_url!)}>{copied === "link" ? "Copied" : "Copy"}</button>
+              </div>
+            </div>
+            {booked.room_passcode ? (
+              <div className="note" style={{ display: "grid", gap: 6 }}>
+                <b>Room PIN: <span className="num" style={{ fontSize: 20, letterSpacing: ".12em" }}>{booked.room_passcode}</span></b>
+                <span className="sub">
+                  {pinVia === "sms" ? "Texted to the client. " : pinVia === "email" ? "Emailed to the client separately. " : "Not delivered automatically — "}
+                  {pinVia === "sms" || pinVia === "email" ? "Read it out too if you are with them." : "read this PIN to the client."} They can change it the first time they open the room.
+                </span>
+                <div><button type="button" className="btn sm" onClick={() => void copy("pin", booked.room_passcode!)}>{copied === "pin" ? "Copied" : "Copy PIN"}</button></div>
+              </div>
+            ) : (
+              <span className="sub">This client already had a room PIN from an earlier booking; the room link was sent again.</span>
+            )}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="btn pri" onClick={onClose}>Done</button>
+            </div>
+          </div>
+        </div>
+      </Drawer>
+    );
+  }
 
   return (
     <Drawer

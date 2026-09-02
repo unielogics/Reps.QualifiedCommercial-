@@ -30,6 +30,7 @@ import {
   type AppointmentOutcomeEffect,
   type AppointmentWorkspace,
   type RepAppointment,
+  AppointmentPrecallResult,
 } from "@/lib/appointments";
 import Drawer from "./Drawer";
 import { ConversationBubbles } from "./ConversationBubbles";
@@ -37,7 +38,7 @@ import type { UnifiedCommunicationThreadDetail } from "@/lib/communications";
 
 type WorkspaceTab = "overview" | "messages" | "notes" | "outcome" | "file" | "manage";
 type EditorMode = "details" | "edit" | "reschedule";
-type FileAction = "none" | "update_linked" | "link_existing" | "create_ai_intake" | "create_funding_loan";
+type FileAction = "none" | "update_linked" | "link_existing" | "create_ai_intake" | "create_funding_loan" | "promote_draft";
 
 const TAB_ITEMS: Array<{ key: WorkspaceTab; label: string; icon: typeof UserRound }> = [
   { key: "overview", label: "Overview", icon: UserRound },
@@ -253,12 +254,14 @@ function Overview({ workspace, onTab, callApi, refresh }: { workspace: Appointme
             />
           </div>
         </section>
+        {appointment.precall ? <PrecallPanel workspace={workspace} callApi={callApi} refresh={refresh} /> : null}
         <section className="panel">
           <div className="panel-h"><b>Linked file</b><span className="sp" />{workspace.capabilities.can_link_files ? <button className="btn sm" type="button" onClick={() => onTab("file")}>Manage</button> : null}</div>
           <div className="panel-b">
+            {workspace.draft_file ? <LinkedSummary label={workspace.draft_file.lifecycle === "draft" ? "Draft file" : "Dealer file"} title={workspace.draft_file.name} detail={[workspace.draft_file.case_ref, workspace.draft_file.draft_source === "booking" ? "opened by this booking" : null].filter(Boolean).join(" · ")} /> : null}
             {workspace.application ? <LinkedSummary label="AI Intake" title={workspace.application.vertical.replaceAll("_", " ")} detail={workspace.application.underwriting_status.replaceAll("_", " ")} /> : null}
             {workspace.funding_file ? <LinkedSummary label="Funding file" title={workspace.funding_file.entity_name || workspace.funding_file.deal_id} detail={`${workspace.funding_file.stage.replaceAll("_", " ")} · ${money(workspace.funding_file.amount)}`} /> : null}
-            {!workspace.application && !workspace.funding_file ? <span className="sub">No file is linked to this appointment.</span> : null}
+            {!workspace.application && !workspace.funding_file && !workspace.draft_file ? <span className="sub">No file is linked to this appointment.</span> : null}
           </div>
         </section>
         <section className="panel">
@@ -475,7 +478,7 @@ function Outcome({
             {effects.has("schedule_follow_up") ? <label><span className="lbl">Follow-up date and time *</span><input className="field" type="datetime-local" value={followUpAt} onChange={(event) => setFollowUpAt(event.target.value)} /></label> : null}
             {effects.has("file_action") ? (
               <>
-                <label><span className="lbl">File action *</span><select className="field" value={fileAction} onChange={(event) => { setFileAction(event.target.value as FileAction); setExistingFile(null); }}><option value="none">Choose an action</option>{workspace.application || workspace.funding_file ? <option value="update_linked">Update linked file</option> : null}<option value="link_existing">Link an existing file</option><option value="create_ai_intake">Create AI Intake</option>{workspace.capabilities.can_create_funding_loan ? <option value="create_funding_loan">Create Funding file</option> : null}</select></label>
+                <label><span className="lbl">File action *</span><select className="field" value={fileAction} onChange={(event) => { setFileAction(event.target.value as FileAction); setExistingFile(null); }}><option value="none">Choose an action</option>{workspace.draft_file && workspace.draft_file.lifecycle === "draft" ? <option value="promote_draft">Promote draft file{workspace.draft_file.case_ref ? ` ${workspace.draft_file.case_ref}` : ""}</option> : null}{workspace.application || workspace.funding_file ? <option value="update_linked">Update linked file</option> : null}<option value="link_existing">Link an existing file</option><option value="create_ai_intake">Create AI Intake</option>{workspace.capabilities.can_create_funding_loan ? <option value="create_funding_loan">Create Funding file</option> : null}</select></label>
                 {fileAction === "link_existing" ? <FilePicker appointmentId={workspace.appointment.id} value={existingFile} onChange={setExistingFile} /> : null}
                 {fileAction === "create_ai_intake" ? <div className="appointmentCrmFieldGrid"><label><span className="lbl">Intake type</span><select className="field" value={variant} onChange={(event) => setVariant(event.target.value as typeof variant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street</option><option value="mca_refinance">MCA refinance</option></select></label><label><span className="lbl">Six-digit room PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><label><span className="lbl">Confirm PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><CheckRow checked={notifyClient} onChange={setNotifyClient} label="Notify the client with room access instructions" /></div> : null}
                 {fileAction !== "none" ? <CheckRow checked={applyBookingData} onChange={setApplyBookingData} label="Apply the reviewed booking data to the destination file" /> : null}
@@ -506,9 +509,10 @@ function FileWorkspace({ workspace, callApi, refresh, onOutcome }: { workspace: 
       <section className="panel appointmentCrmFileHero">
         <div className="panel-h"><b>Linked file</b></div>
         <div className="panel-b">
+          {workspace.draft_file ? <LinkedFile label={workspace.draft_file.lifecycle === "draft" ? "Draft file (opened by this booking)" : "Dealer file"} title={workspace.draft_file.name} detail={workspace.draft_file.case_ref || workspace.draft_file.status} href={workspace.draft_file.href} /> : null}
           {workspace.application ? <LinkedFile label="AI Intake" title={workspace.application.vertical.replaceAll("_", " ")} detail={workspace.application.underwriting_status.replaceAll("_", " ")} href={`${FUNDING_APP_URL}/admin/ai-underwriter-leads?lead=${workspace.application.intake_id}&view=underwriting`} /> : null}
           {workspace.funding_file ? <LinkedFile label="Funding file" title={workspace.funding_file.entity_name || workspace.funding_file.deal_id} detail={`${workspace.funding_file.stage.replaceAll("_", " ")} · ${money(workspace.funding_file.amount)}`} href={`${FUNDING_APP_URL}/loans/${workspace.funding_file.loan_id}`} /> : null}
-          {!workspace.application && !workspace.funding_file ? <div className="appointmentCrmEmpty">No file is linked. Use a reviewed Qualified outcome to create one, or search below.</div> : null}
+          {!workspace.application && !workspace.funding_file && !workspace.draft_file ? <div className="appointmentCrmEmpty">No file is linked. Use a reviewed Qualified outcome to create one, or search below.</div> : null}
         </div>
       </section>
       <section className="panel">
@@ -718,6 +722,52 @@ function whenLabel(iso: string): string {
   return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
 }
 
+
+function PrecallPanel({ workspace, callApi, refresh }: { workspace: AppointmentWorkspace; callApi: ApiCaller; refresh: () => Promise<void> }) {
+  const precall = workspace.appointment.precall!;
+  const ready = precall.readiness;
+  const canManage = workspace.capabilities.can_manage_precall;
+  const [result, setResult] = useState<AppointmentPrecallResult | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const act = useMutation({
+    mutationFn: (body: { action: "resend" | "rotate_pin" | "stop" | "resume"; channel?: "email" | "sms" | "both" }) =>
+      callApi<AppointmentPrecallResult>(`/dealer-os/appointments/${workspace.appointment.id}/precall`, { method: "POST", body: JSON.stringify({ channel: "both", ...body }) }),
+    onSuccess: async (next) => { setResult(next); await refresh(); },
+  });
+  const copy = async (label: string, value: string) => {
+    try { await navigator.clipboard.writeText(value); setCopied(label); window.setTimeout(() => setCopied(null), 1600); } catch { /* clipboard unavailable */ }
+  };
+  const tone = precall.status === "complete" ? "c-ok" : precall.status === "stopped" ? "c-warn" : precall.status === "disabled" ? "c-mut" : "c-acc";
+  const label = precall.status === "complete" ? "Complete" : precall.status === "stopped" ? `Stopped${precall.stop_reason ? ` · ${precall.stop_reason.replaceAll("_", " ")}` : ""}` : precall.status === "disabled" ? "Off" : ready ? `${ready.done_count} of 3 done` : "In progress";
+  const steps = precall.steps ?? [];
+  return (
+    <section className="panel">
+      <div className="panel-h"><b>Pre-call prep</b><span className="sp" /><span className={`cellchip ${tone}`}>{label}</span></div>
+      <div className="panel-b appointmentCrmStatusList">
+        {ready ? <>
+          <Status label="Ownership" value={ready.ownership_complete && ready.contact_complete ? "Complete" : `${ready.ownership_total.toFixed(0)}% listed`} raw={ready.ownership_complete && ready.contact_complete ? "sent" : "pending"} />
+          <Status label="Bank" value={ready.bank_complete ? ready.bank_detail || "Connected" : "Not connected"} raw={ready.bank_complete ? "sent" : "pending"} />
+          <Status label="Credit" value={ready.credit_required ? `${ready.credit_done} of ${ready.credit_required} authorized` : "Waiting on owners"} raw={ready.credit_complete ? "sent" : "pending"} />
+        </> : null}
+        {precall.pin_delivered_via ? <span className="sub">PIN {precall.pin_delivered_via === "rep" ? "read out by the rep" : `sent by ${precall.pin_delivered_via}`}.</span> : null}
+        {precall.next_step_at ? <span className="sub">Next nudge {formatWhen(precall.next_step_at)}.</span> : null}
+        {steps.length ? <details className="appointmentCrmTimeline"><summary className="sub">{steps.length} scheduled message{steps.length === 1 ? "" : "s"}</summary>
+          <ul>{steps.map((step) => <li key={step.id}><span className={`cellchip ${step.status === "sent" ? "c-ok" : step.status === "pending" ? "c-acc" : step.status === "failed" ? "c-bad" : "c-mut"}`}>{step.status}</span> {step.step_key?.replaceAll("_", " ")} · {step.channel} · {formatWhen(step.due_at)}{step.detail ? ` · ${step.detail.replaceAll("_", " ")}` : ""}</li>)}</ul>
+        </details> : null}
+        {canManage ? <div className="appointmentCrmActionsRow">
+          {precall.room_url ? <button className="btn sm" type="button" onClick={() => void copy("link", precall.room_url!)}>{copied === "link" ? "Copied" : "Copy room link"}</button> : null}
+          {workspace.draft_file ? <a className="btn sm" href={workspace.draft_file.href}>Open draft file</a> : null}
+          <button className="btn sm" type="button" disabled={act.isPending} onClick={() => act.mutate({ action: "resend" })}>Resend kit</button>
+          <button className="btn sm" type="button" disabled={act.isPending} onClick={() => { if (window.confirm("Rotate the room PIN? The old one stops working and the new one is sent to the client (or shown here to read out).")) act.mutate({ action: "rotate_pin" }); }}>Rotate PIN</button>
+          {precall.status === "in_progress" ? <button className="btn sm" type="button" disabled={act.isPending} onClick={() => act.mutate({ action: "stop" })}>Pause nudges</button> : null}
+          {precall.status === "stopped" ? <button className="btn sm" type="button" disabled={act.isPending} onClick={() => act.mutate({ action: "resume" })}>Resume nudges</button> : null}
+        </div> : null}
+        {result ? <div className={`appointmentCrmInline ${result.room_passcode ? "emph" : ""}`}>{result.detail}{result.room_passcode ? <> New PIN: <b className="num">{result.room_passcode}</b> <button className="btn sm" type="button" onClick={() => void copy("pin", result.room_passcode!)}>{copied === "pin" ? "Copied" : "Copy"}</button></> : null}</div> : null}
+        {act.isError ? <div className="appointmentCrmInlineError">{errorText(act.error, "That did not work.")}</div> : null}
+      </div>
+    </section>
+  );
+}
 
 function Status({ label, value, raw }: { label: string; value: string; raw: string }) {
   return <div><span>{label}</span><span className={`cellchip ${statusClass(raw)}`}>{value}</span></div>;

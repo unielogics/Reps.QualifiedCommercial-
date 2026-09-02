@@ -13,7 +13,7 @@
 import { useCallback, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Minus, X } from "lucide-react";
 import { useCase } from "@/lib/useCase";
 import { api } from "@/lib/api";
@@ -51,6 +51,13 @@ export default function ApplicationPage() {
   const { getToken } = useAuth();
   const { id: meId, isSuperAdmin } = useMe();
   const { dealer, decision, verification, workflow, unlocked, isLoading, notFound } = useCase(id);
+    const queryClient = useQueryClient();
+  // A booking opens the file as a draft; promoting it makes it an active
+  // application in place (nothing is copied).
+  const promote = useMutation({
+    mutationFn: async () => api(`/dealer-os/dealers/${id}/promote-draft`, { method: "POST", authToken: (await getToken()) ?? undefined }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["dealer", id] }); await queryClient.invalidateQueries({ queryKey: ["dealers"] }); },
+  });
   const workflowUngated = Boolean(dealer?.workflow_ungated);
 
   const raw = Number(search.get("step") || "1");
@@ -140,8 +147,14 @@ export default function ApplicationPage() {
         <div>
           <b>{dealer?.name || "Application"}</b>
           {dealer?.case_ref && <span className="sub num">{dealer.case_ref}</span>}
+          {dealer?.application_lifecycle === "draft" && <span className="cellchip c-mut" style={{ marginLeft: 8 }}>{dealer.draft_source === "booking" ? "Draft · booked" : "Draft"}</span>}
         </div>
         <span className="sp" />
+        {dealer?.application_lifecycle === "draft" && (
+          <button type="button" className="btn sm" disabled={promote.isPending} onClick={() => { if (window.confirm("Make this draft an active application? Everything on the file stays as it is.")) promote.mutate(); }} title="Promote this draft to an active application">
+            {promote.isPending ? "Promoting..." : "Promote to application"}
+          </button>
+        )}
         <button type="button" className="iconAction" onClick={() => router.push("/")} title="Minimize" aria-label="Minimize application">
           <Minus size={18} />
         </button>

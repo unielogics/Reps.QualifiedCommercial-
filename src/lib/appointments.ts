@@ -62,9 +62,72 @@ export type RepAppointment = {
   delivery_error: string | null;
   /** When that failure was recorded — a stale error should not read as live. */
   delivery_error_at: string | null;
+  /** Pre-call prep on the draft file this booking opened; null before the feature or when disabled. */
+  precall: AppointmentPrecall | null;
+  room_url: string | null;
+  /** Plaintext only on the create response that minted it. */
+  room_passcode: string | null;
   notification_results: Record<string, string> | null;
   created_at: string;
   updated_at: string;
+};
+
+export type AppointmentPrecallReadiness = {
+  ownership_complete: boolean;
+  ownership_total: number;
+  contact_complete: boolean;
+  bank_complete: boolean;
+  bank_detail: string;
+  credit_complete: boolean;
+  credit_required: number;
+  credit_done: number;
+  complete: boolean;
+  done_count: number;
+  missing: string[];
+};
+
+export type AppointmentPrecallStep = {
+  id: string;
+  step_key: string | null;
+  channel: string;
+  due_at: string;
+  status: string;
+  sent_at: string | null;
+  detail: string | null;
+  rendered_body: string | null;
+};
+
+export type AppointmentPrecall = {
+  status: "in_progress" | "complete" | "stopped" | "disabled";
+  dealer_id: string | null;
+  case_ref: string | null;
+  lifecycle: string | null;
+  room_url: string | null;
+  pin_delivered_via: string | null;
+  completed_at: string | null;
+  stopped_at: string | null;
+  stop_reason: string | null;
+  next_step_at: string | null;
+  readiness: AppointmentPrecallReadiness | null;
+  steps: AppointmentPrecallStep[];
+};
+
+export type AppointmentDraftFile = {
+  dealer_id: string;
+  case_ref: string | null;
+  name: string;
+  lifecycle: string;
+  status: string;
+  draft_source: string | null;
+  href: string;
+};
+
+export type AppointmentPrecallResult = {
+  ok: boolean;
+  detail: string;
+  room_passcode: string | null;
+  room_url: string | null;
+  precall: AppointmentPrecall | null;
 };
 
 export type AppointmentActivity = {
@@ -132,6 +195,7 @@ export type AppointmentWorkspace = {
     status: "matches" | "missing_in_file" | "conflict" | "file_only" | "empty" | "unlinked";
     target_kind: "intake" | "loan" | null;
   }>;
+  draft_file: AppointmentDraftFile | null;
   capabilities: {
     can_edit: boolean;
     can_add_notes: boolean;
@@ -142,6 +206,7 @@ export type AppointmentWorkspace = {
     can_manage_outcome_catalog: boolean;
     can_link_files: boolean;
     can_create_funding_loan: boolean;
+    can_manage_precall: boolean;
   };
 };
 
