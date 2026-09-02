@@ -128,7 +128,7 @@ export default function CaseMessagingWorkspace({
   const providerThreads = useQuery({
     queryKey: ["file-inbox-threads", dealerId],
     queryFn: async () => api<ProviderThread[]>(`/dealer-os/dealers/${dealerId}/inbox/threads`, { authToken: await auth() }),
-    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
   });
   const selectedThread = useMemo(
     () => (providerThreads.data ?? []).find((thread) => thread.channel === clientChannel) ?? null,
@@ -138,14 +138,14 @@ export default function CaseMessagingWorkspace({
     queryKey: ["file-inbox-messages", dealerId, selectedThread?.id],
     queryFn: async () => api<ProviderMessage[]>(`/dealer-os/dealers/${dealerId}/inbox/threads/${selectedThread?.id}/messages`, { authToken: await auth() }),
     enabled: tab === "client" && clientChannel !== "room" && Boolean(selectedThread),
-    refetchInterval: 8_000,
+    refetchOnWindowFocus: true,
   });
   const fileChannel = tab === "note" ? "note" : tab === "client" ? "client" : "desk";
   const fileMessages = useQuery({
     queryKey: ["messages", dealerId, fileChannel],
     queryFn: async () => api<FileMessage[]>(`/dealer-os/dealers/${dealerId}/messages?channel=${fileChannel}`, { authToken: await auth() }),
     enabled: tab !== "ai" && (tab !== "client" || clientChannel === "room"),
-    refetchInterval: tab === "client" && clientChannel === "room" ? 10_000 : false,
+    refetchOnWindowFocus: true,
   });
   const aiMessages = useQuery({
     queryKey: ["ai-thread", dealerId],

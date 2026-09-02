@@ -56,7 +56,7 @@ export default function InboxPage() {
       api<UnifiedContactPage>("/communications/contacts?limit=100", {
         authToken: (await getToken()) ?? undefined,
       }),
-    refetchInterval: 20000,
+    refetchOnWindowFocus: true,
   });
 
   const groups = useMemo(() => contacts.data?.items ?? [], [contacts.data]);
@@ -72,7 +72,7 @@ export default function InboxPage() {
         authToken: (await getToken()) ?? undefined,
       }),
     enabled: Boolean(selectedId),
-    refetchInterval: 8000,
+    refetchOnWindowFocus: true,
   });
 
   const send = useMutation({

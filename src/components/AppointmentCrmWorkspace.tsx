@@ -297,7 +297,7 @@ function Messages({
     queryKey: key,
     queryFn: () => callApi<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}`),
     enabled: Boolean(phone),
-    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
   });
 
   const send = useMutation({

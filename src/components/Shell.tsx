@@ -12,6 +12,7 @@ import { SignedIn, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
+import { useCommunicationEvents } from "@/lib/useCommunicationEvents";
 import ActionHub from "./ActionHub";
 import GlobalSearch from "./GlobalSearch";
 import MfaBanner from "./MfaBanner";
@@ -117,11 +118,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { name, email, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
   const { getToken } = useAuth();
   const { user } = useUser();
+  useCommunicationEvents((isRep || isTeam) && !isProductFocus && !isResolving);
 
-  // One grouped query for every file, not the per-file endpoint in a loop: a
-  // rep with forty files would otherwise fire forty requests to draw one
-  // number. Polled rather than pushed, because a badge that is a minute stale
-  // is fine and a websocket for this is not worth the operational weight.
+  // One grouped query for every file, refreshed by the communication event
+  // stream. A disconnected stream uses one shared sync-state fallback rather
+  // than turning this badge into a separate polling loop.
   const unread = useQuery({
     queryKey: ["unread-summary"],
     queryFn: async () =>
@@ -129,8 +130,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
         authToken: (await getToken()) ?? undefined,
       }),
     enabled: (isRep || isTeam) && !isProductFocus,
-    refetchInterval: 60_000,
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
   const unreadTotal = unread.data?.total ?? 0;
   const notifications = useQuery({
@@ -139,7 +140,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       authToken: (await getToken()) ?? undefined,
     }),
     enabled: (isRep || isTeam) && !isProductFocus,
-    refetchInterval: 30_000,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const openNotification = async (row: NotificationRow) => {

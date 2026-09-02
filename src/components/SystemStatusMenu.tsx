@@ -17,6 +17,7 @@ type IntegrationStatus = {
   isoftpull: ProviderStatus;
   plaid: ProviderStatus;
   sms: ProviderStatus;
+  messaging: ProviderStatus;
   address: ProviderStatus;
 };
 
@@ -66,6 +67,7 @@ export default function SystemStatusMenu() {
         ready: status.data.plaid.configured && status.data.plaid.environment === "production",
       },
       { key: "sms", label: "SMS", ...status.data.sms, ready: status.data.sms.configured },
+      { key: "messaging", label: "Message sync", ...status.data.messaging, ready: status.data.messaging.configured },
       { key: "address", label: "Address", ...status.data.address, ready: status.data.address.configured },
     ];
   }, [status.data]);
