@@ -5,17 +5,27 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, ExternalLink, Eye, FileText, RefreshCw, TriangleAlert } from "lucide-react";
 import { ApiError, api, apiUpload } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import Drawer from "@/components/Drawer";
 
 type Doc = {
   id: string;
   filename: string;
+  content_type: string;
   kind: string | null;
   status: string;
   source: string | null;
   page_count: number | null;
   created_at: string;
+};
+
+type DocumentUrl = {
+  url: string;
+  expires_in: number;
+  filename: string;
+  content_type: string;
 };
 
 type DocRequest = {
@@ -52,6 +62,10 @@ function uploadId(file: File, index: number): string {
   return `${file.name}-${file.size}-${file.lastModified}-${index}`;
 }
 
+function isPdf(document: Doc): boolean {
+  return (document.content_type || "").toLowerCase().includes("pdf") || document.filename.toLowerCase().endsWith(".pdf");
+}
+
 export default function DocumentsTab() {
   const { id } = useParams<{ id: string }>();
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -60,6 +74,7 @@ export default function DocumentsTab() {
   const [dragging, setDragging] = useState(false);
   const [kind, setKind] = useState("other");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [previewDocument, setPreviewDocument] = useState<Doc | null>(null);
   const { decision } = useCase(id);
 
   const authReady = isLoaded && Boolean(isSignedIn);
@@ -82,6 +97,36 @@ export default function DocumentsTab() {
     enabled: authReady,
     queryFn: () => authenticatedGet<DocRequest[]>(`/dealer-os/dealers/${id}/doc-requests`),
   });
+
+  const preview = useQuery({
+    queryKey: ["document-preview-url", id, previewDocument?.id],
+    enabled: authReady && Boolean(previewDocument),
+    staleTime: 10 * 60 * 1000,
+    queryFn: () => authenticatedGet<DocumentUrl>(`/dealer-os/dealers/${id}/documents/${previewDocument?.id}/url`),
+  });
+
+  const download = useMutation({
+    mutationFn: (document: Doc) => authenticatedGet<DocumentUrl>(`/dealer-os/dealers/${id}/documents/${document.id}/url?download=true`),
+    onSuccess: (result) => {
+      const link = window.document.createElement("a");
+      link.href = result.url;
+      link.download = result.filename;
+      link.rel = "noreferrer";
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+    },
+  });
+
+  const openPreview = (document: Doc) => {
+    download.reset();
+    setPreviewDocument(document);
+  };
+
+  const closePreview = () => {
+    download.reset();
+    setPreviewDocument(null);
+  };
 
   const upload = useMutation({
     mutationFn: async ({ files, selectedKind }: { files: Array<{ id: string; file: File }>; selectedKind: string }) => {
@@ -254,25 +299,85 @@ export default function DocumentsTab() {
       <div className="tblwrap">
         <table className="tbl documentTable">
           <thead>
-            <tr><th>Document</th><th>Classification</th><th>Source</th><th>Status</th><th className="r">Received</th><th className="r">Pages</th></tr>
+            <tr><th>Document</th><th>Classification</th><th>Source</th><th>Status</th><th className="r">Received</th><th className="r">Pages</th><th className="r">Preview</th></tr>
           </thead>
           <tbody>
             {received.map((document) => (
               <tr key={document.id}>
-                <td><b>{document.filename}</b></td>
+                <td>
+                  {isPdf(document) ? (
+                    <button type="button" className="documentNameButton" onClick={() => openPreview(document)} title={`Preview ${document.filename}`}>
+                      <FileText size={16} /><b>{document.filename}</b>
+                    </button>
+                  ) : <b>{document.filename}</b>}
+                </td>
                 <td className="sub">{document.kind?.replaceAll("_", " ") || "Classifying"}</td>
                 <td className="sub">{document.source === "plaid" ? "Bank connection" : document.source || "Uploaded"}</td>
                 <td><span className={`cellchip ${document.status === "failed" ? "c-bad" : document.status === "extracted" ? "c-ok" : "c-acc"}`}>{document.status === "failed" ? "Could not read" : document.status === "extracted" ? "Indexed" : "Processing"}</span></td>
                 <td className="r sub num">{when(document.created_at)}</td>
                 <td className="r num">{document.page_count ?? "—"}</td>
+                <td className="r">
+                  {isPdf(document) ? (
+                    <button type="button" className="iconBtn" onClick={() => openPreview(document)} title={`Preview ${document.filename}`} aria-label={`Preview ${document.filename}`}>
+                      <Eye size={16} />
+                    </button>
+                  ) : <span className="sub">—</span>}
+                </td>
               </tr>
             ))}
             {total === 0 && !docs.isLoading && !authError && (
-              <tr><td colSpan={6} className="documentEmpty"><b>No evidence on this file yet</b><span>Upload documents above or request them from the applicant. Bank-connected statements appear here automatically.</span></td></tr>
+              <tr><td colSpan={7} className="documentEmpty"><b>No evidence on this file yet</b><span>Upload documents above or request them from the applicant. Bank-connected statements appear here automatically.</span></td></tr>
             )}
           </tbody>
         </table>
       </div>
+      {previewDocument && (
+        <Drawer
+          title={`Document preview · ${previewDocument.filename}`}
+          onClose={closePreview}
+          variant="workspace"
+          dismissOnBackdrop={false}
+          bodyClassName="documentPreviewBody"
+        >
+          <div className="documentPreviewWorkspace">
+            <header className="documentPreviewToolbar">
+              <div className="documentPreviewIdentity">
+                <span><FileText size={21} /></span>
+                <div>
+                  <span className="eyebrow">Uploaded document</span>
+                  <b>{previewDocument.filename}</b>
+                  <small>{previewDocument.kind?.replaceAll("_", " ") || "Unclassified"} · {previewDocument.page_count ? `${previewDocument.page_count} pages` : "Page count unavailable"}</small>
+                </div>
+              </div>
+              <div className="documentPreviewActions">
+                <button type="button" className="iconBtn" onClick={() => void preview.refetch()} disabled={preview.isFetching} title="Refresh preview link" aria-label="Refresh preview link">
+                  <RefreshCw size={17} className={preview.isFetching ? "spin" : undefined} />
+                </button>
+                {preview.data?.url && <a className="btn" href={preview.data.url} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Open PDF</a>}
+                <button type="button" className="btn" disabled={download.isPending} onClick={() => download.mutate(previewDocument)}>
+                  <Download size={16} /> {download.isPending ? "Preparing…" : "Download"}
+                </button>
+              </div>
+            </header>
+            <main className="documentPreviewStage">
+              {preview.isLoading || preview.isFetching ? (
+                <div className="documentPreviewState"><RefreshCw size={28} className="spin" /><b>Loading secure PDF…</b><span>The preview link is authorized for this file.</span></div>
+              ) : preview.error ? (
+                <div className="documentPreviewState error"><TriangleAlert size={30} /><b>Preview unavailable</b><span>{preview.error instanceof Error ? preview.error.message : "The PDF could not be loaded."}</span><button type="button" className="btn" onClick={() => void preview.refetch()}>Try again</button></div>
+              ) : preview.data?.url ? (
+                <iframe className="documentPreviewFrame" src={preview.data.url} title={`Preview of ${previewDocument.filename}`} />
+              ) : (
+                <div className="documentPreviewState"><TriangleAlert size={30} /><b>Preview unavailable</b><span>No archived PDF is available for this document.</span></div>
+              )}
+            </main>
+            <footer className="documentPreviewFooter">
+              <span><b>Secure preview</b> The file remains inside the authorized rep workspace.</span>
+              <span>{preview.data?.expires_in ? `Link refreshes on demand · ${Math.round(preview.data.expires_in / 60)} minute access window` : "Short-lived access link"}</span>
+            </footer>
+            {download.error && <div className="documentPreviewDownloadError">{download.error instanceof Error ? download.error.message : "The PDF could not be downloaded."}</div>}
+          </div>
+        </Drawer>
+      )}
     </div>
   );
 }
