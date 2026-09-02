@@ -47,6 +47,9 @@ export default function PublicBookPage() {
           email: email.trim(),
           phone: phone.trim() || null,
           notes: notes.trim() || null,
+          // The link's origin hint (the product booklet appends ?source=…) tells
+          // the server this is a rep-related booking, which opens the draft file.
+          source: typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("source") : null,
         }),
       }),
   });
