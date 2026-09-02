@@ -2390,6 +2390,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .caseConsentMethod button.on { border-color: var(--accent); background: var(--accent-100); color: var(--accent); }
 .caseConsentMethod button span { color: var(--muted); font-size: 10.5px; }
 .caseConsentName { display: grid; grid-template-columns: minmax(140px, .35fr) minmax(0, 1fr); align-items: center; gap: 10px; color: var(--muted); font-size: 11px; font-weight: 750; }
+.caseConsentName > span { display: flex; align-items: center; gap: 6px; }
+.caseConsentName > span small { color: var(--muted); font-size: 9.5px; font-weight: 650; text-transform: none; }
 .caseConsentName .field { min-height: 40px; }
 .caseConsentChoices { display: grid; gap: 7px; }
 .caseConsentChoices > label { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); cursor: pointer; }

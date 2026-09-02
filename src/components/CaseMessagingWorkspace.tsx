@@ -238,6 +238,11 @@ export default function CaseMessagingWorkspace({
       setLegalConsent(false);
       setConsenterName("");
       await qc.invalidateQueries({ queryKey: ["consent", dealerId] });
+      await qc.invalidateQueries({ queryKey: ["file-inbox-threads", dealerId] });
+      await providerThreads.refetch();
+      if (selectedThread) {
+        void qc.invalidateQueries({ queryKey: ["file-inbox-messages", dealerId, selectedThread.id] });
+      }
       void qc.invalidateQueries({ queryKey: ["audit", dealerId] });
     },
   });
@@ -329,8 +334,8 @@ export default function CaseMessagingWorkspace({
                 <button type="button" className={consentMethod === "in_person_device" ? "on" : ""} onClick={() => setConsentMethod("in_person_device")}><b>Client on this device</b><span>The client is reviewing these choices.</span></button>
               </div>
               <label className="caseConsentName">
-                <span>Person giving consent</span>
-                <input className="field" value={consenterName} onChange={(event) => setConsenterName(event.target.value)} placeholder="Client full name" autoComplete="name" />
+                <span>Person giving consent <small>Optional</small></span>
+                <input className="field" value={consenterName} onChange={(event) => setConsenterName(event.target.value)} placeholder="Client full name, if provided" autoComplete="name" />
               </label>
               {smsDisclosure.isLoading ? <div className="hint">Loading the current consent wording...</div> : smsDisclosure.isError || !smsDisclosure.data ? <div className="warnline">The current disclosure could not be loaded. Consent cannot be recorded yet.</div> : (
                 <div className="caseConsentChoices">
@@ -349,8 +354,12 @@ export default function CaseMessagingWorkspace({
                 </div>
               )}
               <div className="caseConsentActions">
-                <span className="hint">Consent is timestamped and retained in the file audit trail.</span>
-                <button type="button" className="btn pri" disabled={!smsDisclosure.data || !transactionalConsent || !legalConsent || consenterName.trim().length < 2 || captureConsent.isPending} onClick={() => captureConsent.mutate()}>{captureConsent.isPending ? "Recording..." : "Record and enable texting"}</button>
+                <span className="hint">
+                  {!transactionalConsent || !legalConsent
+                    ? "Select Account and application texts and accept the Terms and Privacy Policy to enable texting."
+                    : "Ready to record. Consent is timestamped and retained in the file audit trail."}
+                </span>
+                <button type="button" className="btn pri" disabled={!smsDisclosure.data || !transactionalConsent || !legalConsent || captureConsent.isPending} onClick={() => captureConsent.mutate()}>{captureConsent.isPending ? "Recording..." : "Record and enable texting"}</button>
               </div>
               {captureConsent.isError && <div className="warnline">{captureConsent.error instanceof Error ? captureConsent.error.message : "Consent could not be recorded."}</div>}
             </div>
