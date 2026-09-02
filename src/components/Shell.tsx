@@ -410,7 +410,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <ActionHub />
         </div>
         <nav className="mobileTabs" aria-label="Field Desk sections">
-          {REP_NAV.map((item) => {
+          {DESKTOP_NAV.map((item) => {
             const on = isActiveNavItem(item.href);
             return (
               <Link
