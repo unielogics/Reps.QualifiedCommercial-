@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
+import { useMe } from "@/lib/useMe";
 import type { BankEvidenceRead, BankUploadRequestResult } from "@/lib/repWorkflows";
 import Modal from "@/components/Modal";
 import StepActions from "@/components/StepActions";
@@ -36,6 +37,12 @@ type PlaidItem = {
   last_pulled_at: string | null;
   is_primary_operating: boolean;
   statement_months: string[];
+  products: string[];
+  consented_products: string[];
+  billed_products: string[];
+  unavailable_products: string[];
+  pending_products: string[];
+  authorization_state: string;
 };
 type PlaidAssetReport = {
   id: string;
@@ -52,7 +59,16 @@ type PlaidState = {
   environment: string;
   items: PlaidItem[];
   assets_enabled: boolean;
+  statements_enabled: boolean;
+  selected_products: string[];
+  available_products: string[];
+  connections_requiring_client_authorization: number;
   asset_reports: PlaidAssetReport[];
+};
+
+type PlaidPolicyChange = {
+  assets_enabled: boolean;
+  statements_enabled: boolean;
 };
 
 type Owner = {
@@ -221,6 +237,7 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const router = useRouter();
   const qc = useQueryClient();
   const { dealer, verification, workflow } = useCase(dealerId);
+  const { isSuperAdmin } = useMe();
   const { uploads, enqueueStatements } = useUploadManager();
   const uploadInput = useRef<HTMLInputElement | null>(null);
   const [modal, setModal] = useState<null | "bank" | "upload" | "credit">(null);
@@ -240,6 +257,8 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const [deliveryPhone, setDeliveryPhone] = useState("");
   const [deliverySource, setDeliverySource] = useState("application");
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [plaidPolicyChange, setPlaidPolicyChange] = useState<PlaidPolicyChange | null>(null);
+  const [plaidPolicyNote, setPlaidPolicyNote] = useState("");
   const authReady = isLoaded && Boolean(isSignedIn);
   const statementUploads = uploads.filter((item) => item.dealerId === dealerId);
 
@@ -504,6 +523,33 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
     },
   });
 
+  const updatePlaidPolicy = useMutation({
+    mutationFn: async (next: PlaidPolicyChange) =>
+      api<PlaidState>(`/dealer-os/dealers/${dealerId}/plaid/settings`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...next,
+          acknowledged: true,
+          note: plaidPolicyNote.trim() || null,
+        }),
+        authToken: (await getToken()) ?? undefined,
+      }),
+    onSuccess: async (next) => {
+      qc.setQueryData(["plaid", dealerId], next);
+      setPlaidPolicyChange(null);
+      setPlaidPolicyNote("");
+      setSent(
+        next.connections_requiring_client_authorization
+          ? "Plaid products updated. The client must authorize the new access on each connected bank."
+          : "Plaid products updated. Collection has been queued for authorized banks.",
+      );
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["bank-evidence", dealerId] }),
+        qc.invalidateQueries({ queryKey: ["decision", dealerId] }),
+      ]);
+    },
+  });
+
   const acceptThreeMonthException = useMutation({
     mutationFn: async () =>
       api<BankEvidenceRead>(
@@ -558,6 +604,22 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
   const bankTone = bankLinked ? "c-ok" : "c-warn";
   const creditTone = creditReturned ? "c-ok" : "c-warn";
   const bankRefreshing = refreshBank.isPending || plaid.isFetching || evidence.isFetching;
+  const selectedPlaidProducts = plaid.data?.selected_products ?? [];
+  const availablePlaidProducts = plaid.data?.available_products ?? [];
+  const requestPlaidProductChange = (product: "assets" | "statements") => {
+    if (!plaid.data || !isSuperAdmin || updatePlaidPolicy.isPending) return;
+    const next = {
+      assets_enabled:
+        product === "assets" ? !plaid.data.assets_enabled : plaid.data.assets_enabled,
+      statements_enabled:
+        product === "statements"
+          ? !plaid.data.statements_enabled
+          : plaid.data.statements_enabled,
+    };
+    if (!next.assets_enabled && !next.statements_enabled) return;
+    setPlaidPolicyNote("");
+    setPlaidPolicyChange(next);
+  };
   const bankStatusLabel = bankExceptionActive
     ? "Bank-evidence exception accepted"
     : bankExceptionAvailable
@@ -749,6 +811,67 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
               </b>
             </div>
           </div>
+          <div
+            className="row"
+            style={{
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+              marginTop: 14,
+              paddingTop: 14,
+              borderTop: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ minWidth: 170, marginRight: "auto" }}>
+              <b>Plaid evidence products</b>
+              <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                Applies only to this file
+              </span>
+            </div>
+            {([
+              ["assets", "Assets", plaid.data?.assets_enabled ?? false],
+              ["statements", "Statement PDFs", plaid.data?.statements_enabled ?? false],
+            ] as const).map(([product, label, checked]) => {
+              const available = availablePlaidProducts.includes(product);
+              const isLastSelected = checked && selectedPlaidProducts.length === 1;
+              return isSuperAdmin ? (
+                <button
+                  key={product}
+                  type="button"
+                  role="switch"
+                  aria-checked={checked}
+                  className={`btn sm${checked ? " pri" : ""}`}
+                  style={{ minHeight: 44 }}
+                  disabled={!plaid.data || !available || isLastSelected || updatePlaidPolicy.isPending}
+                  title={
+                    !available
+                      ? `${label} is not available in this deployment`
+                      : isLastSelected
+                        ? "At least one Plaid product must remain enabled"
+                        : `${checked ? "Disable" : "Enable"} ${label} for this file`
+                  }
+                  onClick={() => requestPlaidProductChange(product)}
+                >
+                  <span aria-hidden>{checked ? "On" : "Off"}</span>
+                  {label}
+                </button>
+              ) : (
+                <span key={product} className={`cellchip ${checked ? "c-ok" : ""}`}>
+                  {label} {checked ? "on" : "off"}
+                </span>
+              );
+            })}
+          </div>
+          {(plaid.data?.connections_requiring_client_authorization ?? 0) > 0 && (
+            <div className="note" style={{ marginTop: 12 }}>
+              <div>
+                <b>Client authorization required.</b>{" "}
+                {plaid.data?.connections_requiring_client_authorization} connected bank
+                {plaid.data?.connections_requiring_client_authorization === 1 ? "" : "s"} must
+                approve the selected products in the secure room.
+              </div>
+            </div>
+          )}
           {plaid.data?.assets_enabled && activeBanks.length > 0 && (
             <div
               className="row"
@@ -804,9 +927,24 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
                       {bank.accounts_label || "Account labels syncing"} · {bank.statement_months.length} verified month{bank.statement_months.length === 1 ? "" : "s"}
                     </span>
                     {bank.error && <span className="sub" style={{ color: "var(--bad)", display: "block" }}>{bank.error}</span>}
+                    {bank.unavailable_products.length > 0 ? (
+                      <span className="validation-hint" style={{ display: "block", marginTop: 4 }}>
+                        Statement PDFs are unavailable from this institution. Use the secure PDF upload fallback; Plaid Assets will continue when enabled.
+                      </span>
+                    ) : bank.pending_products.length > 0 && (
+                      <span className="validation-hint" style={{ display: "block", marginTop: 4 }}>
+                        Authorize {bank.pending_products.map((value) => value === "assets" ? "Assets" : "Statement PDFs").join(" and ")} in the client room.
+                      </span>
+                    )}
                   </div>
                   <span style={{ flex: 1 }} />
-                  <span className={`cellchip ${bank.status === "active" ? "c-ok" : "c-warn"}`}>{bank.status}</span>
+                  <span className={`cellchip ${bank.authorization_state === "authorized" ? "c-ok" : "c-warn"}`}>
+                    {bank.authorization_state === "client_authorization_required"
+                      ? "Authorization needed"
+                      : bank.authorization_state === "fallback_required"
+                        ? "PDF fallback"
+                        : bank.status}
+                  </span>
                   {bank.is_primary_operating ? (
                     <span className="cellchip c-acc">Main operating bank</span>
                   ) : (
@@ -1233,6 +1371,74 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         </Modal>
       )}
 
+      {plaidPolicyChange && plaid.data && (
+        <Modal
+          title="Confirm Plaid products for this file"
+          onClose={() => {
+            if (!updatePlaidPolicy.isPending) setPlaidPolicyChange(null);
+          }}
+        >
+          <p style={{ marginTop: 0 }}>
+            This file will collect{" "}
+            <b>
+              {plaidPolicyChange.assets_enabled && plaidPolicyChange.statements_enabled
+                ? "Plaid Assets and bank-produced Statement PDFs"
+                : plaidPolicyChange.assets_enabled
+                  ? "Plaid Assets"
+                  : "bank-produced Statement PDFs"}
+            </b>.
+          </p>
+          <div className="note">
+            <div>
+              {activeBanks.length
+                ? `${activeBanks.length} connected bank${activeBanks.length === 1 ? "" : "s"} will be checked against the new policy. Newly enabled products require the client's consent and may require authorization through Plaid Link.`
+                : "The selected products will be requested when the client connects a bank."}
+              {" "}Previously collected evidence remains attached. Enabling Assets can create a
+              billable Asset Report after authorization.
+            </div>
+          </div>
+          <label style={{ display: "block", marginTop: 14 }}>
+            <span className="lbl">Audit note (optional)</span>
+            <textarea
+              className="field"
+              rows={3}
+              value={plaidPolicyNote}
+              onChange={(event) => setPlaidPolicyNote(event.target.value)}
+              placeholder="Why this file needs this evidence mix"
+            />
+          </label>
+          {updatePlaidPolicy.isError && (
+            <div className="note">
+              <div>
+                {updatePlaidPolicy.error instanceof Error
+                  ? updatePlaidPolicy.error.message
+                  : "The Plaid products could not be updated."}
+              </div>
+            </div>
+          )}
+          <div className="row" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+            <button
+              type="button"
+              className="btn"
+              style={{ minHeight: 44 }}
+              disabled={updatePlaidPolicy.isPending}
+              onClick={() => setPlaidPolicyChange(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn pri"
+              style={{ minHeight: 44 }}
+              disabled={updatePlaidPolicy.isPending}
+              onClick={() => updatePlaidPolicy.mutate(plaidPolicyChange)}
+            >
+              {updatePlaidPolicy.isPending ? "Updating…" : "Confirm products"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {modal && (
         <Modal
           title={
@@ -1246,9 +1452,11 @@ export default function Step2Verification({ dealerId }: { dealerId: string }) {
         >
           <p className="sub" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6 }}>
             {modal === "bank"
-              ? activeBanks.length
-                ? "The applicant can connect another business account or institution with read-only access. Plaid Assets combines verified balances and transactions; no credentials pass through Qualified Commercial."
-                : "The applicant connects the business operating account with read-only access. Plaid Assets returns verified balances and transactions; no credentials pass through Qualified Commercial."
+              ? `${activeBanks.length ? "The applicant can connect another business account or institution" : "The applicant connects the business operating account"} with read-only access. ${plaid.data?.assets_enabled && plaid.data?.statements_enabled
+                ? "Plaid returns verified balances and transactions plus available bank-produced Statement PDFs."
+                : plaid.data?.statements_enabled
+                  ? "Plaid retrieves available bank-produced Statement PDFs."
+                  : "Plaid Assets returns verified balances and transactions."} No credentials pass through Qualified Commercial.`
               : modal === "upload"
                 ? "The applicant opens the secure room and uploads the last six completed months of business bank statements to the linked bucket."
               : "The applicant authorizes a soft credit inquiry. It does not affect their score and returns a band rather than an exact figure."}

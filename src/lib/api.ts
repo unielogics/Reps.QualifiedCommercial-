@@ -61,6 +61,13 @@ async function unwrap<T>(res: Response): Promise<T> {
     let message = `Request failed (${res.status})`;
     if (typeof detail === "string") {
       message = detail;
+    } else if (
+      detail &&
+      typeof detail === "object" &&
+      "message" in detail &&
+      typeof (detail as { message?: unknown }).message === "string"
+    ) {
+      message = (detail as { message: string }).message;
     } else if (Array.isArray(detail)) {
       const issues = detail
         .map((item) => {
@@ -113,7 +120,12 @@ export async function apiBlob(path: string, opts: RequestInit & { authToken?: st
     let body: unknown = null;
     try { body = await res.json(); } catch { /* non-JSON error body */ }
     const detail = (body as { detail?: unknown } | null)?.detail;
-    throw new ApiError(res.status, typeof detail === "string" ? detail : `Request failed (${res.status})`, body);
+    const message = typeof detail === "string"
+      ? detail
+      : detail && typeof detail === "object" && "message" in detail && typeof (detail as { message?: unknown }).message === "string"
+        ? (detail as { message: string }).message
+        : `Request failed (${res.status})`;
+    throw new ApiError(res.status, message, body);
   }
   return res.blob();
 }
