@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Providers } from "./providers";
 import { Shell } from "@/components/Shell";
 import "./globals.css";
+import "./production-package.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const interTight = Inter_Tight({

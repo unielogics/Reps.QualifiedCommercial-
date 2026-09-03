@@ -1,0 +1,104 @@
+// MIRROR: keep identical to QCRep/src/production-package/*
+// Transport is injected: the dashboard passes its authed fetcher and a package id,
+// the rep app passes its authed fetcher and the share token. The workspace never
+// knows which app it is in.
+import type {
+  ApiCall, ApiInit, Arrangement, Computed, AttentionItem, HistoryEvent, ProductionPackage, SendResult, ShareLink,
+  Signature, SmsConsent, SponsorOption, TeamMember,
+} from "./types";
+
+export type PrefillResult = {
+  values: Record<string, unknown>;
+  provenance: Record<string, { source: string; label: string; confirmed: boolean }>;
+  applied: string[];
+  skipped: string[];
+  missing: string[];
+};
+
+export type ComputeResult = { computed: Computed; attention: AttentionItem[]; attention_presentation: AttentionItem[] };
+
+export type ManualSignatureBody = {
+  party: "qc" | "sponsor";
+  signer_name: string;
+  signer_title: string;
+  signed_on: string;
+  attestation: boolean;
+  note?: string;
+  override_reason?: string;
+  scan_file_name?: string;
+  scan_content_type?: string;
+};
+
+export type ManualSignatureResult = {
+  signature: Signature;
+  package: ProductionPackage;
+  scan_upload: { signature_id: string; key: string; url?: string; headers?: Record<string, string>; method?: string } | null;
+};
+
+export interface PackageClient {
+  readonly mode: "operator" | "rep";
+  load(): Promise<ProductionPackage>;
+  patch(version: number, changes: Record<string, unknown>, confirm?: string[]): Promise<ProductionPackage>;
+  prefill(opts?: { force?: boolean; fields?: string[]; apply?: boolean }): Promise<PrefillResult>;
+  compute(arrangement: Partial<Arrangement>): Promise<ComputeResult>;
+  presentation(): Promise<ProductionPackage>;
+  // operator only — absent on the share client
+  sponsors?(): Promise<SponsorOption[]>;
+  team?(): Promise<TeamMember[]>;
+  send?(body: { channel: "sms" | "email"; recipient_email?: string; recipient_phone?: string }): Promise<SendResult>;
+  remind?(body: { channel: "sms" | "email" }): Promise<SendResult>;
+  reopen?(reason: string): Promise<ProductionPackage>;
+  voidPackage?(reason: string): Promise<ProductionPackage>;
+  recordManual?(body: ManualSignatureBody): Promise<ManualSignatureResult>;
+  scanComplete?(signatureId: string, sha256: string): Promise<ProductionPackage>;
+  execute?(): Promise<ProductionPackage>;
+  createShareLink?(body: { rep_user_id: string; label?: string; expires_in_days: number; outside_book?: boolean }): Promise<{ link: ShareLink; url: string; expires_at: string }>;
+  revokeShareLink?(linkId: string): Promise<void>;
+  history?(): Promise<{ events: HistoryEvent[] }>;
+  captureSmsConsent?(body: { phone: string; consenter_name: string; method: string }): Promise<SmsConsent>;
+  revisionDocument?(revisionId: string, phase: "unsigned" | "current" | "executed"): Promise<{ url: string | null; sha256: string | null; phase: string }>;
+}
+
+const json = (body: unknown, method = "POST"): ApiInit => ({ method, body: JSON.stringify(body) });
+
+export async function resolvePackage(call: ApiCall, profileId: string): Promise<ProductionPackage> {
+  return call<ProductionPackage>("/production-packages/resolve", json({ profile_id: profileId }));
+}
+
+export function createOperatorClient(call: ApiCall, packageId: string): PackageClient {
+  const base = `/production-packages/${packageId}`;
+  return {
+    mode: "operator",
+    load: () => call<ProductionPackage>(base),
+    patch: (version, changes, confirm = []) => call<ProductionPackage>(base, json({ version, changes, confirm }, "PATCH")),
+    prefill: (opts = {}) => call<PrefillResult>(`${base}/prefill`, json({ force: false, apply: true, ...opts })),
+    compute: (arrangement) => call<ComputeResult>(`${base}/compute`, json({ arrangement })),
+    presentation: () => call<ProductionPackage>(`${base}/presentation`, json({})),
+    sponsors: () => call<SponsorOption[]>("/production-packages/sponsors"),
+    team: () => call<TeamMember[]>("/users"),
+    send: (body) => call<SendResult>(`${base}/send`, json(body)),
+    remind: (body) => call<SendResult>(`${base}/remind`, json(body)),
+    reopen: (reason) => call<ProductionPackage>(`${base}/reopen`, json({ reason })),
+    voidPackage: (reason) => call<ProductionPackage>(`${base}/void`, json({ reason })),
+    recordManual: (body) => call<ManualSignatureResult>(`${base}/signatures/manual`, json(body)),
+    scanComplete: (signatureId, sha256) => call<ProductionPackage>(`${base}/signatures/${signatureId}/scan-complete`, json({ sha256 })),
+    execute: () => call<ProductionPackage>(`${base}/execute`, json({})),
+    createShareLink: (body) => call(`${base}/share-links`, json(body)),
+    revokeShareLink: (linkId) => call<void>(`${base}/share-links/${linkId}`, { method: "DELETE" }),
+    history: () => call<{ events: HistoryEvent[] }>(`${base}/history`),
+    captureSmsConsent: (body) => call<SmsConsent>(`${base}/sms-consent`, json(body)),
+    revisionDocument: (revisionId, phase) => call(`${base}/revisions/${revisionId}/document?phase=${phase}`),
+  };
+}
+
+export function createShareClient(call: ApiCall, token: string): PackageClient {
+  const base = `/production-packages/shares/${encodeURIComponent(token)}`;
+  return {
+    mode: "rep",
+    load: () => call<ProductionPackage>(base),
+    patch: (version, changes, confirm = []) => call<ProductionPackage>(base, json({ version, changes, confirm }, "PATCH")),
+    prefill: (opts = {}) => call<PrefillResult>(`${base}/prefill`, json({ force: false, apply: true, ...opts })),
+    compute: (arrangement) => call<ComputeResult>(`${base}/compute`, json({ arrangement })),
+    presentation: () => call<ProductionPackage>(`${base}/presentation`, json({})),
+  };
+}

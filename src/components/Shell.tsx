@@ -266,7 +266,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
       : pathname.startsWith(href);
   const activeSection = pathname.startsWith("/applications/")
     ? "Application workspace"
-    : nav.find((item) => isActiveNavItem(item.href))?.label ?? "Field Desk";
+    : pathname.startsWith("/production-package/")
+      ? "Production package"
+      : nav.find((item) => isActiveNavItem(item.href))?.label ?? "Field Desk";
   const notificationCount = notifications.data?.unread_count ?? 0;
   const profileInitials = (name || email || "QC")
     .split(/\s+|@/)
