@@ -5,7 +5,6 @@ import type { PackageClient } from "./client";
 import { provisional as computeProvisional } from "./compute";
 import { debounce, errorDetail, errorMessage, errorStatus, openSignedUrl } from "./format";
 import { SPONSOR_KEYS, TERM_SHEET_KEYS, stepsFor } from "./schema";
-import { AttentionList } from "./AttentionList";
 import { AllClearSummary } from "./AllClearSummary";
 import { PackageTopBar } from "./PackageTopBar";
 import { ShareDrawer } from "./ShareDrawer";
@@ -45,6 +44,8 @@ export type WorkspaceProps = {
 
 type Notice = { message: string; tone: Tone } | null;
 
+const ATTENTION_PANEL_ID = "pp-attention-panel";
+
 function shallowDiff(before: Arrangement, after: Arrangement): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
@@ -76,6 +77,10 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const [sponsors, setSponsors] = useState<SponsorOption[]>([]);
   const [team, setTeam] = useState<Array<{ id: string; name: string; email: string; role: string }>>([]);
   const [termsOpen, setTermsOpen] = useState(false);
+  // The open-item list is hidden until the flag in the container is clicked.
+  const [attentionOpen, setAttentionOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
   const savedRef = useRef<Arrangement>(initial.arrangement);
   const versionRef = useRef<number>(initial.version);
   const draftRef = useRef<Arrangement>(initial.arrangement);
@@ -235,12 +240,35 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const active = steps[stepIndex] ?? steps[0];
   const current = active.key;
 
-  const jumpTo = (item: { step: StepKey; key: string }) => { setStep(item.step); setFocusKey(item.key); };
+  // Jumping to an item behaves like clicking its step chip, and closes the list behind it.
+  const jumpTo = (item: { step: StepKey; key: string }) => {
+    setStep(item.step);
+    setFocusKey(item.key);
+    flushSave.flush();
+    setAttentionOpen(false);
+  };
+  const showAttention = attentionOpen && attention.length > 0;
+
+  useEffect(() => { if (!attention.length) setAttentionOpen(false); }, [attention.length]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    const bar = barRef.current;
+    if (!root || !bar || typeof ResizeObserver === "undefined") return;
+    const apply = () => root.style.setProperty("--pp-stick", `${Math.round(bar.getBoundingClientRect().height) + 14}px`);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, []);
 
   return (
-    <div className={`pp-root${readOnly ? " locked" : ""}`}>
+    <div className={`pp-root${readOnly ? " locked" : ""}`} ref={rootRef}>
       <PackageTopBar
         pkg={pkg} step={current} attention={attention} saving={saving} dirty={dirty} busy={busy}
+        attentionOpen={showAttention} onToggleAttention={() => setAttentionOpen((v) => !v)}
+        onCloseAttention={() => setAttentionOpen(false)} onJump={jumpTo}
+        attentionPanelId={ATTENTION_PANEL_ID} barRef={barRef}
         onStep={go} onPresentation={generatePresentation} onPreview={() => go("preview")} onSend={() => go("send")}
         right={headerRight}
       />
@@ -258,11 +286,7 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
       ) : null}
       <div className="pp-body">
         <aside className="pp-rail">
-          {pkg.status === "draft" ? (
-            attention.length ? <AttentionList items={attention} onJump={jumpTo} stage={pkg.stage} /> : <AllClearSummary pkg={pkg} />
-          ) : (
-            <AllClearSummary pkg={pkg} />
-          )}
+          <AllClearSummary pkg={pkg} openItems={attention.length} />
         </aside>
         <main className="pp-main">
           <header className="pp-step-h">

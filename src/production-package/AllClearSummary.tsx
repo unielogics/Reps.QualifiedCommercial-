@@ -1,20 +1,24 @@
 // MIRROR: keep identical to QCRep/src/production-package/*
 import { dateLabel, money, pct, num, whenLabel } from "./format";
-import { IconCheck } from "./icons";
+import { IconCheck, IconFlag } from "./icons";
 import { KV, PChip } from "./ui";
 import type { ProductionPackage } from "./types";
 
-export function AllClearSummary({ pkg }: { pkg: ProductionPackage }) {
+export function AllClearSummary({ pkg, openItems = 0 }: { pkg: ProductionPackage; openItems?: number }) {
   const e = pkg.computed.econ;
   const adv = pkg.computed.advance;
   const sp = pkg.computed.sponsor;
   const two = pkg.stage === 2;
   const dealerSig = pkg.active_revision?.signatures.find((s) => s.party === "dealer" && s.status !== "voided");
   const ts = pkg.term_sheet;
+  // A draft with open items is not "all clear" — the list itself lives behind the container's flag.
+  const blocking = pkg.status === "draft" && openItems > 0;
   return (
-    <section className="pp-att clear" aria-label="Summary">
+    <section className={`pp-att${blocking ? "" : " clear"}`} aria-label="Summary">
       <header className="pp-att-h">
-        {pkg.status === "draft"
+        {blocking
+          ? <><IconFlag /><b>Draft in progress</b><span className="pp-sub">{openItems} item{openItems === 1 ? "" : "s"} still need{openItems === 1 ? "s" : ""} attention. Open the list from the flag beside the title.</span></>
+          : pkg.status === "draft"
           ? <><IconCheck /><b>All clear</b><span className="pp-sub">{two ? "Every field carries a value. This is what the dealer will sign at closing." : "Every field carries a value. This is what the parties will sign."}</span></>
           : <><b>{two ? "Final agreement state" : "Agreement state"}</b></>}
       </header>

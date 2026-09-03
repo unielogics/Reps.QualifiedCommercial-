@@ -1,6 +1,6 @@
 /* MIRROR: keep identical to QCRep/src/app/production-package.css
    Production Package workspace — self-contained on the shared design tokens. */
-.pp-root { --pp-gap: 14px; display: flex; flex-direction: column; gap: var(--pp-gap); color: var(--ink); font-family: var(--fb); font-size: 13.5px; }
+.pp-root { --pp-gap: 14px; --pp-stick: 142px; display: flex; flex-direction: column; gap: var(--pp-gap); color: var(--ink); font-family: var(--fb); font-size: 13.5px; }
 .pp-root .muted, .pp-root .pp-sub { color: var(--muted); }
 .pp-sub { margin: 2px 0 0; font-size: 12.5px; line-height: 1.4; }
 .pp-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
@@ -10,12 +10,22 @@
 .pp-req { color: var(--danger); margin-left: -2px; }
 
 /* top bar */
-.pp-top { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: 12px 16px; align-items: center; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); position: sticky; top: 0; z-index: 5; }
-.pp-top-name { font-family: var(--fh); font-size: 16px; font-weight: 700; }
-.pp-top-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+.pp-top { display: grid; grid-template-columns: minmax(180px, 1fr) auto; grid-template-areas: "id actions" "steps steps" "att att"; gap: 12px 16px; align-items: center; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); position: sticky; top: 0; z-index: 5; }
+.pp-top-l { grid-area: id; min-width: 0; }
+.pp-top-titlerow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 1px; }
+.pp-top-title { margin: 0; font-family: var(--fh); font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.pp-top-name { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.pp-top-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 3px; }
 .pp-save { font-size: 11.5px; color: var(--faint); }
-.pp-top-r { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.pp-steps { display: flex; gap: 4px; flex-wrap: wrap; grid-column: 1 / -1; }
+.pp-top-r { grid-area: actions; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.pp-steps { grid-area: steps; display: flex; gap: 4px; flex-wrap: wrap; }
+/* the open-item flag: the one way into the list, so it reads as a control, not a badge */
+.pp-flagbtn { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px 4px 8px; border: 1px solid var(--danger); border-radius: 999px; background: var(--danger-tint); color: var(--danger); font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.pp-flagbtn b { font-size: 12.5px; }
+.pp-flagbtn:hover { background: var(--surface); }
+.pp-flagbtn.on { background: var(--surface); box-shadow: inset 0 0 0 1px var(--danger); }
+.pp-flagbtn.on:hover { background: var(--danger-tint); }
+.pp-flagbtn:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 1px; }
 .pp-stepchip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px 5px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--sunken2); color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
 .pp-stepchip:hover { border-color: var(--line2); }
 .pp-stepchip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -23,10 +33,16 @@
 .pp-stepchip.on .pp-stepn { background: rgba(255,255,255,.22); }
 .pp-flag { display: inline-flex; align-items: center; gap: 2px; color: var(--danger); font-weight: 700; font-size: 11px; }
 .pp-stepchip.on .pp-flag { color: #fff; }
+/* a step with open items carries the danger edge; selection still wins over it */
+.pp-stepchip.flagged { border-color: var(--danger); }
+.pp-stepchip.flagged:hover { background: var(--danger-tint); }
+.pp-stepchip.flagged .pp-stepn { background: var(--danger-tint); color: var(--danger); }
+.pp-stepchip.on.flagged { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pp-stepchip.on.flagged .pp-stepn { background: rgba(255,255,255,.22); color: #fff; }
 
 /* body layout */
 .pp-body { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: var(--pp-gap); align-items: start; }
-.pp-rail { position: sticky; top: 118px; }
+.pp-rail { position: sticky; top: var(--pp-stick); }
 .pp-main { display: flex; flex-direction: column; gap: var(--pp-gap); min-width: 0; }
 .pp-step-h { padding: 4px 2px 0; }
 .pp-step-f { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0 20px; }
@@ -35,6 +51,11 @@
 /* attention rail */
 .pp-att { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--danger); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .pp-att.clear { border-left-color: var(--ok); }
+/* the list the container's flag reveals: capped so a long list cannot swallow the step body */
+.pp-att-panel { grid-area: att; max-height: min(42vh, 340px); overflow-y: auto; }
+.pp-att-x { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line2); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.pp-att-x:hover { border-color: var(--danger); color: var(--danger); }
+.pp-att-x:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 1px; }
 .pp-att-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--ink); }
 .pp-att-h .pp-sub { flex-basis: 100%; }
 .pp-att-g { display: flex; flex-direction: column; gap: 4px; }
