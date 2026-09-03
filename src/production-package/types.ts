@@ -2,10 +2,11 @@
 // Shapes mirror app/schemas/production_package.py on the backend.
 
 export type PackageStatus = "draft" | "out_for_signature" | "executed" | "void";
-export type PackageMode = "operator" | "rep";
+export type PackageMode = "operator" | "rep" | "partner";
+export type AccessVia = "operator" | "share_link" | "ownership";
 export type StepKey =
   | "parties" | "lot" | "products" | "advance" | "buildout"
-  | "thresholds" | "shortfall" | "projection" | "preview" | "send";
+  | "thresholds" | "shortfall" | "funding" | "disclosures" | "projection" | "preview" | "send";
 
 export type ProductKey = "vsc" | "gap" | "theft" | "appearance" | "key" | "tire" | "maint" | "power";
 export type ThresholdKey =
@@ -26,11 +27,20 @@ export type ProductRow = {
   term: Numberish;
 };
 
+// §9.2 ownership schedule row (OWNER_FIELDS on the backend).
+export type OwnerRow = { name: string; pct: Numberish; title: string; email: string; phone: string; auth: string };
+
+// Schedule 1 use of funds (USE_OF_FUNDS_KEYS + other_label on the backend).
+export type UseOfFundsKey = "inventory" | "debt_payoff" | "working_capital" | "equipment" | "real_estate" | "program_implementation" | "other";
+export type UseOfFunds = Record<UseOfFundsKey, Numberish> & { other_label: string };
+
 export type Arrangement = {
   [key: string]: unknown;
   products: Record<ProductKey, ProductRow>;
   thresholds: Partial<Record<ThresholdKey, Numberish>>;
   evidence: string[];
+  use_of_funds: UseOfFunds;
+  owners: OwnerRow[];
 };
 
 export type Provenance = Record<string, { source: string; label: string; confirmed: boolean }>;
@@ -53,6 +63,7 @@ export type ThresholdRow = {
 
 export type Computed = {
   document_version: string;
+  stage?: number;
   econ: {
     units: number; rows: ProductEcon[]; on: ProductKey[]; covered_labels: string[];
     contracts: number; gross: number; cur_contracts: number; cur_gross: number;
@@ -111,12 +122,28 @@ export type ShareLink = {
   created_at: string; expires_at: string; revoked_at: string | null; last_used_at: string | null; use_count: number; active: boolean;
 };
 
+export type SignatureParty = "dealer" | "qc" | "sponsor" | "rm" | "fp";
+
 export type Signature = {
-  id: string; party: "dealer" | "qc" | "sponsor"; method: "electronic" | "manual"; status: "pending" | "signed" | "voided";
+  id: string; party: SignatureParty; method: "electronic" | "manual" | "stored"; status: "pending" | "signed" | "voided";
+  initials: string | null; stored_signature_id: string | null; stored_adopted_at: string | null; placed_at: string | null;
   expected_signer_name: string | null; typed_name: string | null; sent_at: string | null; viewed_at: string | null;
   signed_at: string | null; signer_name: string | null; signer_title: string | null; signed_on: string | null;
   recorded_at: string | null; recorded_by_name: string | null; scan_available: boolean; scan_url: string | null;
   note: string | null; voided_at: string | null; void_reason: string | null;
+};
+
+// The executed stage-one record a final was drafted from (package.original / revision.original).
+export type OriginalRef = {
+  package_id: string; revision_id: string; revision_no: number; content_sha256: string;
+  executed_at: string | null; executed_url?: string | null; title?: string; executed_pdf_sha256?: string | null;
+};
+
+// Funding attestation as stored on the final's revision (revision.funding).
+export type FundingRecord = {
+  attested_by_user_id?: string; attested_by_name?: string; attested_at?: string;
+  actual_funding_date?: string; amount_funded?: number; funding_party_name?: string;
+  funding_reference?: string | null; note?: string | null; attestation_version?: string; text?: string;
 };
 
 export type Revision = {
@@ -125,12 +152,16 @@ export type Revision = {
   unsigned_url: string | null; current_url: string | null; executed_url: string | null;
   sent_at: string | null; completed_at: string | null; voided_at: string | null; void_reason: string | null;
   sponsor_snapshot: Record<string, unknown> | null; signatures: Signature[];
+  funding: FundingRecord | null;
+  arrangement?: Arrangement | null;
+  original: OriginalRef | null;
 };
 
 export type Capabilities = {
   can_edit: boolean; can_confirm: boolean; can_generate: boolean; can_send: boolean; can_reopen: boolean;
   can_void: boolean; can_record: boolean; can_execute: boolean; can_share: boolean; can_pick_sponsor: boolean;
-  can_capture_consent: boolean;
+  can_capture_consent: boolean; can_remind: boolean; can_manage_terms: boolean; can_draft_final: boolean;
+  can_compare: boolean; can_adopt_sponsor_signature: boolean;
 };
 
 export type SmsConsent = { phone: string | null; status: "granted" | "missing" | "opted_out" | "no_phone"; detail: string };
@@ -142,6 +173,91 @@ export type DeliveryEntry = {
   emailed: boolean; texted: boolean; detail: string; by: string;
 };
 
+// ---- term sheet (ProductionTermSheetBody / Read / State / Result) ----
+
+export type FundingPartyKind = "Sponsor" | "Qualified Commercial LLC" | "Lender";
+
+export type TermSheetUseOfFunds = Partial<Record<UseOfFundsKey, number | null>> & { other_label?: string | null };
+
+export type TermSheetBody = {
+  funding_party_kind: FundingPartyKind;
+  lender_id: string | null;
+  funding_party_name: string;
+  facility_type: string;
+  approved_amount: number;
+  min_activation_amount: number;
+  rate_pct: number;
+  term_months: number;
+  monthly_debt_service: number | null;
+  debt_service_is_level_payment: boolean;
+  expected_funding_date: string | null;
+  activation_date: string | null;
+  commencement_date: string | null;
+  maturity_date: string | null;
+  use_of_funds: TermSheetUseOfFunds | null;
+  conditions: string | null;
+  notes: string | null;
+  extra?: Record<string, unknown>;
+};
+
+export type TermSheet = {
+  id: string; version: number; status: "current" | "superseded" | "withdrawn" | string;
+  funding_party_kind: string; lender_id: string | null; funding_party_name: string; facility_type: string;
+  approved_amount: number; min_activation_amount: number; rate_pct: number; term_months: number;
+  monthly_debt_service: number; debt_service_is_level_payment: boolean;
+  expected_funding_date: string | null; activation_date: string | null; commencement_date: string | null; maturity_date: string | null;
+  use_of_funds: TermSheetUseOfFunds | null; conditions: string | null; notes: string | null;
+  entered_at: string; entered_by_name: string | null; superseded_at: string | null; withdrawn_at: string | null;
+  consumed_by_package_id: string | null; level_payment: number | null;
+};
+
+export type Lender = { id: string; name: string };
+
+export type TermSheetState = {
+  current: TermSheet | null;
+  history: TermSheet[];
+  defaults: Record<string, unknown>;
+  defaults_source: Record<string, string>;
+  lenders: Lender[];
+  can_edit: boolean;
+  facility_types: string[];
+  funding_party_kinds: string[];
+};
+
+export type TermSheetResult = { state: TermSheetState; final: ProductionPackage | null };
+
+// ---- original vs final ----
+
+export type ComparisonRow = {
+  section: string; key: string; label: string; format: string;
+  before: string; after: string; changed: boolean; original_blank: boolean; dealer_visible: boolean;
+};
+
+export type Comparison = { rows: ComparisonRow[]; changed_count: number; source: "live" | "frozen" };
+
+export type PreviousFinal = { id: string; status: string; created_at: string; voided_at: string | null };
+
+// ---- signatures on file (qc / sponsor / rm) ----
+
+export type SignatureOnFile = { present: boolean; typed_name: string | null; adopted_at: string | null; how_to_fix: string | null; user_id?: string | null };
+export type SignaturesOnFile = { qc?: SignatureOnFile; sponsor?: SignatureOnFile; rm?: SignatureOnFile; ready?: boolean };
+
+export type StoredSignatureRead = {
+  id: string; subject_type: string; subject_id: string | null; typed_name: string; title: string | null; source: string;
+  adopted_at: string | null; adopted_by_user_id?: string | null; consent_version?: string | null; [key: string]: unknown;
+};
+
+// ---- send ----
+
+export type FundingAttestation = {
+  confirm: boolean; actual_funding_date: string; amount_funded: number; funding_party_name: string;
+  funding_reference?: string | null; note?: string | null;
+};
+
+export type SendRequest = {
+  channel: "sms" | "email"; recipient_email?: string; recipient_phone?: string; funding_attestation?: FundingAttestation;
+};
+
 export type ProductionPackage = {
   id: string; profile_id: string; intake_id: string | null; dealer_id: string | null; stage: number;
   status: PackageStatus; version: number; business_name: string; client_email: string | null; client_phone: string | null;
@@ -151,6 +267,12 @@ export type ProductionPackage = {
   share_links: ShareLink[]; delivery_history: DeliveryEntry[]; capabilities: Capabilities; sms_consent: SmsConsent;
   sent_at: string | null; executed_at: string | null; voided_at: string | null; void_reason: string | null;
   executed_url: string | null; updated_at: string; updated_by_name: string | null; sponsor_signing_url: string; mode: PackageMode;
+  access_via: AccessVia; sent_by_name: string | null; sent_via: string | null; recipient_preview: string | null;
+  execution_pending: boolean;
+  // stage two
+  parent_package_id: string | null; final_package_id: string | null; final_status: string | null;
+  term_sheet: TermSheet | null; original: OriginalRef | null; comparison: Comparison | null;
+  previous_finals: PreviousFinal[]; signatures_on_file: SignaturesOnFile;
 };
 
 export type SendResult = { package: ProductionPackage; delivered: boolean; emailed: boolean; texted: boolean; detail: string; already_sent: boolean };

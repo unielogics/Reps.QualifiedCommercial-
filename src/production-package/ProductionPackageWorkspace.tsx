@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { PackageClient } from "./client";
 import { provisional as computeProvisional } from "./compute";
 import { debounce, errorDetail, errorMessage, errorStatus, openSignedUrl } from "./format";
-import { STEPS } from "./schema";
+import { SPONSOR_KEYS, TERM_SHEET_KEYS, stepsFor } from "./schema";
 import { AttentionList } from "./AttentionList";
 import { AllClearSummary } from "./AllClearSummary";
 import { PackageTopBar } from "./PackageTopBar";
 import { ShareDrawer } from "./ShareDrawer";
+import { TermSheetDrawer } from "./TermSheetDrawer";
 import { Step1Parties } from "./steps/Step1Parties";
 import { Step2Lot } from "./steps/Step2Lot";
 import { Step3Products } from "./steps/Step3Products";
@@ -16,6 +17,8 @@ import { Step4Advance } from "./steps/Step4Advance";
 import { Step5Buildout } from "./steps/Step5Buildout";
 import { Step6Thresholds } from "./steps/Step6Thresholds";
 import { Step7Shortfall } from "./steps/Step7Shortfall";
+import { StepFunding } from "./steps/StepFunding";
+import { StepDisclosures } from "./steps/StepDisclosures";
 import { Step8Projection } from "./steps/Step8Projection";
 import { Step9Preview } from "./steps/Step9Preview";
 import { Step10Send } from "./steps/Step10Send";
@@ -30,6 +33,14 @@ export type WorkspaceProps = {
   headerRight?: ReactNode;
   shareOpen?: boolean;
   onShareClose?: () => void;
+  /** The profile the term sheet lives on; defaults to the package's. */
+  profileId?: string;
+  /** Host-provided term-sheet surface; when absent the workspace opens its own drawer (operator transport only). */
+  onOpenTermSheet?: () => void;
+  /** Open the final (stage two) package by id — the host swaps the client. */
+  onOpenFinal?: (finalPackageId: string) => void;
+  /** Open the executed commitment (parent) by id. */
+  onOpenOriginal?: (parentPackageId: string) => void;
 };
 
 type Notice = { message: string; tone: Tone } | null;
@@ -43,10 +54,20 @@ function shallowDiff(before: Arrangement, after: Arrangement): Record<string, un
   return out;
 }
 
-export function ProductionPackageWorkspace({ client, initial, onPackage, headerRight, shareOpen, onShareClose }: WorkspaceProps) {
+function initialStep(p: ProductionPackage): StepKey {
+  if (p.status !== "draft") return "send";
+  return p.stage === 2 ? "funding" : "parties";
+}
+
+// Keys the final does not edit on the form: loan terms live on the term sheet, the sponsor is carried from stage one.
+function lockedOnFinal(key: string): boolean {
+  return TERM_SHEET_KEYS.has(key) || SPONSOR_KEYS.has(key) || key === "sponsor_company_id";
+}
+
+export function ProductionPackageWorkspace({ client, initial, onPackage, headerRight, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal }: WorkspaceProps) {
   const [pkg, setPkg] = useState<ProductionPackage>(initial);
   const [draft, setDraft] = useState<Arrangement>(initial.arrangement);
-  const [step, setStep] = useState<StepKey>(initial.status === "draft" ? "parties" : "send");
+  const [step, setStep] = useState<StepKey>(initialStep(initial));
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
@@ -54,10 +75,12 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const [busy, setBusy] = useState<string | null>(null);
   const [sponsors, setSponsors] = useState<SponsorOption[]>([]);
   const [team, setTeam] = useState<Array<{ id: string; name: string; email: string; role: string }>>([]);
+  const [termsOpen, setTermsOpen] = useState(false);
   const savedRef = useRef<Arrangement>(initial.arrangement);
   const versionRef = useRef<number>(initial.version);
   const draftRef = useRef<Arrangement>(initial.arrangement);
   draftRef.current = draft;
+  const steps = useMemo(() => stepsFor(pkg.stage), [pkg.stage]);
 
   const adopt = useCallback((next: ProductionPackage, keepDraft = false) => {
     setPkg(next);
@@ -67,20 +90,22 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
     onPackage?.(next);
   }, [onPackage]);
 
+  // Operator-only lookups: the transport must be the operator's and the role must be a team role
+  // (a dealer partner rides the operator transport on their own lead but cannot pick the sponsor).
   useEffect(() => {
-    if (client.mode !== "operator") return;
+    if (client.mode !== "operator" || initial.mode !== "operator") return;
     client.sponsors?.().then(setSponsors).catch(() => undefined);
     client.team?.().then((rows) => setTeam(rows.filter((r) => ["super_admin", "loan_exec", "field_rep"].includes(r.role)))).catch(() => undefined);
-  }, [client]);
+  }, [client, initial.mode]);
 
-  // Poll while a signature is outstanding so the signatory rows move on their own.
+  // Poll while a signature is outstanding so the signatory rows move on their own (and the auto-execute lands).
   useEffect(() => {
     if (pkg.status !== "out_for_signature") return;
     const timer = window.setInterval(() => {
-      client.load().then((next) => { if (next.version !== versionRef.current || next.status !== pkg.status) adopt(next); }).catch(() => undefined);
+      client.load().then((next) => { if (next.version !== versionRef.current || next.status !== pkg.status || next.execution_pending !== pkg.execution_pending) adopt(next); }).catch(() => undefined);
     }, 15_000);
     return () => window.clearInterval(timer);
-  }, [client, pkg.status, adopt]);
+  }, [client, pkg.status, pkg.execution_pending, adopt]);
 
   const notify = useCallback((message: string, tone: Tone = "acc") => setNotice({ message, tone }), []);
 
@@ -101,6 +126,11 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
         setConflict("Someone else saved this package. Reload to pick up their changes.");
       } else if (status === 409 && detail?.code === "package_frozen") {
         setConflict("This package was sent for signature. Reload to continue.");
+      } else if (status === 422 && (detail?.code === "maintained_by_term_sheet" || detail?.code === "maintained_by_desk")) {
+        // Those keys are owned elsewhere: put the saved values back and say so.
+        const fields = Array.isArray(detail.fields) ? (detail.fields as string[]) : [];
+        setDraft((d) => { const next: Arrangement = { ...d }; fields.forEach((f) => { (next as Record<string, unknown>)[f] = savedRef.current[f]; }); return next; });
+        setNotice({ message: String(detail.message ?? "Those fields are maintained elsewhere."), tone: "warn" });
       } else {
         setNotice({ message: errorMessage(err, "Your last change could not be saved."), tone: "bad" });
       }
@@ -119,12 +149,14 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   }, [flushSave]);
 
   const readOnly = pkg.status !== "draft" || !pkg.capabilities.can_edit || Boolean(conflict);
+  const two = pkg.stage === 2;
 
   const set = useCallback((key: string, value: unknown) => {
     if (readOnly) return;
+    if (two && lockedOnFinal(key)) { notify(TERM_SHEET_KEYS.has(key) ? "Loan terms are changed on the term sheet." : "The sponsor is carried from the executed commitment.", "warn"); return; }
     setDraft((d) => ({ ...d, [key]: value }));
     scheduleSave();
-  }, [readOnly, scheduleSave]);
+  }, [readOnly, two, notify, scheduleSave]);
 
   const setProduct = useCallback((key: ProductKey, field: string, value: unknown) => {
     if (readOnly) return;
@@ -147,18 +179,33 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
 
   const go = useCallback((next: StepKey) => { setStep(next); flushSave.flush(); }, [flushSave]);
 
+  const reload = useCallback(async () => {
+    setBusy("reload");
+    try { adopt(await client.load()); setConflict(null); } catch (err) { notify(errorMessage(err), "bad"); } finally { setBusy(null); }
+  }, [client, adopt, notify]);
+
+  // The term sheet: the host may own the surface; otherwise the workspace opens its own drawer over the operator transport.
+  const hostsTerms = !onOpenTermSheet && Boolean(client.termSheet);
+  const openTerms = useCallback(() => {
+    if (onOpenTermSheet) onOpenTermSheet();
+    else if (client.termSheet) setTermsOpen(true);
+    else notify("The term sheet is recorded from the desk.", "mut");
+  }, [onOpenTermSheet, client, notify]);
+  const closeTerms = useCallback(() => {
+    setTermsOpen(false);
+    flushSave.flush();
+    // Recording terms may re-apply them to a draft final or unlock "Draft final package" on the commitment.
+    client.load().then((next) => adopt(next)).catch(() => undefined);
+  }, [client, adopt, flushSave]);
+
   const prov = useMemo(() => computeProvisional(draft), [draft]);
   const dirty = useMemo(() => Object.keys(shallowDiff(savedRef.current, draft)).length > 0, [draft, pkg.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ctx: StepCtx = {
     pkg, draft, computed: pkg.computed, prov, provenance: pkg.prefill_provenance, saving: saving || dirty, readOnly,
-    mode: client.mode, focusKey, set, setProduct, setThreshold, confirm, go, notify, teamOptions: team,
+    mode: pkg.mode, profileId: profileId ?? pkg.profile_id, focusKey, set, setProduct, setThreshold, confirm, go, notify, teamOptions: team,
+    onOpenTermSheet: openTerms, onOpenFinal, onOpenOriginal,
   };
-
-  const reload = useCallback(async () => {
-    setBusy("reload");
-    try { adopt(await client.load()); setConflict(null); } catch (err) { notify(errorMessage(err), "bad"); } finally { setBusy(null); }
-  }, [client, adopt, notify]);
 
   const generatePresentation = useCallback(async () => {
     flushSave.flush();
@@ -184,14 +231,16 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   }, [client, adopt, notify, flushSave]);
 
   const attention = pkg.status === "draft" ? pkg.computed.attention : [];
-  const active = STEPS.find((s) => s.key === step) ?? STEPS[0];
+  const stepIndex = Math.max(0, steps.findIndex((s) => s.key === step));
+  const active = steps[stepIndex] ?? steps[0];
+  const current = active.key;
 
   const jumpTo = (item: { step: StepKey; key: string }) => { setStep(item.step); setFocusKey(item.key); };
 
   return (
     <div className={`pp-root${readOnly ? " locked" : ""}`}>
       <PackageTopBar
-        pkg={pkg} step={step} attention={attention} saving={saving} dirty={dirty} busy={busy}
+        pkg={pkg} step={current} attention={attention} saving={saving} dirty={dirty} busy={busy}
         onStep={go} onPresentation={generatePresentation} onPreview={() => go("preview")} onSend={() => go("send")}
         right={headerRight}
       />
@@ -210,35 +259,41 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
       <div className="pp-body">
         <aside className="pp-rail">
           {pkg.status === "draft" ? (
-            attention.length ? <AttentionList items={attention} onJump={jumpTo} /> : <AllClearSummary pkg={pkg} />
+            attention.length ? <AttentionList items={attention} onJump={jumpTo} stage={pkg.stage} /> : <AllClearSummary pkg={pkg} />
           ) : (
             <AllClearSummary pkg={pkg} />
           )}
         </aside>
         <main className="pp-main">
           <header className="pp-step-h">
-            <div className="pp-eyebrow">Step {STEPS.findIndex((s) => s.key === step) + 1} of {STEPS.length}</div>
+            <div className="pp-eyebrow">Step {stepIndex + 1} of {steps.length}{two ? " · final" : ""}</div>
             <h2 className="pp-title">{active.title}</h2>
             <p className="pp-sub">{active.sub}</p>
           </header>
-          {step === "parties" ? <Step1Parties ctx={ctx} sponsors={sponsors} /> : null}
-          {step === "lot" ? <Step2Lot ctx={ctx} /> : null}
-          {step === "products" ? <Step3Products ctx={ctx} /> : null}
-          {step === "advance" ? <Step4Advance ctx={ctx} /> : null}
-          {step === "buildout" ? <Step5Buildout ctx={ctx} /> : null}
-          {step === "thresholds" ? <Step6Thresholds ctx={ctx} /> : null}
-          {step === "shortfall" ? <Step7Shortfall ctx={ctx} /> : null}
-          {step === "projection" ? <Step8Projection ctx={ctx} /> : null}
-          {step === "preview" ? <Step9Preview ctx={ctx} client={client} /> : null}
-          {step === "send" ? <Step10Send ctx={ctx} client={client} onPackage={(next) => adopt(next)} onPresentation={generatePresentation} /> : null}
+          {current === "parties" ? <Step1Parties ctx={ctx} sponsors={sponsors} client={client} onPackage={(next) => adopt(next, true)} /> : null}
+          {current === "lot" ? <Step2Lot ctx={ctx} /> : null}
+          {current === "products" ? <Step3Products ctx={ctx} /> : null}
+          {current === "advance" ? <Step4Advance ctx={ctx} /> : null}
+          {current === "buildout" ? <Step5Buildout ctx={ctx} /> : null}
+          {current === "thresholds" ? <Step6Thresholds ctx={ctx} /> : null}
+          {current === "shortfall" ? <Step7Shortfall ctx={ctx} /> : null}
+          {current === "funding" ? <StepFunding ctx={ctx} /> : null}
+          {current === "disclosures" ? <StepDisclosures ctx={ctx} /> : null}
+          {current === "projection" ? <Step8Projection ctx={ctx} /> : null}
+          {current === "preview" ? <Step9Preview ctx={ctx} client={client} /> : null}
+          {current === "send" ? <Step10Send ctx={ctx} client={client} onPackage={(next) => adopt(next)} onPresentation={generatePresentation} /> : null}
           <footer className="pp-step-f">
-            {STEPS.findIndex((s) => s.key === step) > 0 ? <PBtn onClick={() => go(STEPS[STEPS.findIndex((s) => s.key === step) - 1].key)}>Back</PBtn> : <span />}
-            {STEPS.findIndex((s) => s.key === step) < STEPS.length - 1 ? <PBtn variant="pri" onClick={() => go(STEPS[STEPS.findIndex((s) => s.key === step) + 1].key)}>Next: {STEPS[STEPS.findIndex((s) => s.key === step) + 1].label}</PBtn> : null}
+            {stepIndex > 0 ? <PBtn onClick={() => go(steps[stepIndex - 1].key)}>Back</PBtn> : <span />}
+            {stepIndex < steps.length - 1 ? <PBtn variant="pri" onClick={() => go(steps[stepIndex + 1].key)}>Next: {steps[stepIndex + 1].label}</PBtn> : null}
           </footer>
         </main>
       </div>
-      {client.mode === "operator" && shareOpen ? (
+      {client.mode === "operator" && !two && shareOpen ? (
         <ShareDrawer client={client} pkg={pkg} team={team} open={Boolean(shareOpen)} onClose={() => onShareClose?.()} onPackage={(next) => adopt(next, true)} />
+      ) : null}
+      {hostsTerms && termsOpen ? (
+        <TermSheetDrawer client={client} profileId={profileId ?? pkg.profile_id} open={termsOpen} onClose={closeTerms} pkg={pkg}
+          onSaved={(result) => { if (result.final && result.final.id === pkg.id) adopt(result.final); }} />
       ) : null}
     </div>
   );

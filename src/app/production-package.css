@@ -182,3 +182,49 @@ textarea.pp-input { resize: vertical; min-height: 64px; }
 .pp-gate canvas { width: 100%; height: 160px; touch-action: none; background: #fff; border-radius: var(--r-sm); }
 .pp-gate-done { text-align: center; padding: 30px 20px; }
 @media (prefers-reduced-motion: reduce) { .pp-root * { transition: none !important; } }
+
+/* ---- stage two: locks, rows, use of funds, comparison, attestation, term sheet ---- */
+.pp-locked-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; background: var(--gold-100); color: var(--gold); text-transform: none; }
+.pp-field.locked .pp-input { background: var(--sunken); color: var(--ink2); }
+.pp-field.locked .pp-input:disabled { opacity: 1; }
+.pp-rows .pp-tbl.rows td { padding: 4px 6px; }
+.pp-rows .pp-tbl.rows .pp-input.cell.wide { width: 100%; min-width: 110px; text-align: left; }
+.pp-rows .pp-tbl.rows tfoot td { font-size: 12.5px; color: var(--muted); background: var(--sunken2); }
+.pp-split { display: flex; flex-direction: column; gap: 6px; }
+.pp-split-row { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 8px; align-items: center; }
+.pp-split-lbl { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.pp-split-lbl .pp-input { max-width: 320px; padding: 5px 8px; font-size: 12.5px; }
+.pp-split-total { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--line); }
+.pp-split-total b { font-family: var(--fh); font-size: 16px; font-variant-numeric: tabular-nums; }
+.pp-split-total.t-ok b { color: var(--ok); } .pp-split-total.t-bad b { color: var(--danger); }
+@media (max-width: 760px) { .pp-split-row { grid-template-columns: 1fr; } }
+.pp-compare-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.pp-compare-tools .pp-check { margin: 0; }
+.pp-tbl.compare td.before { color: var(--muted); width: 28%; }
+.pp-tbl.compare td.after { width: 28%; }
+.pp-tbl.compare tr.changed td { background: var(--warn-tint); }
+.pp-tbl.compare tr.changed td.after { font-weight: 700; color: var(--ink); }
+.pp-tbl.compare tr.changed td.before { text-decoration: line-through; text-decoration-color: var(--line2); }
+.pp-tbl.compare td.sect { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--sunken2); font-weight: 700; }
+.pp-tbl.compare tr.hidden td { color: var(--faint); }
+.pp-attest { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--warn); border-radius: var(--r-sm); background: var(--warn-tint); display: flex; flex-direction: column; gap: 8px; }
+.pp-attest .pp-grid { gap: 8px 12px; }
+.pp-attest-text { font-size: 12.5px; line-height: 1.45; }
+.pp-banner { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: var(--r-sm); border: 1px solid var(--accent-200); background: var(--accent-100); }
+.pp-banner.t-ok { border-color: var(--ok); background: var(--ok-tint); } .pp-banner.t-warn { border-color: var(--warn); background: var(--warn-tint); }
+.pp-fixlist { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
+.pp-fixlist li { margin: 2px 0; }
+.pp-errors { margin: 0; padding: 8px 12px 8px 26px; border: 1px solid var(--danger); border-radius: var(--r-sm); background: var(--danger-tint); color: var(--danger); font-size: 12.5px; }
+.pp-ts-form { display: flex; flex-direction: column; gap: 14px; }
+.pp-ts-form h4.pp-sect { margin-top: 4px; font-size: 13px; }
+.pp-ts-hist { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pp-ts-hist li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunken2); font-size: 12.5px; }
+.pp-ts-hist li.current { border-color: var(--ok); }
+.pp-comp-tbl td:first-child { white-space: nowrap; font-weight: 600; }
+.pp-comp-tbl .pp-input { min-width: 140px; }
+
+/* client signing gate: what changed since the commitment */
+.pp-gate .pp-changes { border: 1px solid var(--line2); border-radius: var(--r); background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.pp-gate .pp-changes .pp-tbl td.before { color: var(--muted); }
+.pp-gate .pp-changes .pp-tbl td.after { font-weight: 700; }
+.pp-gate .pp-initials { width: 90px; text-transform: uppercase; letter-spacing: .08em; }

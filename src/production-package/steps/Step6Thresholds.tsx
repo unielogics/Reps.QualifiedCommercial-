@@ -1,6 +1,6 @@
 // MIRROR: keep identical to QCRep/src/production-package/*
 import { money, num, pct } from "../format";
-import { Callout, PBtn, PPanel, type StepCtx } from "../ui";
+import { Callout, Field, PBtn, PPanel, type StepCtx } from "../ui";
 import type { ThresholdKey } from "../types";
 
 function fmt(v: number | null, format: "count" | "pct" | "money"): string {
@@ -9,7 +9,8 @@ function fmt(v: number | null, format: "count" | "pct" | "money"): string {
 }
 
 export function Step6Thresholds({ ctx }: { ctx: StepCtx }) {
-  const { computed, draft, readOnly, setThreshold, set, notify } = ctx;
+  const { computed, draft, readOnly, setThreshold, set, notify, pkg } = ctx;
+  const two = pkg.stage === 2;
   const t = computed.thresholds;
   const applyGuideline = () => {
     set("thresholds", {});
@@ -49,6 +50,14 @@ export function Step6Thresholds({ ctx }: { ctx: StepCtx }) {
         </table>
         <p className="pp-sub" style={{ marginTop: 8 }}>Remittance covenant {money(t.remittance_req)} a month · repayment covers {pct(t.coverage_pct)} of it.</p>
       </PPanel>
+      {two ? (
+        <PPanel title="Audit and review thresholds (§9.5, §10.7)" sub="Operative on the Activation agreement only. The audit discrepancy threshold is the reporting variance that triggers audit-cost reimbursement; the review threshold is the size of new business-purpose financing the dealer must offer Qualified Commercial first.">
+          <div className="pp-grid">
+            <Field ctx={ctx} k="audit_discrepancy_threshold" />
+            <Field ctx={ctx} k="review_threshold" />
+          </div>
+        </PPanel>
+      ) : null}
     </>
   );
 }

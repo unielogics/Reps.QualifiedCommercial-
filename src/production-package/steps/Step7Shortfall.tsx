@@ -3,7 +3,8 @@ import { ADJUSTMENTS, CADENCES } from "../options";
 import { Callout, Field, PChip, PPanel, Picks, type StepCtx } from "../ui";
 
 export function Step7Shortfall({ ctx }: { ctx: StepCtx }) {
-  const { draft, readOnly, set } = ctx;
+  const { draft, readOnly, set, pkg } = ctx;
+  const two = pkg.stage === 2;
   const cadence = (draft.cadence as string) || "quarter";
   const adj = (draft.adj as "none" | "bps" | "rate") || "none";
   return (
@@ -28,8 +29,17 @@ export function Step7Shortfall({ ctx }: { ctx: StepCtx }) {
         <div className="pp-row"><Picks options={ADJUSTMENTS} value={adj} onChange={(k) => set("adj", k)} disabled={readOnly} /></div>
         {adj !== "none" ? <div className="pp-grid" style={{ marginTop: 10 }}><Field ctx={ctx} k="adj_value" label={adj === "bps" ? "Basis points" : "Exact adjusted rate (%)"} /></div> : <Callout tone="mut">Left as none — no program-related rate adjustment applies.</Callout>}
       </PPanel>
-      <PPanel title="Exclusions (A.5) and sponsor-caused shortfalls (A.9)" sub="Approved exclusions are carved out of the dealer's shortfall.">
-        <div className="pp-grid"><Field ctx={ctx} k="exclusions" span={3} placeholder="Approved exclusions, if any" /></div>
+      <PPanel title="Exclusions (A.5) and sponsor-caused shortfalls (A.9)" sub={two ? "Addendum A.5 prints three exclusion lines. Split from the commitment's exclusions when the final was drafted; edit them as they should print." : "Approved exclusions are carved out of the dealer's shortfall."}>
+        {two ? (
+          <div className="pp-grid">
+            <Field ctx={ctx} k="exclusion_1" span={3} placeholder="Approved exclusion 1" />
+            <Field ctx={ctx} k="exclusion_2" span={3} placeholder="Approved exclusion 2" />
+            <Field ctx={ctx} k="exclusion_3" span={3} placeholder="Approved exclusion 3" />
+            <Field ctx={ctx} k="exclusions" span={3} label="As written on the commitment" placeholder="Approved exclusions, if any" />
+          </div>
+        ) : (
+          <div className="pp-grid"><Field ctx={ctx} k="exclusions" span={3} placeholder="Approved exclusions, if any" /></div>
+        )}
         <Callout tone="mut">A shortfall caused by the sponsor's own platform, remittance or administration failure is excluded from the dealer's shortfall (A.9).</Callout>
       </PPanel>
     </>

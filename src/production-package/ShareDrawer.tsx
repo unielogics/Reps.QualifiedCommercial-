@@ -39,8 +39,8 @@ export function ShareDrawer({ client, pkg, team, open, onClose, onPackage }: {
 
   return (
     <Overlay open={open} onClose={onClose} title="Share with a field representative">
-      <p className="pp-sub">The link opens in the rep app. The rep must be signed in, and only the rep it was issued to can use it. They can edit every step except the sponsor until the package is sent, and generate the presentation PDF.</p>
-      {pkg.status !== "draft" ? <PChip tone="warn">This package is no longer a draft; existing links are read-only.</PChip> : null}
+      <p className="pp-sub">The link opens in the rep app. The rep must be signed in, and only the rep it was issued to can use it. They can edit every step except the sponsor until the package is sent, generate the presentation PDF, and request the dealer&apos;s signature on stage one. The final is sent by the desk and is never shared.</p>
+      {pkg.stage === 2 ? <PChip tone="warn">The final package is never shared with a rep.</PChip> : pkg.status !== "draft" ? <PChip tone="warn">This package is no longer a draft; existing links are read-only.</PChip> : null}
       <div className="pp-grid" style={{ marginTop: 10 }}>
         <label className="pp-field span-2"><span className="pp-lbl">Field representative</span>
           <select className="pp-input" value={repId} onChange={(e) => setRepId(e.target.value)}><option value="">Choose…</option>{reps.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.email}</option>)}</select></label>

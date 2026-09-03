@@ -1,4 +1,5 @@
 // MIRROR: keep identical to QCRep/src/production-package/*
+// Option tuples mirror app/services/production_arrangement.py.
 export const US_STATES: Array<[string, string]> = [
   ["AL", "Alabama"], ["AK", "Alaska"], ["AZ", "Arizona"], ["AR", "Arkansas"], ["CA", "California"], ["CO", "Colorado"],
   ["CT", "Connecticut"], ["DE", "Delaware"], ["DC", "District of Columbia"], ["FL", "Florida"], ["GA", "Georgia"],
@@ -49,3 +50,28 @@ export const PRODUCTS: Array<{ key: import("./types").ProductKey; label: string;
   { key: "maint", label: "Maintenance products" },
   { key: "power", label: "Powertrain products" },
 ];
+
+// Checkbox groups on the agreements: [slug stored on the arrangement, label as printed].
+export const PROGRAM_SUPPORT_OPTIONS: Array<[string, string]> = [
+  ["application_packaging", "Application and packaging support"], ["reporting_technology", "Reporting technology"],
+  ["ongoing_monitoring", "Ongoing monitoring"], ["first_risk_reserve", "First-risk or reserve support"],
+  ["capital_health", "Capital Health Services"], ["controlled_account", "Controlled-account support"],
+  ["product_admin_platform", "Product-administration platform"], ["preferential_economics", "Preferential program economics"],
+  ["other", "Other"],
+];
+export const RM_COMP_OPTIONS: Array<[string, string]> = [
+  ["salary", "Salary"], ["fixed_recurring", "Fixed recurring account-management compensation"],
+  ["hourly", "Hourly compensation"], ["disclosed_product", "Disclosed Covered Product sales or servicing compensation"],
+  ["fixed_implementation", "Fixed implementation compensation for documented services"], ["other", "Other lawful compensation"],
+];
+export const SBA_OPTIONS = ["Not an SBA transaction", "SBA transaction; required SBA compensation documentation attached"] as const;
+export const YES_NO = ["No", "Yes"] as const;
+export const USE_OF_FUNDS_KEYS: Array<[import("./types").UseOfFundsKey, string]> = [
+  ["inventory", "Inventory"], ["debt_payoff", "Debt payoff"], ["working_capital", "Working capital allocation"],
+  ["equipment", "Equipment"], ["real_estate", "Real estate"], ["program_implementation", "Program implementation"],
+  ["other", "Other approved purpose"],
+];
+export const OWNER_FIELDS = ["name", "pct", "title", "email", "phone", "auth"] as const;
+export const MAX_OWNERS = 5;
+export const MAX_PROTECTED = 3;
+export const MAX_EXISTING = 4;
