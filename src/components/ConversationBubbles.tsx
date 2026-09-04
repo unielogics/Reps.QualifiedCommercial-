@@ -15,6 +15,7 @@ import {
   dayLabel,
   type UnifiedCommunicationMessage,
 } from "@/lib/communications";
+import { InlineImageStrip } from "@/components/InlineImageStrip";
 
 export function ConversationBubbles({
   messages,
@@ -58,7 +59,10 @@ export function ConversationBubbles({
                 {/* Only name the other side; every outbound is us, and repeating
                     that on each bubble is noise the alignment already carries. */}
                 {!mine && who ? <span className="rc-who">{who}</span> : null}
-                <p>{message.body}</p>
+                {/* A picture with no caption is a real message: the body is
+                    empty and the image is the whole content. */}
+                {message.body ? <p>{message.body}</p> : null}
+                <InlineImageStrip images={message.images ?? []} />
               </div>
               <span className="rc-meta">
                 <time dateTime={message.created_at}>{clock(message.created_at)}</time>

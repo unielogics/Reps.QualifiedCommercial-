@@ -1,3 +1,5 @@
+import type { InlineImage } from "@/lib/inlineImages";
+
 // Shapes returned by the shared /communications endpoints. The rep app reads
 // the same inbox the funding desk does — the backend scopes a FIELD_REP to the
 // contacts they own, so there is no rep-specific API to keep in step.
@@ -36,6 +38,8 @@ export type UnifiedCommunicationMessage = {
   seen: boolean;
   delivery_status: string | null;
   delivery_detail?: string | null;
+  /** Pictures on this message. Today that means an MMS the client sent us. */
+  images?: InlineImage[];
 };
 
 export type UnifiedCommunicationThreadDetail = {
