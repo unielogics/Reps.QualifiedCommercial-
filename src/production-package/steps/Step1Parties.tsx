@@ -1,6 +1,6 @@
 // MIRROR: keep identical to QCRep/src/production-package/*
 import { useState } from "react";
-import type { PackageClient } from "../client";
+import type { PackageClient, SponsorCompanyFields } from "../client";
 import { dateLabel, errorDetail, errorMessage, openSignedUrl, toNumber } from "../format";
 import { IconLink } from "../icons";
 import { FIELD_BY_KEY } from "../schema";
@@ -38,6 +38,43 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
   };
   const owners = Array.isArray(draft.owners) ? (draft.owners as OwnerRow[]) : [];
   const ownerPct = owners.reduce((acc, o) => acc + toNumber(o.pct), 0);
+
+  // The sponsor company itself, not this package's copy of it. There was no
+  // write path for one of these rows anywhere in the product, so a company that
+  // arrived from the invite flow without an entity type stayed blank on every
+  // package forever.
+  const [company, setCompany] = useState<Partial<SponsorCompanyFields> | null>(null);
+  const [companyBusy, setCompanyBusy] = useState(false);
+  const canEditCompany = Boolean(sponsor?.editable && client?.updateSponsor) && !readOnly && !two;
+  const openCompany = () => setCompany({
+    entity_type: sponsor?.entity_type ?? "", state_of_formation: sponsor?.state_of_formation ?? "",
+    principal_address: sponsor?.principal_address ?? "", notice_email: sponsor?.notice_email ?? "",
+    notice_attention: sponsor?.notice_attention ?? "", notice_address: sponsor?.notice_address ?? "",
+    platform_name: sponsor?.platform_name ?? "", signatory_name: sponsor?.signatory_name ?? "",
+    signatory_title: sponsor?.signatory_title ?? "", phone: sponsor?.phone ?? "",
+  });
+  const saveCompany = async () => {
+    if (!client?.updateSponsor || !sponsor || !company) return;
+    setCompanyBusy(true);
+    try {
+      await client.updateSponsor(sponsor.company_id, company);
+      // Re-choosing the same sponsor is what copies the corrected values onto
+      // this package; the company is the record, the package holds a copy.
+      await client.patch(pkg.version, { sponsor_company_id: sponsor.company_id });
+      if (onPackage) onPackage(await client.load());
+      setCompany(null);
+      ctx.notify(`${sponsor.name} updated. Every new package will use these details.`, "ok");
+    } catch (err) {
+      ctx.notify(errorMessage(err, "The sponsor could not be updated."), "bad");
+    } finally { setCompanyBusy(false); }
+  };
+  const companyField = (k: keyof SponsorCompanyFields, label: string, placeholder?: string) => (
+    <div className="pp-field">
+      <label className="pp-lbl" htmlFor={`pp-sponsor-${k}`}>{label}</label>
+      <input id={`pp-sponsor-${k}`} className="pp-input" placeholder={placeholder}
+        value={company?.[k] ?? ""} onChange={(e) => setCompany((c) => ({ ...c, [k]: e.target.value }))} />
+    </div>
+  );
 
   // Prefill runs once, when the package is created. Anything the file learns
   // afterwards — an entity type read off a later upload, an amount the dealer
@@ -170,7 +207,12 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
               <div className="pp-kv"><span className="pp-lbl">Entity / state</span><span className="pp-val">{[draft.sponsor_entity, draft.sponsor_state].filter(Boolean).join(" / ") || "—"}</span></div>
               <div className="pp-kv"><span className="pp-lbl">Principal address</span><span className="pp-val">{String(draft.sponsor_address || "—")}</span></div>
               <div className="pp-kv"><span className="pp-lbl">Notice email</span><span className="pp-val">{String(draft.sponsor_email || "—")}</span></div>
-              {!readOnly && !two ? <div><PBtn size="sm" onClick={() => setEditSponsor(true)}>Edit sponsor details</PBtn></div> : null}
+              {!readOnly && !two ? (
+                <div className="pp-row">
+                  <PBtn size="sm" onClick={() => setEditSponsor(true)}>Edit this package&apos;s copy</PBtn>
+                  {canEditCompany ? <PBtn size="sm" onClick={openCompany}>Correct the sponsor company</PBtn> : null}
+                </div>
+              ) : null}
             </>
           ) : operator && !two ? (
             <>
@@ -182,6 +224,31 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
           ) : null}
           <Field ctx={ctx} k="sponsor_platform" placeholder="The administration platform on Schedule A" />
         </div>
+        {company ? (
+          <div className="pp-note" style={{ marginTop: 12 }}>
+            <p className="pp-sub">
+              These are the sponsor company&apos;s own details, shared by every package that names it — not just this one.
+              Blanks were filled from the signed Strategic Referral agreement where it recorded them.
+              Saving copies them onto this package too.
+            </p>
+            <div className="pp-grid">
+              {companyField("entity_type", "Entity type", "Limited liability company")}
+              {companyField("state_of_formation", "State of formation", "NJ")}
+              {companyField("principal_address", "Principal address", "Street, city, state ZIP")}
+              {companyField("platform_name", "Administration platform", "Named on Schedule A")}
+              {companyField("notice_email", "Notice email", "Notice is served here")}
+              {companyField("notice_attention", "Notice attention", "Who it is marked for")}
+              {companyField("notice_address", "Notice address", "If different from the principal address")}
+              {companyField("phone", "Phone", "(973) 555-0148")}
+              {companyField("signatory_name", "Signatory", "Who signs for the sponsor")}
+              {companyField("signatory_title", "Signatory title", "CEO, COO…")}
+            </div>
+            <div className="pp-row" style={{ marginTop: 10 }}>
+              <PBtn variant="pri" size="sm" onClick={saveCompany} busy={companyBusy}>Save the sponsor</PBtn>
+              <PBtn size="sm" onClick={() => setCompany(null)}>Cancel</PBtn>
+            </div>
+          </div>
+        ) : null}
       </PPanel>
 
       <PPanel title="Relationship manager" sub="Schedule 2 names the manager and their compensation category. Their acknowledgment is placed from the signature on file when the package is sent."

@@ -114,7 +114,9 @@ export type SponsorAgreement = {
 export type SponsorOption = {
   company_id: string; name: string; entity_type: string | null; state_of_formation: string | null;
   principal_address: string | null; notice_email: string | null; notice_attention: string | null;
-  agreement: SponsorAgreement | null;
+  notice_address: string | null; platform_name: string | null; signatory_name: string | null;
+  signatory_title: string | null; phone: string | null;
+  agreement: SponsorAgreement | null; editable: boolean;
 };
 
 export type ShareLink = {

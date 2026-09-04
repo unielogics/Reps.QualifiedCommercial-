@@ -7,6 +7,12 @@ import type {
   ShareLink, Signature, SmsConsent, SponsorOption, StoredSignatureRead, TeamMember, TermSheetBody, TermSheetResult, TermSheetState,
 } from "./types";
 
+export type SponsorCompanyFields = {
+  entity_type: string; state_of_formation: string; principal_address: string;
+  notice_email: string; notice_attention: string; notice_address: string;
+  platform_name: string; signatory_name: string; signatory_title: string; phone: string;
+};
+
 export type PrefillResult = {
   values: Record<string, unknown>;
   provenance: Record<string, { source: string; label: string; confirmed: boolean }>;
@@ -51,6 +57,8 @@ export interface PackageClient {
   remind?(body: { channel: "sms" | "email" }): Promise<SendResult>;
   // operator only — absent on the share client
   sponsors?(): Promise<SponsorOption[]>;
+  /** Correct the sponsor company itself. The desk owns it; packages copy from it. */
+  updateSponsor?(companyId: string, changes: Partial<SponsorCompanyFields>): Promise<SponsorOption>;
   team?(): Promise<TeamMember[]>;
   reopen?(reason: string): Promise<ProductionPackage>;
   voidPackage?(reason: string): Promise<ProductionPackage>;
@@ -97,6 +105,7 @@ export function createOperatorClient(call: ApiCall, packageId: string): PackageC
     compute: (arrangement, stage) => call<ComputeResult>(`${base}/compute`, json(stage ? { arrangement, stage } : { arrangement })),
     presentation: () => call<ProductionPackage>(`${base}/presentation`, json({})),
     sponsors: () => call<SponsorOption[]>("/production-packages/sponsors"),
+    updateSponsor: (companyId, changes) => call<SponsorOption>(`/production-packages/sponsors/${companyId}`, json(changes, "PATCH")),
     team: () => call<TeamMember[]>("/users"),
     send: (body) => call<SendResult>(`${base}/send`, json(body)),
     remind: (body) => call<SendResult>(`${base}/remind`, json(body)),

@@ -72,6 +72,11 @@
 .pp-panel.t-ok { border-color: var(--ok); } .pp-panel.t-bad { border-color: var(--danger); } .pp-panel.t-warn { border-color: var(--warn); }
 .pp-panel-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .pp-panel-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+/* An inset editor inside a panel, for a record the panel only cites — the
+   sponsor company is shared by every package that names it, so correcting it
+   has to read as a different act from editing this package's copy. */
+.pp-note { margin: 0 16px 14px; padding: 12px 14px; background: var(--sunken2); border: 1px solid var(--line2); border-radius: var(--r-sm); }
+.pp-note > .pp-sub { margin: 0 0 10px; }
 .pp-panel-b { padding: 14px 16px; }
 .pp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pp-gap); }
 .pp-cols.three { grid-template-columns: 1fr 1fr 1fr; }
