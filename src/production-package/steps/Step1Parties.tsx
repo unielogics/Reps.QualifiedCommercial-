@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { PackageClient } from "../client";
 import { dateLabel, errorDetail, errorMessage, openSignedUrl, toNumber } from "../format";
 import { IconLink } from "../icons";
+import { FIELD_BY_KEY } from "../schema";
 import { Callout, Field, PBtn, PChip, PPanel, SigOnFileChip, type StepCtx } from "../ui";
 import type { OwnerRow, ProductionPackage, SponsorOption } from "../types";
 
@@ -38,9 +39,51 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
   const owners = Array.isArray(draft.owners) ? (draft.owners as OwnerRow[]) : [];
   const ownerPct = owners.reduce((acc, o) => acc + toNumber(o.pct), 0);
 
+  // Prefill runs once, when the package is created. Anything the file learns
+  // afterwards — an entity type read off a later upload, an amount the dealer
+  // restated to the AI — never arrived. This asks again, and only fills blanks.
+  const [refill, setRefill] = useState<string[] | null>(null);
+  const [refilling, setRefilling] = useState(false);
+  const canRefill = Boolean(client?.prefill) && operator && !readOnly;
+  const lookAtTheFile = async () => {
+    if (!client?.prefill) return;
+    setRefilling(true);
+    try {
+      const dry = await client.prefill({ apply: false });
+      const fillable = dry.skipped.filter((k) => FIELD_BY_KEY[k]);
+      if (!fillable.length) ctx.notify("Every field the file can answer is already filled.", "mut");
+      else setRefill(fillable);
+    } catch (err) {
+      ctx.notify(errorMessage(err, "The file could not be read."), "bad");
+    } finally { setRefilling(false); }
+  };
+  const applyRefill = async () => {
+    if (!client?.prefill) return;
+    setRefilling(true);
+    try {
+      const out = await client.prefill({ apply: true });
+      if (onPackage) onPackage(await client.load());
+      setRefill(null);
+      ctx.notify(`Filled ${out.applied.length} field${out.applied.length === 1 ? "" : "s"} from the file.`, "ok");
+    } catch (err) {
+      ctx.notify(errorMessage(err, "The fields could not be filled."), "bad");
+    } finally { setRefilling(false); }
+  };
+
   return (
     <>
-      <PPanel title="Dealer" sub="The business receiving the advance, exactly as it should print on both agreements.">
+      <PPanel
+        title="Dealer" sub="The business receiving the advance, exactly as it should print on both agreements."
+        right={canRefill ? <PBtn size="sm" onClick={lookAtTheFile} busy={refilling}>Refill from the file</PBtn> : null}>
+        {refill ? (
+          <Callout tone="mut">
+            The file can answer {refill.length} blank field{refill.length === 1 ? "" : "s"}: {refill.map((k) => FIELD_BY_KEY[k]?.label ?? k).join(", ")}. Nothing already filled is touched.
+            <div className="pp-row" style={{ marginTop: 8 }}>
+              <PBtn variant="pri" size="sm" onClick={applyRefill} busy={refilling}>Fill {refill.length}</PBtn>
+              <PBtn size="sm" onClick={() => setRefill(null)}>Leave them</PBtn>
+            </div>
+          </Callout>
+        ) : null}
         <div className="pp-grid">
           <Field ctx={ctx} k="dealer_name" span={2} />
           <Field ctx={ctx} k="dealer_dba" />
