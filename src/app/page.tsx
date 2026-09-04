@@ -65,6 +65,8 @@ export default function Portfolio() {
   const [archiveTarget, setArchiveTarget] = useState<Row | null>(null);
   const [deleteText, setDeleteText] = useState("");
   const [actionMenu, setActionMenu] = useState<{ id: string; left: number; top: number } | null>(null);
+  // The confirm label renders uppercase (.lbl), so "DELETE" is what people actually type.
+  const archiveConfirmed = deleteText.trim().toLowerCase() === "delete";
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setQueryText(searchText.trim()); setPage(0); }, 250);
@@ -224,7 +226,7 @@ export default function Portfolio() {
       {archiveTarget && <div className="modalOverlay" role="presentation" onClick={() => setArchiveTarget(null)}><section className="archiveDialog" role="dialog" aria-modal="true" aria-labelledby="archive-title" onClick={(event) => event.stopPropagation()}>
         <div className="modalHead"><b id="archive-title">Archive {archiveTarget.name}</b><span className="sp" /><button type="button" className="modalClose" aria-label="Close" onClick={() => setArchiveTarget(null)}>×</button></div>
         <div className="modalBody"><p>This hides the file from the rep portfolio. All documents, bank data, credit history, messages, and audit records remain available to super admins.</p><label className="lbl mt">Type delete to confirm</label><input className="field" autoFocus value={deleteText} onChange={(event) => setDeleteText(event.target.value)} />
-          {archiveMutation.isError && <div className="note mt">The file could not be archived. Try again.</div>}<div className="row mt" style={{ justifyContent: "flex-end" }}><button type="button" className="btn" onClick={() => setArchiveTarget(null)}>Cancel</button><button type="button" className="btn danger" disabled={deleteText !== "delete" || archiveMutation.isPending} onClick={() => archiveMutation.mutate({ id: archiveTarget.id, restore: false })}>{archiveMutation.isPending ? "Archiving…" : "Archive file"}</button></div>
+          {archiveMutation.isError && <div className="note mt">The file could not be archived. Try again.</div>}<div className="row mt" style={{ justifyContent: "flex-end" }}><button type="button" className="btn" onClick={() => setArchiveTarget(null)}>Cancel</button><button type="button" className="btn danger" disabled={!archiveConfirmed || archiveMutation.isPending} onClick={() => archiveMutation.mutate({ id: archiveTarget.id, restore: false })}>{archiveMutation.isPending ? "Archiving…" : "Archive file"}</button></div>
         </div></section></div>}
     </>
   );
