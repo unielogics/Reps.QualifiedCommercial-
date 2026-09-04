@@ -25,6 +25,8 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ChatComposer } from "@/components/ChatComposer";
+import { InlineImageChips, InlineImageStrip, useInlineImages } from "@/components/InlineImageStrip";
+import type { InlineImage } from "@/lib/inlineImages";
 
 type Channel = "desk" | "client" | "note";
 type Tab = Channel | "ai";
@@ -38,6 +40,7 @@ type Message = {
   channel: string;
   edited_at: string | null;
   created_at: string;
+  images?: InlineImage[];
 };
 
 type AIMessage = { id: string; role: string; body: string; created_at: string };
@@ -91,6 +94,7 @@ export default function Conversation({
   const scroller = useRef<HTMLDivElement | null>(null);
 
   const isAI = tab === "ai";
+  const pasted = useInlineImages("dealer_message", getToken);
 
   const messages = useQuery({
     queryKey: ["messages", dealerId, tab],
@@ -150,12 +154,14 @@ export default function Conversation({
       }
       return api<Message>(`/dealer-os/dealers/${dealerId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body, channel: tab }),
+        body: JSON.stringify({ body, channel: tab, image_ids: pasted.ids }),
         authToken: token,
       });
     },
     onSuccess: () => {
       setDraft("");
+      // The images belong to the message now, not to the composer.
+      pasted.reset();
       void qc.invalidateQueries({
         queryKey: isAI ? ["ai-thread", dealerId] : ["messages", dealerId, tab],
       });
@@ -184,7 +190,10 @@ export default function Conversation({
   }, [isAI, aiThread.data, messages.data]);
 
   const loading = isAI ? aiThread.isLoading : messages.isLoading;
-  const canSend = draft.trim().length > 0 && !post.isPending;
+  // Internal channels only. The analyst thread takes a question, not a file,
+  // and a client-channel message can leave over SMS, which cannot carry one.
+  const canPasteImages = tab === "desk" || tab === "note";
+  const canSend = (draft.trim().length > 0 || pasted.images.length > 0) && !post.isPending;
 
   function send() {
     if (canSend) post.mutate(draft.trim());
@@ -311,7 +320,10 @@ export default function Conversation({
                         </div>
                       </div>
                     ) : (
-                      <div className="msg-b">{m.body}</div>
+                      <>
+                        <div className="msg-b">{m.body}</div>
+                        <InlineImageStrip images={m.images ?? []} />
+                      </>
                     )}
                   </div>
                 );
@@ -334,6 +346,11 @@ export default function Conversation({
           onChange={setDraft}
           onSend={send}
           sending={post.isPending}
+          allowEmpty={pasted.images.length > 0}
+          onFiles={canPasteImages ? (files) => void pasted.add(files) : undefined}
+          attachments={
+            <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} />
+          }
           placeholder={placeholder}
           sendLabel={
             tab === "client"
@@ -353,7 +370,9 @@ export default function Conversation({
             ) : null
           }
           error={
-            post.isError
+            pasted.error
+              ? pasted.error
+              : post.isError
               ? post.error instanceof Error ? post.error.message : "That did not send."
               : saveEdit.isError
                 ? saveEdit.error instanceof Error ? saveEdit.error.message : "That did not save."

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { ChatComposer } from "@/components/ChatComposer";
+import { InlineImageChips, InlineImageStrip, useInlineImages } from "@/components/InlineImageStrip";
 import {
   appointmentCrmLabel,
   appointmentRsvpLabel,
@@ -357,9 +358,11 @@ function Messages({
 
 function Notes({ workspace, callApi, refresh }: { workspace: AppointmentWorkspace; callApi: ApiCaller; refresh: () => Promise<void> }) {
   const [body, setBody] = useState("");
+  const { getToken } = useAuth();
+  const pasted = useInlineImages("appointment_activity", getToken);
   const save = useMutation({
-    mutationFn: () => callApi(`/dealer-os/appointments/${workspace.appointment.id}/notes`, { method: "POST", body: JSON.stringify({ body: body.trim() }) }),
-    onSuccess: async () => { setBody(""); await refresh(); },
+    mutationFn: () => callApi(`/dealer-os/appointments/${workspace.appointment.id}/notes`, { method: "POST", body: JSON.stringify({ body: body.trim(), image_ids: pasted.ids }) }),
+    onSuccess: async () => { setBody(""); pasted.reset(); await refresh(); },
   });
   const snippets = [
     "Client confirmed financing goals and timeline.",
@@ -373,8 +376,10 @@ function Notes({ workspace, callApi, refresh }: { workspace: AppointmentWorkspac
         <div className="panel-h"><b>Add internal meeting note</b></div>
         <div className="panel-b appointmentCrmForm">
           <div className="appointmentCrmSnippets">{snippets.map((snippet) => <button type="button" key={snippet} onClick={() => setBody((current) => current ? `${current}\n${snippet}` : snippet)}>{snippet}</button>)}</div>
-          <label><span className="lbl">Note</span><textarea className="field" rows={9} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Record facts, decisions, risks, and the agreed next step" /></label>
-          <button className="btn pri" type="button" disabled={!body.trim() || save.isPending} onClick={() => save.mutate()}><MessageSquareText size={16} />{save.isPending ? "Saving..." : "Add note"}</button>
+          <label><span className="lbl">Note</span><textarea className="field" rows={9} value={body} onChange={(event) => setBody(event.target.value)} onPaste={(event) => { const files = Array.from(event.clipboardData?.files ?? []); if (files.length) { event.preventDefault(); void pasted.add(files); } }} placeholder="Record facts, decisions, risks, and the agreed next step. Paste a screenshot to attach it." /></label>
+          {(pasted.images.length > 0 || pasted.busy > 0) ? <div className="inlineImageChipRow"><InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} /></div> : null}
+          <button className="btn pri" type="button" disabled={(!body.trim() && !pasted.images.length) || save.isPending} onClick={() => save.mutate()}><MessageSquareText size={16} />{save.isPending ? "Saving..." : "Add note"}</button>
+          {pasted.error ? <div className="appointmentCrmInlineError">{pasted.error}</div> : null}
           {save.isError ? <div className="appointmentCrmInlineError">{errorText(save.error, "The note could not be saved.")}</div> : null}
         </div>
       </section>
@@ -600,7 +605,7 @@ function ActionResults({ result, label, onFile }: { result: AppointmentActionRes
 
 function ActivityList({ rows }: { rows: AppointmentWorkspace["activities"] }) {
   if (!rows.length) return <div className="appointmentCrmEmpty">No appointment activity has been recorded.</div>;
-  return <div className="appointmentCrmActivity">{rows.map((row) => <div key={row.id}><span>{row.event_type.includes("outcome") ? <Flag /> : row.event_type.includes("note") ? <MessageSquareText /> : <CalendarClock />}</span><div><b>{row.event_type.replaceAll("_", " ")}</b><p>{row.body || "Activity recorded"}</p><small>{row.actor_name} · {formatWhen(row.created_at)}</small></div></div>)}</div>;
+  return <div className="appointmentCrmActivity">{rows.map((row) => <div key={row.id}><span>{row.event_type.includes("outcome") ? <Flag /> : row.event_type.includes("note") ? <MessageSquareText /> : <CalendarClock />}</span><div><b>{row.event_type.replaceAll("_", " ")}</b><p>{row.body || "Activity recorded"}</p><InlineImageStrip images={row.images ?? []} /><small>{row.actor_name} · {formatWhen(row.created_at)}</small></div></div>)}</div>;
 }
 
 function Detail({ label, value, wide = false }: { label: string; value: string | null | undefined; wide?: boolean }) {

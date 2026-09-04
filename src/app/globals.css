@@ -854,6 +854,21 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .msg.ai .msg-b { background: var(--surface); }
 .msg-edit { font-size: 11px; color: var(--faint); }
 
+/* ---------- pasted images ----------
+   A thumbnail is a link to the signed full-size URL, not a lightbox: someone
+   pasting a bank statement screenshot wants to actually read it. */
+.inlineImages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.inlineImage { display: block; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--sunken); line-height: 0; }
+.inlineImage:hover { border-color: var(--accent-200); }
+.inlineImage img { display: block; max-width: 220px; max-height: 180px; width: auto; height: auto; object-fit: cover; }
+.inlineImageChipRow { display: flex; flex-wrap: wrap; gap: 8px; }
+.inlineImageChip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px 4px 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 11.5px; color: var(--ink2); max-width: 220px; }
+.inlineImageChip img { width: 24px; height: 24px; border-radius: 999px; object-fit: cover; flex: 0 0 24px; }
+.inlineImageChip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inlineImageChip button { display: inline-grid; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
+.inlineImageChip button:hover { color: var(--danger); }
+.inlineImageChip.is-busy { color: var(--muted); padding-left: 10px; }
+
 /* ---------- chat composer ----------
    The phone-messaging shape, shared by every conversation: one rounded bar
    that grows with the text, a round send button at the trailing edge. Enter

@@ -1,3 +1,5 @@
+import type { InlineImage } from "@/lib/inlineImages";
+
 export type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "done";
 export type AppointmentOutcome = "not_converted" | "did_not_show" | "converted";
 export type ClientRsvpStatus = "needs_action" | "accepted" | "tentative" | "declined" | "unknown";
@@ -147,6 +149,7 @@ export type AppointmentActivity = {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   created_at: string;
+  images?: InlineImage[];
 };
 
 export type AppointmentApplicationSummary = {
