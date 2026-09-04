@@ -75,7 +75,8 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [sponsors, setSponsors] = useState<SponsorOption[]>([]);
-  const [team, setTeam] = useState<Array<{ id: string; name: string; email: string; role: string }>>([]);
+  const [team, setTeam] = useState<Array<{ id: string; name: string; email: string; phone: string | null; title: string | null; role: string }>>([]);
+  const [teamError, setTeamError] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   // The open-item list is hidden until the flag in the container is clicked.
   const [attentionOpen, setAttentionOpen] = useState(false);
@@ -100,7 +101,11 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   useEffect(() => {
     if (client.mode !== "operator" || initial.mode !== "operator") return;
     client.sponsors?.().then(setSponsors).catch(() => undefined);
-    client.team?.().then((rows) => setTeam(rows.filter((r) => ["super_admin", "loan_exec", "field_rep"].includes(r.role)))).catch(() => undefined);
+    // Swallowing this is what hid the bug: the picker used a super-admin-only
+    // route, so every underwriter and rep got an empty list and no explanation.
+    client.team?.()
+      .then((rows) => { setTeamError(false); setTeam(rows.filter((r) => ["super_admin", "loan_exec", "field_rep"].includes(r.role))); })
+      .catch(() => setTeamError(true));
   }, [client, initial.mode]);
 
   // Poll while a signature is outstanding so the signatory rows move on their own (and the auto-execute lands).
@@ -208,7 +213,7 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
 
   const ctx: StepCtx = {
     pkg, draft, computed: pkg.computed, prov, provenance: pkg.prefill_provenance, saving: saving || dirty, readOnly,
-    mode: pkg.mode, profileId: profileId ?? pkg.profile_id, focusKey, set, setProduct, setThreshold, confirm, go, notify, teamOptions: team,
+    mode: pkg.mode, profileId: profileId ?? pkg.profile_id, focusKey, set, setProduct, setThreshold, confirm, go, notify, teamOptions: team, teamError,
     onOpenTermSheet: openTerms, onOpenFinal, onOpenOriginal,
   };
 

@@ -30,7 +30,8 @@ export type StepCtx = {
   confirm: (key: string) => void;
   go: (step: import("./types").StepKey) => void;
   notify: (message: string, tone?: Tone) => void;
-  teamOptions: Array<{ id: string; name: string; email: string }>;
+  teamOptions: Array<{ id: string; name: string; email: string; phone?: string | null; title?: string | null }>;
+  teamError?: boolean;
   // Stage-two hand-offs to the host app; the workspace provides defaults where it can.
   onOpenTermSheet?: () => void;
   onOpenFinal?: (finalPackageId: string) => void;
@@ -206,6 +207,8 @@ export function emptyUseOfFunds(): UseOfFunds {
 }
 
 /** A registry-driven field bound to the workspace context. Required styling follows the package's stage. */
+const KEPT_NAME = "__kept";
+
 export function Field({ ctx, k, label, kind, options, placeholder, span, scope, teamPicker, stateList }: {
   ctx: StepCtx; k: string; label?: ReactNode; kind?: FieldDef["kind"]; options?: FieldOptions;
   placeholder?: string; span?: 1 | 2 | 3; scope?: "presentation" | "stage_one" | "stage_two"; teamPicker?: boolean; stateList?: boolean;
@@ -236,17 +239,28 @@ export function Field({ ctx, k, label, kind, options, placeholder, span, scope, 
   } else if (stateList || (fieldKind === "select" && (k === "dealer_state" || k === "sponsor_state"))) {
     control = <ComboSelect id={inputId} value={String(value ?? "")} onChange={(v) => ctx.set(k, v)} options={US_STATES} placeholder="State" disabled={readOnly} />;
   } else if (teamPicker) {
+    // Keyed on the user id, not the display name: two colleagues can share a
+    // name, and the signature on file is matched to the person, not the string.
+    const kept = String(value ?? "");
+    const chosen = String(ctx.draft.rm_user_id ?? "");
+    const known = ctx.teamOptions.some((t) => t.id === chosen);
     control = (
-      <select id={inputId} className="pp-input" value={String(value ?? "")} disabled={readOnly} onChange={(e) => {
-        ctx.set(k, e.target.value);
-        // The relationship manager's signature on file is matched by email first, so carry it along with the name.
-        const member = ctx.teamOptions.find((t) => t.name === e.target.value);
-        if (k === "rm_name" && member && !String(ctx.draft.rm_email ?? "").trim()) ctx.set("rm_email", member.email);
-        if (k === "rm_name") ctx.set("rm_user_id", member ? member.id : "");
+      <select id={inputId} className="pp-input" value={known ? chosen : kept ? KEPT_NAME : ""} disabled={readOnly} onChange={(e) => {
+        const member = ctx.teamOptions.find((t) => t.id === e.target.value);
+        if (e.target.value === KEPT_NAME) return;
+        ctx.set(k, member ? member.name : "");
+        ctx.set("rm_user_id", member ? member.id : "");
+        // Everything the document needs about this person travels with the pick,
+        // so choosing a different manager cannot leave the last one's contact
+        // details behind.
+        if (member) {
+          ctx.set("rm_email", member.email ?? "");
+          if (member.phone) ctx.set("rm_phone", member.phone);
+        }
       }}>
-        <option value="">Choose…</option>
-        {String(value ?? "") && !ctx.teamOptions.some((t) => t.name === String(value)) ? <option value={String(value)}>{String(value)}</option> : null}
-        {ctx.teamOptions.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+        <option value="">{ctx.teamOptions.length ? "Choose…" : ctx.teamError ? "The team list could not be loaded" : "No team members yet"}</option>
+        {!known && kept ? <option value={KEPT_NAME}>{kept}</option> : null}
+        {ctx.teamOptions.map((t) => <option key={t.id} value={t.id}>{t.title ? `${t.name} — ${t.title}` : t.name}</option>)}
       </select>
     );
   } else if (fieldKind === "select") {

@@ -106,7 +106,8 @@ export function createOperatorClient(call: ApiCall, packageId: string): PackageC
     presentation: () => call<ProductionPackage>(`${base}/presentation`, json({})),
     sponsors: () => call<SponsorOption[]>("/production-packages/sponsors"),
     updateSponsor: (companyId, changes) => call<SponsorOption>(`/production-packages/sponsors/${companyId}`, json(changes, "PATCH")),
-    team: () => call<TeamMember[]>("/users"),
+    // /users is super-admin only; this is the list every operator may read.
+    team: () => call<TeamMember[]>("/users/team"),
     send: (body) => call<SendResult>(`${base}/send`, json(body)),
     remind: (body) => call<SendResult>(`${base}/remind`, json(body)),
     reopen: (reason) => call<ProductionPackage>(`${base}/reopen`, json({ reason })),
