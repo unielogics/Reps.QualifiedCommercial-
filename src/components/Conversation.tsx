@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { ChatComposer } from "@/components/ChatComposer";
 
 type Channel = "desk" | "client" | "note";
 type Tab = Channel | "ai";
@@ -328,56 +329,38 @@ export default function Conversation({
           )}
         </div>
 
-        <div className="composer">
-          {tab === "client" && (
-            <div className="warnline">
-              Anything you send here goes to the business owner. For a remark meant for the
-              underwriter, use the Desk tab.
-            </div>
-          )}
-
-          <textarea
-            className="field"
-            rows={3}
-            placeholder={placeholder}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
-
-          <div className="composer-row">
-            <button type="button" className="btn pri" disabled={!canSend} onClick={send}>
-              {post.isPending
-                ? isAI
-                  ? "Thinking…"
-                  : "Sending…"
-                : tab === "client"
-                  ? "Send to client"
-                  : tab === "note"
-                    ? "Add note"
-                    : isAI
-                      ? "Ask"
-                      : "Send to desk"}
-            </button>
-            <span className="hint">Enter sends, Shift and Enter makes a new line.</span>
-          </div>
-
-          {post.isError && (
-            <div className="note">
-              {post.error instanceof Error ? post.error.message : "That did not send."}
-            </div>
-          )}
-          {saveEdit.isError && (
-            <div className="note">
-              {saveEdit.error instanceof Error ? saveEdit.error.message : "That did not save."}
-            </div>
-          )}
-        </div>
+        <ChatComposer
+          value={draft}
+          onChange={setDraft}
+          onSend={send}
+          sending={post.isPending}
+          placeholder={placeholder}
+          sendLabel={
+            tab === "client"
+              ? "Send to client"
+              : tab === "note"
+                ? "Add note"
+                : isAI
+                  ? "Ask the analyst"
+                  : "Send to desk"
+          }
+          notice={
+            tab === "client" ? (
+              <>
+                Anything you send here goes to the business owner. For a remark meant for the
+                underwriter, use the Desk tab.
+              </>
+            ) : null
+          }
+          error={
+            post.isError
+              ? post.error instanceof Error ? post.error.message : "That did not send."
+              : saveEdit.isError
+                ? saveEdit.error instanceof Error ? saveEdit.error.message : "That did not save."
+                : null
+          }
+          hint="Enter sends, Shift and Enter makes a new line."
+        />
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ import BookingDrawer from "@/components/BookingDrawer";
 import ContactShareDrawer from "@/components/ContactShareDrawer";
 import InboxComposeModal from "@/components/InboxComposeModal";
 import { ConversationBubbles } from "@/components/ConversationBubbles";
+import { ChatComposer } from "@/components/ChatComposer";
 import {
   shortDate,
   type UnifiedCommunicationThread,
@@ -257,25 +258,21 @@ export default function InboxPage() {
                     counterpartName={selected.participant_name}
                   />
 
-                  <div className="composer">
-                    <textarea
-                      className="field"
-                      rows={3}
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      placeholder={
-                        selected.can_reply
-                          ? selected.channel === "sms" ? "Reply by text" : "Reply"
-                          : "This conversation is read-only"
-                      }
-                      disabled={!selected.can_reply}
-                    />
-                    {send.isError && (
-                      <div className="note">
-                        {send.error instanceof Error ? send.error.message : "That reply did not send."}
-                      </div>
-                    )}
-                    <div className="composer-row">
+                  <ChatComposer
+                    value={draft}
+                    onChange={setDraft}
+                    onSend={() => send.mutate()}
+                    sending={send.isPending}
+                    disabled={!selected.can_reply}
+                    placeholder={
+                      selected.can_reply
+                        ? selected.channel === "sms" ? "Reply by text" : "Reply"
+                        : "This conversation is read-only"
+                    }
+                    sendLabel={selected.channel === "sms" ? "Send text" : "Send reply"}
+                    error={send.isError ? (send.error instanceof Error ? send.error.message : "That reply did not send.") : null}
+                    hint="Replies stay in this inbox and keep provider delivery status. Enter sends, Shift + Enter adds a line."
+                    leading={
                       <div className="popwrap composerAttachment">
                         <button
                           type="button"
@@ -310,17 +307,8 @@ export default function InboxPage() {
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        className="btn pri"
-                        disabled={!draft.trim() || send.isPending || !selected.can_reply}
-                        onClick={() => send.mutate()}
-                      >
-                        {send.isPending ? "Sending..." : selected.channel === "sms" ? "Send text" : "Send"}
-                      </button>
-                      <span className="hint">Replies stay in this inbox and keep provider delivery status.</span>
-                    </div>
-                  </div>
+                    }
+                  />
                 </>
               )}
             </div>

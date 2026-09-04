@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Mail, MessageSquareText, RefreshCw, Send, ShieldCheck, StickyNote, Users } from "lucide-react";
 import { api } from "@/lib/api";
+import { ChatComposer } from "@/components/ChatComposer";
 import { ConversationBubbles } from "./ConversationBubbles";
 import type { UnifiedCommunicationMessage } from "@/lib/communications";
 
@@ -370,12 +371,18 @@ export default function CaseMessagingWorkspace({
       <ConversationBubbles messages={history} isLoading={historyLoading} isError={historyError} counterpartName={dealer.name} emptyLabel={showingExternal ? `No ${clientChannel === "sms" ? "text" : "email"} history for this file yet.` : "No messages here yet."} onRetry={showingExternal ? (message) => externalSend.mutate(message.body) : undefined} />
       {tab === "note" && editing && <div className="caseNoteEditor"><textarea className="field" rows={3} value={editDraft} onChange={(event) => setEditDraft(event.target.value)} /><button type="button" className="btn pri" disabled={!editDraft.trim() || saveNote.isPending} onClick={() => saveNote.mutate({ id: editing, body: editDraft.trim() })}>Save note</button><button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button></div>}
       {tab === "note" && !editing && (fileMessages.data ?? []).some((message) => message.author_user_id === meId) && <button type="button" className="linky caseEditLatest" onClick={() => { const message = [...(fileMessages.data ?? [])].reverse().find((row) => row.author_user_id === meId); if (message) { setEditing(message.id); setEditDraft(message.body); } }}>Edit your latest note</button>}
-      <div className="caseMessageComposer">
-        {(missingRecipient || smsBlocked) && <div className="warnline">{missingRecipient ? `Add a client ${clientChannel === "email" ? "email address" : "mobile number"} in Step 1 before sending.` : "This number does not have transactional SMS consent."}</div>}
-        <textarea className="field" rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={tab === "client" ? clientChannel === "email" ? "Write an email to the client" : clientChannel === "sms" ? "Write a text message" : "Write in the secure room" : tab === "desk" ? "Message the underwriting desk" : tab === "note" ? "Add a note to this file" : "Ask about this file"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (canSend) send(); } }} />
-        <div className="composer-row"><button type="button" className="btn pri" disabled={!canSend} onClick={() => send()}><Send size={15} />{sendMutation.isPending ? "Sending..." : tab === "client" ? clientChannel === "email" ? "Send email" : clientChannel === "sms" ? "Send text" : "Post to room" : tab === "note" ? "Add note" : tab === "ai" ? "Ask" : "Send to desk"}</button><span className="hint">Enter sends. Shift + Enter adds a line.</span></div>
-        {composerError && <div className="note">{composerError instanceof Error ? composerError.message : "The message could not be sent."}</div>}
-      </div>
+      <ChatComposer
+        value={draft}
+        onChange={setDraft}
+        onSend={() => send()}
+        sending={sendMutation.isPending}
+        disabled={missingRecipient || smsBlocked}
+        placeholder={tab === "client" ? clientChannel === "email" ? "Write an email to the client" : clientChannel === "sms" ? "Write a text message" : "Write in the secure room" : tab === "desk" ? "Message the underwriting desk" : tab === "note" ? "Add a note to this file" : "Ask about this file"}
+        sendLabel={tab === "client" ? clientChannel === "email" ? "Send email" : clientChannel === "sms" ? "Send text" : "Post to room" : tab === "note" ? "Add note" : tab === "ai" ? "Ask" : "Send to desk"}
+        notice={(missingRecipient || smsBlocked) ? (missingRecipient ? `Add a client ${clientChannel === "email" ? "email address" : "mobile number"} in Step 1 before sending.` : "This number does not have transactional SMS consent.") : null}
+        error={composerError ? (composerError instanceof Error ? composerError.message : "The message could not be sent.") : null}
+        hint="Enter sends. Shift + Enter adds a line."
+      />
     </section>
   );
 }

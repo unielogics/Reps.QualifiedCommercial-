@@ -18,6 +18,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { ChatComposer } from "@/components/ChatComposer";
 import {
   appointmentCrmLabel,
   appointmentRsvpLabel,
@@ -335,30 +336,18 @@ function Messages({
             counterpartName={appointment.invitee_name}
             emptyLabel="No texts with this number yet. The first one starts the conversation."
           />
-          <div className="composer">
-            <textarea
-              className="field"
-              rows={3}
-              value={draft}
-              placeholder={`Text ${appointment.invitee_name || "the client"}...`}
-              onChange={(event) => setDraft(event.target.value)}
-            />
-            {error ? <div className="appointmentCrmInlineError">{error}</div> : null}
-            <div className="composer-row">
-              <button
-                type="button"
-                className="btn pri"
-                disabled={!draft.trim() || send.isPending}
-                onClick={() => send.mutate()}
-              >
-                <Check size={16} />
-                {send.isPending ? "Sending..." : "Send text"}
-              </button>
-              <span className="hint">
-                Goes out on the number above and lands in the inbox with this contact.
-              </span>
-            </div>
-          </div>
+          {/* No paperclip: outbound SMS on the handset relay is text only —
+              the gateway's send API carries no media field. */}
+          <ChatComposer
+            value={draft}
+            onChange={setDraft}
+            onSend={() => send.mutate()}
+            sending={send.isPending}
+            placeholder={`Text ${appointment.invitee_name || "the client"}...`}
+            sendLabel={`Send a text to ${appointment.invitee_name || "the client"}`}
+            error={error || null}
+            hint="Goes out on the number above and lands in the inbox with this contact. Enter sends, Shift + Enter adds a line."
+          />
         </div>
       </section>
     </div>
