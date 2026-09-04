@@ -1,7 +1,7 @@
 // MIRROR: keep identical to QCRep/src/production-package/*
 // Self-contained primitives on the shared design tokens (no app imports).
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { FIELD_BY_KEY, REQUIRED_HINT, SPONSOR_KEYS, TERM_SHEET_KEYS, fieldRequiredNow, isBlank, optionPairs, type FieldDef, type FieldOptions } from "./schema";
+import { DESK_ONLY_KEYS, FIELD_BY_KEY, REQUIRED_HINT, SPONSOR_KEYS, TERM_SHEET_KEYS, fieldRequiredNow, isBlank, optionPairs, type FieldDef, type FieldOptions } from "./schema";
 import { USE_OF_FUNDS_KEYS, US_STATES } from "./options";
 import { dateLabel, money, toNumber } from "./format";
 import type {
@@ -149,10 +149,18 @@ export function ProvChip({ provenance, onConfirm, readOnly }: { provenance?: Pro
   );
 }
 
-/** "From the term sheet" — a key the term sheet owns on the final; the desk changes it on the sheet, not here. */
+/** A field someone else owns. The chip says who, so it does not read as broken. */
 export function LockedChip({ children = "From the term sheet", title = "Maintained by the term sheet — record a new term sheet to change it" }: { children?: ReactNode; title?: string }) {
   return <span className="pp-locked-chip" title={title}><IconLock />{children}</span>;
 }
+
+export type LockReason = "term_sheet" | "stage_one" | "desk";
+
+export const LOCK_COPY: Record<LockReason, { label: string; title: string }> = {
+  term_sheet: { label: "From the term sheet", title: "Maintained by the term sheet — record a new term sheet to change it" },
+  stage_one: { label: "Carried from stage one", title: "Carried from the executed commitment — the sponsor is not changed on the final" },
+  desk: { label: "Set by the desk", title: "The advance and the programme cost are maintained by an admin or underwriter" },
+};
 
 /** Signature-on-file state for a counterparty (qc / sponsor / rm). */
 export function SigOnFileChip({ sof, adoptedAt }: { sof?: SignatureOnFile | null; adoptedAt?: string | null }) {
@@ -162,9 +170,9 @@ export function SigOnFileChip({ sof, adoptedAt }: { sof?: SignatureOnFile | null
   return <PChip tone="bad" title={sof.how_to_fix ?? undefined}>No signature on file</PChip>;
 }
 
-export function FieldShell({ id, label, required, blank, hint, always, provenance, onConfirm, readOnly, children, span, locked, lockedLabel }: {
+export function FieldShell({ id, label, required, blank, hint, always, provenance, onConfirm, readOnly, children, span, locked, lockedCopy }: {
   id: string; label: ReactNode; required?: boolean; blank?: boolean; hint?: string; always?: string; provenance?: Provenance[string];
-  onConfirm?: () => void; readOnly?: boolean; children: ReactNode; span?: 1 | 2 | 3; locked?: boolean; lockedLabel?: string;
+  onConfirm?: () => void; readOnly?: boolean; children: ReactNode; span?: 1 | 2 | 3; locked?: boolean; lockedCopy?: { label: string; title: string };
 }) {
   const bad = Boolean(required && blank);
   const needsConfirm = Boolean(required && provenance && !provenance.confirmed && !locked);
@@ -172,7 +180,7 @@ export function FieldShell({ id, label, required, blank, hint, always, provenanc
     <div className={`pp-field${bad ? " bad" : ""}${needsConfirm ? " unconfirmed" : ""}${provenance && !provenance.confirmed ? " prefill" : ""}${locked ? " locked" : ""}${span ? ` span-${span}` : ""}`} id={`pp-field-${id}`}>
       <label className="pp-lbl" htmlFor={`pp-in-${id}`}>
         {label}{required ? <span className="pp-req" title="Required">*</span> : null}
-        {locked ? <LockedChip title={lockedLabel ? "Carried from the executed commitment — the sponsor is not changed on the final" : undefined}>{lockedLabel ?? "From the term sheet"}</LockedChip> : <ProvChip provenance={provenance} onConfirm={onConfirm} readOnly={readOnly} />}
+        {locked ? <LockedChip title={lockedCopy?.title}>{lockedCopy?.label ?? "From the term sheet"}</LockedChip> : <ProvChip provenance={provenance} onConfirm={onConfirm} readOnly={readOnly} />}
       </label>
       {children}
       {bad ? <div className="pp-hint bad">{hint || REQUIRED_HINT}</div> : needsConfirm ? <div className="pp-hint warn">Confirm or change</div> : always ? <div className="pp-hint">{always}</div> : null}
@@ -220,8 +228,15 @@ export function Field({ ctx, k, label, kind, options, placeholder, span, scope, 
   const value = ctx.draft[k];
   const required = fieldRequiredNow(def, scope ?? (stageTwo ? "stage_two" : "stage_one"));
   const blank = isBlank(def, value);
-  // On the final the term sheet owns the loan terms and the sponsor is carried from the executed commitment.
-  const lockedBy = stageTwo ? (TERM_SHEET_KEYS.has(k) ? "term_sheet" : SPONSOR_KEYS.has(k) ? "stage_one" : null) : null;
+  // On the final the term sheet owns the loan terms and the sponsor is carried
+  // from the executed commitment; the programme economics are the desk's at
+  // either stage. Rendering these read-only rather than letting the save 422 is
+  // the point — a value typed and then lost is worse than one plainly not yours.
+  const lockedBy: LockReason | null =
+    stageTwo && TERM_SHEET_KEYS.has(k) ? "term_sheet"
+    : stageTwo && SPONSOR_KEYS.has(k) ? "stage_one"
+    : ctx.mode !== "operator" && DESK_ONLY_KEYS.has(k) ? "desk"
+    : null;
   const locked = lockedBy !== null;
   const readOnly = ctx.readOnly || locked;
   const inputId = `pp-in-${k}`;
@@ -288,7 +303,7 @@ export function Field({ ctx, k, label, kind, options, placeholder, span, scope, 
   }
   return (
     <FieldShell id={k} label={label ?? def.label} required={required} blank={blank} hint={def.hint} always={def.always}
-      provenance={ctx.provenance[k]} onConfirm={() => ctx.confirm(k)} readOnly={ctx.readOnly} span={span} locked={locked} lockedLabel={lockedBy === "stage_one" ? "Carried from stage one" : undefined}>
+      provenance={ctx.provenance[k]} onConfirm={() => ctx.confirm(k)} readOnly={ctx.readOnly} span={span} locked={locked} lockedCopy={lockedBy ? LOCK_COPY[lockedBy] : undefined}>
       {control}
     </FieldShell>
   );

@@ -45,7 +45,13 @@ export type Arrangement = {
 
 export type Provenance = Record<string, { source: string; label: string; confirmed: boolean }>;
 
-export type AttentionItem = { step: StepKey; key: string; title: string; detail: string };
+export type AttentionItem = {
+  step: StepKey; key: string; title: string; detail: string;
+  /** Who can clear it. Several desk-only fields have no default and no prefill
+   *  and still block the send, so an agent has to see they are waiting rather
+   *  than failing. Absent on packages saved before the tag existed. */
+  owner?: "desk" | "any";
+};
 
 export type ProductEcon = {
   key: ProductKey; label: string; on: boolean;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { PackageClient } from "./client";
 import { provisional as computeProvisional } from "./compute";
 import { debounce, errorDetail, errorMessage, errorStatus, openSignedUrl } from "./format";
-import { SPONSOR_KEYS, TERM_SHEET_KEYS, stepsFor } from "./schema";
+import { DESK_ONLY_KEYS, SPONSOR_KEYS, TERM_SHEET_KEYS, stepsFor } from "./schema";
 import { AllClearSummary } from "./AllClearSummary";
 import { PackageTopBar } from "./PackageTopBar";
 import { ShareDrawer } from "./ShareDrawer";
@@ -164,9 +164,12 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const set = useCallback((key: string, value: unknown) => {
     if (readOnly) return;
     if (two && lockedOnFinal(key)) { notify(TERM_SHEET_KEYS.has(key) ? "Loan terms are changed on the term sheet." : "The sponsor is carried from the executed commitment.", "warn"); return; }
+    // Belt to the backend's braces: the inputs are already read-only, so this
+    // only fires on a programmatic set.
+    if (pkg.mode !== "operator" && DESK_ONLY_KEYS.has(key)) { notify("The advance and the programme cost are set by the desk.", "warn"); return; }
     setDraft((d) => ({ ...d, [key]: value }));
     scheduleSave();
-  }, [readOnly, two, notify, scheduleSave]);
+  }, [readOnly, two, notify, scheduleSave, pkg.mode]);
 
   const setProduct = useCallback((key: ProductKey, field: string, value: unknown) => {
     if (readOnly) return;

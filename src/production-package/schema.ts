@@ -151,6 +151,12 @@ export const FIELDS: FieldDef[] = [
 
 export const FIELD_BY_KEY: Record<string, FieldDef> = Object.fromEntries(FIELDS.map((d) => [d.key, d]));
 export const SPONSOR_KEYS = new Set(["sponsor_name", "sponsor_state", "sponsor_entity", "sponsor_address", "sponsor_platform", "sponsor_email"]);
+
+// The programme economics. Kept in step with production_arrangement.DESK_ONLY_KEYS,
+// which derives itself from the advance step so a new field there cannot slip in
+// without someone deciding who owns it. An agent gathers what the dealer says;
+// what the facility costs to run is the desk's.
+export const DESK_ONLY_KEYS = new Set(FIELDS.filter((d) => d.step === "advance").map((d) => d.key));
 // Keys the term sheet owns on the final; the desk changes them on the sheet, not the form.
 export const TERM_SHEET_KEYS = new Set([
   "requested", "sizing", "funded_amount", "dealer_cof", "term", "debt_service", "min_activation", "facility_type",

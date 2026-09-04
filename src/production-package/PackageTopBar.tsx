@@ -79,7 +79,7 @@ export function PackageTopBar({ pkg, step, attention, saving, dirty, busy, atten
         ))}
       </nav>
       {attentionOpen && open ? (
-        <AttentionList id={attentionPanelId} panel items={attention} onJump={onJump} stage={pkg.stage} onClose={closeAndFocus} />
+        <AttentionList id={attentionPanelId} panel items={attention} onJump={onJump} stage={pkg.stage} mode={pkg.mode} onClose={closeAndFocus} />
       ) : null}
       <div className="pp-top-r">
         {right}

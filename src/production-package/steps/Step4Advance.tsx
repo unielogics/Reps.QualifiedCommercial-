@@ -5,6 +5,8 @@ import { Callout, Derived, Field, LockedChip, PChip, PPanel, Picks, type StepCtx
 
 export function Step4Advance({ ctx }: { ctx: StepCtx }) {
   const { draft, prov, computed, saving, readOnly, set, pkg } = ctx;
+  // Raw controls bypass Field, so they need the desk lock applied by hand.
+  const deskOnly = ctx.mode !== "operator";
   const two = pkg.stage === 2;
   const adv = computed.advance;
   const sizing = draft.sizing === "fixed" ? "fixed" : "backsolve";
@@ -24,7 +26,7 @@ export function Step4Advance({ ctx }: { ctx: StepCtx }) {
             <Field ctx={ctx} k="markup" />
           </div>
           <div className="pp-row" style={{ marginTop: 12 }}>
-            <Picks options={SIZING_MODES} value={sizing} onChange={(k) => set("sizing", k)} disabled={readOnly || two} />
+            <Picks options={SIZING_MODES} value={sizing} onChange={(k) => set("sizing", k)} disabled={readOnly || two || deskOnly} />
             {two ? <LockedChip>Fixed to the funded amount by the term sheet</LockedChip> : null}
           </div>
           <div className="pp-grid" style={{ marginTop: 10 }}>
