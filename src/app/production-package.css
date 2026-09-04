@@ -165,7 +165,8 @@ textarea.pp-input { resize: vertical; min-height: 64px; }
 .pp-tbl tr.bad td { background: var(--danger-tint); }
 .pp-tbl tr.fixed td { color: var(--ink2); }
 .pp-tbl td.c-ok, .pp-tbl th.c-ok { color: var(--ok); font-weight: 600; } .pp-tbl td.c-bad, .pp-tbl th.c-bad { color: var(--danger); font-weight: 600; } .pp-tbl td.c-warn { color: var(--warn); }
-.pp-tbl.products { min-width: 1180px; }
+/* One view at a time now — Current is two editable columns, New is seven. */
+.pp-tbl.products { min-width: 900px; }
 .pp-tbl.products td:first-child { white-space: nowrap; }
 .pp-prod { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
 .pp-chk { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--line2); background: var(--surface); display: inline-grid; place-items: center; color: #fff; cursor: pointer; vertical-align: middle; }

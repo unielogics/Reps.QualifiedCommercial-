@@ -34,10 +34,10 @@ export function Step5Buildout({ ctx }: { ctx: StepCtx }) {
           <>
             <div className="pp-grid" style={{ marginTop: 10 }}>
               <Field ctx={ctx} k="fund_target" />
-              <Derived label="Required per contract" value={money(b.required_per_contract)} note={`+${pct(b.required_uplift_pct)} on today's average premium — ${b.required_uplift_pct > 25 ? "a steep lift" : "within normal pricing room"}`} tone={b.required_uplift_pct > 25 ? "warn" : "ok"} />
+              <Derived label="Required per contract" value={money(b.required_per_contract)} note={`+${pct(b.required_uplift_pct)} on the current average premium — ${b.required_uplift_pct > 25 ? "a steep lift" : "within normal pricing room"}`} tone={b.required_uplift_pct > 25 ? "warn" : "ok"} />
             </div>
             <table className="pp-tbl" style={{ marginTop: 10 }}>
-              <thead><tr><th>Product</th><th className="n">Contracts / mo</th><th className="n">Today premium</th><th className="n">Withhold / contract</th><th className="n">Premium needed</th><th className="n">Uplift</th></tr></thead>
+              <thead><tr><th>Product</th><th className="n">Contracts / mo</th><th className="n">Current premium</th><th className="n">Withhold / contract</th><th className="n">Premium needed</th><th className="n">Uplift</th></tr></thead>
               <tbody>{b.solve_rows.map((r) => <tr key={r.key}><td>{r.label}</td><td className="n">{num(r.contracts)}</td><td className="n">{money(r.cur_premium)}</td><td className="n">{money(r.solve_repay)}</td><td className="n">{money(r.needed)}</td><td className={`n ${r.steep ? "c-warn" : "c-ok"}`}>{signedMoney(r.uplift)}</td></tr>)}</tbody>
             </table>
             <div className="pp-row" style={{ marginTop: 8 }}>
@@ -65,7 +65,7 @@ export function Step5Buildout({ ctx }: { ctx: StepCtx }) {
               <p className="pp-sub" style={{ marginTop: 8 }}>
                 {s.free ? "The policies cover the whole payment. The dealer takes the capital and pays nothing out of pocket for it."
                   : k === "with" ? `Policies cover ${pct(Math.min(100, s.funded_pct))} of the payment. Raising attachment or the withheld amount closes the rest.`
-                    : `The dealer pays ${money(s.payment)} a month from operations, and product gross stays where it is today.`}
+                    : `The dealer pays ${money(s.payment)} a month from operations, and product gross stays where it is now.`}
               </p>
             </PPanel>
           );
