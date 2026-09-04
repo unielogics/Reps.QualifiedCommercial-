@@ -76,7 +76,9 @@ async function unwrap<T>(res: Response): Promise<T> {
           const location = Array.isArray(issue.loc)
             ? issue.loc.filter((part) => part !== "body").join(".")
             : "";
-          const problem = typeof issue.msg === "string" ? issue.msg : "Invalid value";
+          // Pydantic writes a validator's own ValueError as
+          // "Value error, <sentence>". The sentence is the part a person can act on.
+          const problem = typeof issue.msg === "string" ? issue.msg.replace(/^Value error,\s*/, "") : "Invalid value";
           return location ? `${location}: ${problem}` : problem;
         })
         .filter((item): item is string => Boolean(item));

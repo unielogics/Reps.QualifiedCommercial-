@@ -15,6 +15,15 @@ type Profile = {
   slots: Slot[];
 };
 
+// Mirrors app/schemas/phone.py, and Step1Intake's copy of the same rule: ten
+// digits is a US number, eleven leading with 1 is the same number written out,
+// and a leading + is an international number taken on trust.
+function validPhone(value: string | null | undefined): boolean {
+  const raw = (value ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith("1")) || (raw.startsWith("+") && digits.length >= 8 && digits.length <= 15);
+}
+
 function groupSlots(slots: Slot[]): Array<{ label: string; slots: Slot[] }> {
   const days: Array<{ label: string; slots: Slot[] }> = [];
   for (const slot of slots) {
@@ -45,7 +54,7 @@ export default function PublicBookPage() {
           starts_at: slot,
           full_name: fullName.trim(),
           email: email.trim(),
-          phone: phone.trim() || null,
+          phone: phone.trim(),
           notes: notes.trim() || null,
           // The link's origin hint (the product booklet appends ?source=…) tells
           // the server this is a rep-related booking, which opens the draft file.
@@ -118,16 +127,20 @@ export default function PublicBookPage() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
                   <div>
-                    <label className="lbl">Name</label>
-                    <input className="field" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                    <label className="lbl">Name *</label>
+                    <input className={`field required-field${fullName.trim() ? "" : " field-invalid"}`} value={fullName} onChange={(e) => setFullName(e.target.value)} />
                   </div>
                   <div>
-                    <label className="lbl">Email</label>
-                    <input className="field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <label className="lbl">Email *</label>
+                    <input className={`field required-field${email.trim() ? "" : " field-invalid"}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
                   </div>
                   <div>
-                    <label className="lbl">Phone</label>
-                    <input className="field" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    {/* Always asked. A host's `booking_questions.phone` setting
+                        cannot take this off the page: the server refuses a
+                        booking without a number. */}
+                    <label className="lbl">Mobile number *</label>
+                    <input className={`field required-field${validPhone(phone) ? "" : " field-invalid"}`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    {!validPhone(phone) && <span className="validation-hint">{phone.trim() ? "That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number." : "A mobile number is required so we can reach you about your booking."}</span>}
                   </div>
                 </div>
                 <div>
@@ -136,7 +149,7 @@ export default function PublicBookPage() {
                 </div>
                 {book.isError && <div className="note">{book.error instanceof Error ? book.error.message : "That time could not be booked."}</div>}
                 {book.isSuccess && <div className="note">Booked. A calendar invitation is on its way.</div>}
-                <button type="button" className="btn pri" disabled={!slot || !fullName.trim() || !email.trim() || book.isPending || book.isSuccess} onClick={() => book.mutate()}>
+                <button type="button" className="btn pri" disabled={!slot || !fullName.trim() || !email.trim() || !validPhone(phone) || book.isPending || book.isSuccess} onClick={() => book.mutate()}>
                   {book.isPending ? "Booking..." : "Book this time"}
                 </button>
               </div>
