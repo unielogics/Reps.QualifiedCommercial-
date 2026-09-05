@@ -10,7 +10,20 @@
 
 import { useCallback, useState } from "react";
 import { X } from "lucide-react";
-import { uploadInlineImage, type InlineImage, type InlineImageSubject } from "@/lib/inlineImages";
+import {
+  describeRejection,
+  uploadInlineImage,
+  type InlineImage,
+  type InlineImageSubject,
+} from "@/lib/inlineImages";
+
+/** An image chosen but not yet sent. Held in the browser until then. */
+export type PendingImage = {
+  id: string;
+  filename: string;
+  file: File;
+  url: string;
+};
 
 /** Attached images on a posted note or message. */
 export function InlineImageStrip({ images }: { images: InlineImage[] }) {
@@ -42,9 +55,9 @@ export function InlineImageChips({
   onRemove,
   busy = 0,
 }: {
-  images: InlineImage[];
+  images: PendingImage[];
   onRemove: (id: string) => void;
-  /** How many uploads are still in flight. */
+  /** How many images are still uploading, during a send. */
   busy?: number;
 }) {
   if (!images.length && !busy) return null;
@@ -66,7 +79,7 @@ export function InlineImageChips({
       ))}
       {busy > 0 ? (
         <span className="inlineImageChip is-busy">
-          Uploading {busy} image{busy === 1 ? "" : "s"}…
+          Sending {busy} image{busy === 1 ? "" : "s"}…
         </span>
       ) : null}
     </>
@@ -74,51 +87,95 @@ export function InlineImageChips({
 }
 
 /**
- * Staged uploads for one composer.
+ * Images attached to one composer, uploaded when the message is sent.
  *
- * Uploads start the moment a file arrives and run in parallel; the ids are
- * handed to the send as `image_ids`. `reset` is called after a successful post
- * — the images now belong to the message, not to the composer.
+ * Pasting keeps the file in the browser and shows it from an object URL — no
+ * network, no row, nothing in object storage. The bytes leave only when the
+ * person actually sends, which is the moment they have decided the image is
+ * part of a message.
+ *
+ * The earlier version uploaded on paste so that sending stayed instant. That
+ * traded a real cost for a small one: every abandoned paste left a finished
+ * file in object storage attached to nothing, and the volume of that grows with
+ * use and never shrinks. Waiting costs a second on send, and `pending` is
+ * exported so the button can say what it is doing rather than appear stuck.
+ *
+ * `flush` returns the ids to hand to the send. Call it first; if it throws, the
+ * message has not been posted and nothing has been lost.
  */
 export function useInlineImages(
   subjectKind: InlineImageSubject,
   getToken: () => Promise<string | null>,
 ) {
-  const [images, setImages] = useState<InlineImage[]>([]);
-  const [busy, setBusy] = useState(0);
+  const [images, setImages] = useState<PendingImage[]>([]);
+  const [pending, setPending] = useState(0);
   const [error, setError] = useState("");
 
-  const add = useCallback(
-    async (files: File[]) => {
-      setError("");
-      setBusy((count) => count + files.length);
-      const token = (await getToken()) ?? undefined;
-      await Promise.all(
-        files.map(async (file) => {
-          try {
-            const image = await uploadInlineImage(file, subjectKind, token);
-            setImages((current) => [...current, image]);
-          } catch (reason) {
-            setError(reason instanceof Error ? reason.message : "That image could not be attached.");
-          } finally {
-            setBusy((count) => Math.max(0, count - 1));
-          }
-        }),
-      );
-    },
-    [getToken, subjectKind],
-  );
+  const add = useCallback((files: File[]) => {
+    const usable: PendingImage[] = [];
+    for (const file of files) {
+      const rejection = describeRejection(file);
+      if (rejection) {
+        // Said now rather than at send: a file that can never be attached
+        // should not be discovered at the moment someone presses the button.
+        setError(rejection);
+        continue;
+      }
+      usable.push({
+        id: `local-${Math.random().toString(36).slice(2)}`,
+        filename: file.name || "pasted image",
+        file,
+        // Shown straight from the browser, so the preview is instant and costs
+        // no round trip.
+        url: URL.createObjectURL(file),
+      });
+    }
+    if (usable.length) setError("");
+    setImages((current) => [...current, ...usable]);
+  }, []);
 
   const remove = useCallback((id: string) => {
-    // Dropped from the composer only. The staged row is never bound to
-    // anything, so it stays an orphan in S3 rather than needing a delete call.
-    setImages((current) => current.filter((image) => image.id !== id));
+    setImages((current) => {
+      const going = current.find((image) => image.id === id);
+      // Nothing was uploaded, so removing is purely local — and the object URL
+      // has to be released or the bytes stay held for the life of the tab.
+      if (going?.url) URL.revokeObjectURL(going.url);
+      return current.filter((image) => image.id !== id);
+    });
   }, []);
 
   const reset = useCallback(() => {
-    setImages([]);
+    setImages((current) => {
+      for (const image of current) if (image.url) URL.revokeObjectURL(image.url);
+      return [];
+    });
     setError("");
   }, []);
 
-  return { images, ids: images.map((image) => image.id), busy, error, add, remove, reset };
+  const flush = useCallback(async (): Promise<string[]> => {
+    if (!images.length) return [];
+    setError("");
+    setPending(images.length);
+    const token = (await getToken()) ?? undefined;
+    try {
+      // Sequential rather than parallel: these are phone uploads over one
+      // connection, and the count in the button should mean something.
+      const ids: string[] = [];
+      for (const image of images) {
+        const uploaded = await uploadInlineImage(image.file, subjectKind, token);
+        ids.push(uploaded.id);
+        setPending((count) => Math.max(0, count - 1));
+      }
+      return ids;
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "That image could not be attached.",
+      );
+      throw reason;
+    } finally {
+      setPending(0);
+    }
+  }, [getToken, images, subjectKind]);
+
+  return { images, pending, error, add, remove, reset, flush };
 }

@@ -361,7 +361,11 @@ function Notes({ workspace, callApi, refresh }: { workspace: AppointmentWorkspac
   const { getToken } = useAuth();
   const pasted = useInlineImages("appointment_activity", getToken);
   const save = useMutation({
-    mutationFn: () => callApi(`/dealer-os/appointments/${workspace.appointment.id}/notes`, { method: "POST", body: JSON.stringify({ body: body.trim(), image_ids: pasted.ids }) }),
+    // Images upload here, at save — pasting only held them in the browser.
+    mutationFn: async () => {
+      const imageIds = await pasted.flush();
+      return callApi(`/dealer-os/appointments/${workspace.appointment.id}/notes`, { method: "POST", body: JSON.stringify({ body: body.trim(), image_ids: imageIds }) });
+    },
     onSuccess: async () => { setBody(""); pasted.reset(); await refresh(); },
   });
   const snippets = [
@@ -377,8 +381,8 @@ function Notes({ workspace, callApi, refresh }: { workspace: AppointmentWorkspac
         <div className="panel-b appointmentCrmForm">
           <div className="appointmentCrmSnippets">{snippets.map((snippet) => <button type="button" key={snippet} onClick={() => setBody((current) => current ? `${current}\n${snippet}` : snippet)}>{snippet}</button>)}</div>
           <label><span className="lbl">Note</span><textarea className="field" rows={9} value={body} onChange={(event) => setBody(event.target.value)} onPaste={(event) => { const files = Array.from(event.clipboardData?.files ?? []); if (files.length) { event.preventDefault(); void pasted.add(files); } }} placeholder="Record facts, decisions, risks, and the agreed next step. Paste a screenshot to attach it." /></label>
-          {(pasted.images.length > 0 || pasted.busy > 0) ? <div className="inlineImageChipRow"><InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} /></div> : null}
-          <button className="btn pri" type="button" disabled={(!body.trim() && !pasted.images.length) || save.isPending} onClick={() => save.mutate()}><MessageSquareText size={16} />{save.isPending ? "Saving..." : "Add note"}</button>
+          {(pasted.images.length > 0 || pasted.pending > 0) ? <div className="inlineImageChipRow"><InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.pending} /></div> : null}
+          <button className="btn pri" type="button" disabled={(!body.trim() && !pasted.images.length) || save.isPending || pasted.pending > 0} onClick={() => save.mutate()}><MessageSquareText size={16} />{pasted.pending > 0 ? `Sending ${pasted.pending} image${pasted.pending === 1 ? "" : "s"}...` : save.isPending ? "Saving..." : "Add note"}</button>
           {pasted.error ? <div className="appointmentCrmInlineError">{pasted.error}</div> : null}
           {save.isError ? <div className="appointmentCrmInlineError">{errorText(save.error, "The note could not be saved.")}</div> : null}
         </div>

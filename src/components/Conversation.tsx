@@ -152,9 +152,12 @@ export default function Conversation({
           authToken: token,
         });
       }
+      // Images go up first and only now — pasting kept them in the browser.
+      // If this throws the message is not posted and the draft is still here.
+      const imageIds = await pasted.flush();
       return api<Message>(`/dealer-os/dealers/${dealerId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body, channel: tab, image_ids: pasted.ids }),
+        body: JSON.stringify({ body, channel: tab, image_ids: imageIds }),
         authToken: token,
       });
     },
@@ -345,11 +348,13 @@ export default function Conversation({
           value={draft}
           onChange={setDraft}
           onSend={send}
-          sending={post.isPending}
+          // Covers the upload too, so the button reflects the whole send rather
+          // than going quiet while images are still going up.
+          sending={post.isPending || pasted.pending > 0}
           allowEmpty={pasted.images.length > 0}
           onFiles={canPasteImages ? (files) => void pasted.add(files) : undefined}
           attachments={
-            <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} />
+            <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.pending} />
           }
           placeholder={placeholder}
           sendLabel={
