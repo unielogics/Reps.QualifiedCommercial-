@@ -17,11 +17,14 @@ import ActionHub from "./ActionHub";
 import GlobalSearch from "./GlobalSearch";
 import MfaBanner from "./MfaBanner";
 import PhoneRequiredGate from "./PhoneRequiredGate";
+import AcknowledgmentGate from "./AcknowledgmentGate";
+import ConsoleSwitcher from "./ConsoleSwitcher";
 import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
 import SystemStatusMenu from "./SystemStatusMenu";
 import { UploadStatusMenu } from "./UploadManager";
 
-const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://audit.qualifiedcommercial.com";
+// Only the fallback for the no-access notice on an older backend that does not
+// list consoles; everything else takes its console URLs from /auth/me.
 const FUNDING_URL = process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
 
 type IconName = "home" | "plus" | "chart" | "chat" | "calendar" | "contacts" | "products" | "bell" | "settings";
@@ -116,7 +119,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [now, setNow] = useState<Date | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [clearingNotifications, setClearingNotifications] = useState(false);
-  const { name, email, isRep, isTeam, isSuperAdmin, isResolving, needsPhone } = useMe();
+  const { name, email, isRep, isTeam, isSuperAdmin, isResolving, needsPhone, consoles, canEnter, needsAcknowledgment } = useMe();
   const { getToken } = useAuth();
   const { user } = useUser();
   useCommunicationEvents((isRep || isTeam) && !isProductFocus && !isResolving);
@@ -231,22 +234,32 @@ export function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // A funding-system login, or a client. Same shape as the audit app's notice
-  // so the two products fail identically rather than in two different voices.
-  if (!isRep && !isTeam) {
+  // A login whose consoles do not include this one — a client, a partner, a
+  // funding-only login. Same shape as the audit app's notice so the products
+  // fail identically rather than in two different voices. The buttons are the
+  // consoles /auth/me says this sign-in does open; an older backend that does
+  // not list them gets the Funding console as the one safe guess.
+  if (!canEnter) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
         <div className="card hi" style={{ width: "min(460px, 100%)" }}>
           <Brand />
-          <h2 style={{ fontSize: 18, marginTop: 4 }}>This login doesn&apos;t have field access</h2>
+          <h2 style={{ fontSize: 18, marginTop: 4 }}>This login doesn&apos;t open the Field Desk</h2>
           <p className="sub mt">
-            The Field Desk is for Qualified Commercial reps. If you are a client looking for
-            your own file, that lives on Capital OS.
+            The Field Desk is for Qualified Commercial reps and the desk. Your sign-in opens:
           </p>
-          <div className="row mt" style={{ alignItems: "center", gap: 10 }}>
-            <a className="btn pri" href={AUDIT_URL}>
-              Go to Capital OS →
-            </a>
+          <div className="row mt" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {consoles.length > 0 ? (
+              consoles.map((c) => (
+                <a key={c.key} className="btn pri" href={c.url}>
+                  Open {c.label} →
+                </a>
+              ))
+            ) : (
+              <a className="btn pri" href={FUNDING_URL}>
+                Open Funding →
+              </a>
+            )}
             <SignedIn>
               <UserButton afterSignOutUrl="/sign-in" />
             </SignedIn>
@@ -254,6 +267,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  // The platform documents, before the mobile number: the Privacy Policy
+  // governs the number the next screen collects. /account stays reachable so
+  // Clerk's own pages are never behind a second gate.
+  if (needsAcknowledgment && !pathname.startsWith("/account")) {
+    return <AcknowledgmentGate brand={<Brand />} />;
   }
 
   // The one-time mobile number, before any chrome. /account stays reachable
@@ -404,13 +424,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <b className="num">{formatTopTime(now)}</b>
             </Link>
           )}
-          {isTeam && (
-            <div className="seg consoleSwitch" aria-label="Console switcher">
-              <a href={FUNDING_URL}>Funding</a>
-              <span className="on">Field Desk</span>
-              <a href={AUDIT_URL}>Audit</a>
-            </div>
-          )}
+          <ConsoleSwitcher consoles={consoles} current="field_desk" />
           {isSuperAdmin && <SystemStatusMenu />}
           <UploadStatusMenu />
           {notificationControl("mobile")}

@@ -16,6 +16,13 @@ export type Me = {
   phone?: string | null;
   // The one-time gate: a rep or team member with no mobile on file. Computed by the backend so both apps agree.
   needs_phone?: boolean;
+  // The consoles this login may sign in to, in fixed order, with absolute URLs.
+  // Older backends do not send it: undefined means "unknown", and canEnter
+  // below falls back to the role rule this app used before the field existed.
+  consoles?: Array<{ key: "funding" | "field_desk" | "audit"; label: string; url: string }>;
+  // The platform-documents gate: acknowledgment missing or out of date.
+  // Computed by the backend so the apps cannot disagree.
+  needs_acknowledgment?: boolean;
 };
 
 export function useMe() {
@@ -42,6 +49,13 @@ export function useMe() {
     // the point of them being in this app at all.
     isTeam: role === "super_admin" || role === "loan_exec",
     needsPhone: q.data?.needs_phone === true,
+    // The consoles this login opens, as the backend lists them. Empty until
+    // /auth/me answers, and empty on an older backend that does not send it.
+    consoles: q.data?.consoles ?? [],
+    // Whether this login opens the Field Desk. The backend's console list is
+    // the answer when it is present; an older backend gets today's role rule.
+    canEnter: q.data?.consoles ? q.data.consoles.some((c) => c.key === "field_desk") : (hasRepAccess || (role === "super_admin" || role === "loan_exec")),
+    needsAcknowledgment: q.data?.needs_acknowledgment === true,
     // Deliberately not "not loading": role stays undefined until /auth/me
     // answers, and rendering a rep view to someone who turns out to have no
     // access is worse than a beat of skeleton.
