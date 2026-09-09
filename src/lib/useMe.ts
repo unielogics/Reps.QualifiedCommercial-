@@ -11,7 +11,12 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 
-export type Me = { id: string; email: string; name: string; role: string; account_types: Array<"funding" | "field_desk" | "audit"> };
+export type Me = {
+  id: string; email: string; name: string; role: string; account_types: Array<"funding" | "field_desk" | "audit">;
+  phone?: string | null;
+  // The one-time gate: a rep or team member with no mobile on file. Computed by the backend so both apps agree.
+  needs_phone?: boolean;
+};
 
 export function useMe() {
   const { getToken, isSignedIn } = useAuth();
@@ -36,6 +41,7 @@ export function useMe() {
     // Underwriters and super admins. They see every rep's files here, which is
     // the point of them being in this app at all.
     isTeam: role === "super_admin" || role === "loan_exec",
+    needsPhone: q.data?.needs_phone === true,
     // Deliberately not "not loading": role stays undefined until /auth/me
     // answers, and rendering a rep view to someone who turns out to have no
     // access is worse than a beat of skeleton.

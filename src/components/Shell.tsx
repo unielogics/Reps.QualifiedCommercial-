@@ -16,6 +16,7 @@ import { useCommunicationEvents } from "@/lib/useCommunicationEvents";
 import ActionHub from "./ActionHub";
 import GlobalSearch from "./GlobalSearch";
 import MfaBanner from "./MfaBanner";
+import PhoneRequiredGate from "./PhoneRequiredGate";
 import ApplicationWorkspaceDock from "./ApplicationWorkspaceDock";
 import SystemStatusMenu from "./SystemStatusMenu";
 import { UploadStatusMenu } from "./UploadManager";
@@ -115,7 +116,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [now, setNow] = useState<Date | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [clearingNotifications, setClearingNotifications] = useState(false);
-  const { name, email, isRep, isTeam, isSuperAdmin, isResolving } = useMe();
+  const { name, email, isRep, isTeam, isSuperAdmin, isResolving, needsPhone } = useMe();
   const { getToken } = useAuth();
   const { user } = useUser();
   useCommunicationEvents((isRep || isTeam) && !isProductFocus && !isResolving);
@@ -253,6 +254,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  // The one-time mobile number, before any chrome. /account stays reachable
+  // so Clerk's own pages are never behind a second gate.
+  if (needsPhone && !pathname.startsWith("/account")) {
+    return <PhoneRequiredGate brand={<Brand />} />;
   }
 
   if (isProductFocus) {
