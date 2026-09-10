@@ -6,6 +6,7 @@
 //   Client  the business owner, who can read and reply
 //   Notes   annotations pinned to the file, not a conversation
 //   Ask AI  a private thread, one per person, about this file's actual numbers
+//   Updates what happened on the file, read from its timeline; not a conversation
 //
 // They share a composer because switching channel should feel like switching
 // who you are talking to, not like moving to a different screen. What must
@@ -25,11 +26,12 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ChatComposer } from "@/components/ChatComposer";
+import FileUpdates from "@/components/FileUpdates";
 import { InlineImageChips, InlineImageStrip, useInlineImages } from "@/components/InlineImageStrip";
 import type { InlineImage } from "@/lib/inlineImages";
 
 type Channel = "desk" | "client" | "note";
-type Tab = Channel | "ai";
+type Tab = Channel | "ai" | "updates";
 
 type Message = {
   id: string;
@@ -50,6 +52,7 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: "client", label: "Client" },
   { key: "note", label: "Notes" },
   { key: "ai", label: "Ask AI" },
+  { key: "updates", label: "Updates" },
 ];
 
 function dayLabel(iso: string): string {
@@ -94,6 +97,9 @@ export default function Conversation({
   const scroller = useRef<HTMLDivElement | null>(null);
 
   const isAI = tab === "ai";
+  // Updates is not a channel: nothing is written there and nothing is fetched
+  // from the message endpoints for it.
+  const isUpdates = tab === "updates";
   const pasted = useInlineImages("dealer_message", getToken);
 
   const messages = useQuery({
@@ -102,11 +108,11 @@ export default function Conversation({
       api<Message[]>(`/dealer-os/dealers/${dealerId}/messages?channel=${tab}`, {
         authToken: (await getToken()) ?? undefined,
       }),
-    enabled: !isAI,
+    enabled: !isAI && !isUpdates,
   });
 
   useEffect(() => {
-    if (isAI || !messages.isSuccess) return;
+    if (isAI || isUpdates || !messages.isSuccess) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -124,7 +130,7 @@ export default function Conversation({
     return () => {
       cancelled = true;
     };
-  }, [dealerId, getToken, isAI, messages.isSuccess, qc, tab]);
+  }, [dealerId, getToken, isAI, isUpdates, messages.isSuccess, qc, tab]);
 
   const aiThread = useQuery({
     queryKey: ["ai-thread", dealerId],
@@ -238,11 +244,17 @@ export default function Conversation({
               ? "The business owner sees this thread"
               : tab === "note"
                 ? "Desk only"
-                : "Private to you"}
+                : isUpdates
+                  ? "What happened on this file"
+                  : "Private to you"}
         </span>
       </div>
 
       <div className="panel-b">
+        {isUpdates ? (
+          <FileUpdates dealerId={dealerId} />
+        ) : (
+        <>
         <div className="thr" ref={scroller}>
           {loading && <div className="thr-empty">Loading…</div>}
 
@@ -385,6 +397,8 @@ export default function Conversation({
           }
           hint="Enter sends, Shift and Enter makes a new line."
         />
+        </>
+        )}
       </div>
     </div>
   );
