@@ -10,6 +10,7 @@ import { ApiError, api, apiUpload } from "@/lib/api";
 import { useCase } from "@/lib/useCase";
 import { useMe } from "@/lib/useMe";
 import Drawer from "@/components/Drawer";
+import { semanticStatusClass } from "@/lib/semanticStatus";
 
 type Doc = {
   id: string;
@@ -347,7 +348,7 @@ export default function DocumentsTab() {
         {uploads.length > 0 && (
           <div className="uploadTray" aria-live="polite">
             {uploads.map((item) => (
-              <div className={`uploadTrayRow ${item.status}`} key={item.id} title={item.error}>
+              <div className={`uploadTrayRow ${item.status} ${semanticStatusClass(item.status)}`} key={item.id} title={item.error}>
                 <span className="uploadState" aria-hidden />
                 <b>{item.filename}</b>
                 <span>{item.status === "uploading" ? "Uploading" : item.status === "complete" ? "Added" : item.status === "failed" ? item.error || "Failed" : "Queued"}</span>
@@ -398,7 +399,7 @@ export default function DocumentsTab() {
           </thead>
           <tbody>
             {received.map((document) => (
-              <tr key={document.id}>
+              <tr key={document.id} className={semanticStatusClass(document.status)}>
                 <td>
                   {isPdf(document) ? (
                     <button type="button" className="documentNameButton" onClick={() => openPreview(document)} title={`Preview ${document.filename}`}>

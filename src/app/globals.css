@@ -34,6 +34,14 @@ h2 + .sub { margin: 4px 0 0; max-width: 760px; }
 a { color: var(--accent); }
 .num { font-variant-numeric: tabular-nums; }
 
+/* Shared status contract: white gathering, yellow processing, green approved, red denied. */
+.semantic-status { border-left: 3px solid var(--line); background: var(--surface); }
+.semantic-status-gathering { border-left-color: var(--line2); background: var(--surface); }
+.semantic-status-processing { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
+.semantic-status-approved { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, var(--surface)); }
+.semantic-status-denied { border-left-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
+.semantic-status-neutral { border-left-color: var(--muted); background: var(--sunken2); }
+
 /* ---------- shell ---------- */
 .app { display: grid; grid-template-columns: 242px 1fr; min-height: 100vh; }
 .app.rail { grid-template-columns: 76px 1fr; }

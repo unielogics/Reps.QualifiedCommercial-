@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { semanticStatusClass } from "@/lib/semanticStatus";
 import BookingDrawer from "@/components/BookingDrawer";
 import AppointmentEditorDrawer from "@/components/AppointmentEditorDrawer";
 import AppointmentCrmWorkspace from "@/components/AppointmentCrmWorkspace";
@@ -547,7 +548,7 @@ function AppointmentCard({
 
   return (
     <article
-      className={`repApptCard ${appointment.status} ${appointmentRsvpClass(appointment)}`}
+      className={`repApptCard ${appointment.status} ${appointmentRsvpClass(appointment)} ${semanticStatusClass(appointment.status)}`}
       onContextMenu={privileged ? (event) => { event.preventDefault(); onMenu(event.clientX, event.clientY); } : undefined}
     >
       <div className="repApptTime">
