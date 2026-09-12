@@ -34,6 +34,11 @@ export type ManagedUpload = {
 
 type QueuedUpload = ManagedUpload & { file: File };
 
+type DocumentUploadResult = {
+  status: string;
+  error?: string | null;
+};
+
 type UploadManagerValue = {
   uploads: ManagedUpload[];
   enqueueStatements: (dealerId: string, files: File[], dealerName?: string) => void;
@@ -95,16 +100,23 @@ export function UploadManagerProvider({ children }: { children: ReactNode }) {
         form.append("file", item.file);
         form.append("kind", "statement");
         let token = (await getToken()) ?? undefined;
+        let result: DocumentUploadResult;
         try {
-          await apiUpload(`/dealer-os/dealers/${item.dealerId}/documents`, form, {
+          result = await apiUpload<DocumentUploadResult>(`/dealer-os/dealers/${item.dealerId}/documents`, form, {
             authToken: token,
           });
         } catch (error) {
           if (!(error instanceof ApiError) || error.status !== 401) throw error;
           token = (await getToken({ skipCache: true })) ?? undefined;
-          await apiUpload(`/dealer-os/dealers/${item.dealerId}/documents`, form, {
+          result = await apiUpload<DocumentUploadResult>(`/dealer-os/dealers/${item.dealerId}/documents`, form, {
             authToken: token,
           });
+        }
+        if (result.status === "failed") {
+          throw new Error(result.error || "The file was stored, but its financial data could not be extracted.");
+        }
+        if (!["extracted", "pending_review"].includes(result.status)) {
+          throw new Error(`The file was stored, but processing did not finish (status: ${result.status}).`);
         }
         window.clearTimeout(extractionTimer);
         update(item.id, { status: "complete", completedAt: Date.now() });
