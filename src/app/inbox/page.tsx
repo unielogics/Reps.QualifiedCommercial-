@@ -26,6 +26,7 @@ import { ConversationBubbles } from "@/components/ConversationBubbles";
 import { ChatComposer } from "@/components/ChatComposer";
 import {
   shortDate,
+  LIVE_MESSAGE_QUERY_OPTIONS,
   type UnifiedCommunicationThread,
   type UnifiedCommunicationThreadDetail,
   type UnifiedContactPage,
@@ -57,7 +58,7 @@ export default function InboxPage() {
       api<UnifiedContactPage>("/communications/contacts?limit=100", {
         authToken: (await getToken()) ?? undefined,
       }),
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
   const groups = useMemo(() => contacts.data?.items ?? [], [contacts.data]);
@@ -73,7 +74,7 @@ export default function InboxPage() {
         authToken: (await getToken()) ?? undefined,
       }),
     enabled: Boolean(selectedId),
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
   const send = useMutation({

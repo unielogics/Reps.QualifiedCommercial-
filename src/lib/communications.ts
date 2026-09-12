@@ -1,5 +1,15 @@
 import type { InlineImage } from "@/lib/inlineImages";
 
+/** Shared safety net for every open rep conversation. */
+export const LIVE_MESSAGE_POLL_MS = 3_000;
+export const LIVE_MESSAGE_QUERY_OPTIONS = {
+  staleTime: 0,
+  refetchInterval: LIVE_MESSAGE_POLL_MS,
+  refetchIntervalInBackground: true,
+  refetchOnWindowFocus: "always",
+  refetchOnReconnect: "always",
+} as const;
+
 // Shapes returned by the shared /communications endpoints. The rep app reads
 // the same inbox the funding desk does — the backend scopes a FIELD_REP to the
 // contacts they own, so there is no rep-specific API to keep in step.

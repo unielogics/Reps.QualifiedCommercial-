@@ -28,6 +28,7 @@ import { api } from "@/lib/api";
 import { ChatComposer } from "@/components/ChatComposer";
 import FileUpdates from "@/components/FileUpdates";
 import { InlineImageChips, InlineImageStrip, useInlineImages } from "@/components/InlineImageStrip";
+import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 import type { InlineImage } from "@/lib/inlineImages";
 
 type Channel = "desk" | "client" | "note";
@@ -109,6 +110,7 @@ export default function Conversation({
         authToken: (await getToken()) ?? undefined,
       }),
     enabled: !isAI && !isUpdates,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
   useEffect(() => {
@@ -139,6 +141,7 @@ export default function Conversation({
         authToken: (await getToken()) ?? undefined,
       }),
     enabled: isAI,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
   // Follow the conversation down as it grows, and when switching channel.

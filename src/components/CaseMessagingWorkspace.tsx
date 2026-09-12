@@ -7,7 +7,7 @@ import { Bot, Mail, MessageSquareText, RefreshCw, Send, ShieldCheck, StickyNote,
 import { api } from "@/lib/api";
 import { ChatComposer } from "@/components/ChatComposer";
 import { ConversationBubbles } from "./ConversationBubbles";
-import type { UnifiedCommunicationMessage } from "@/lib/communications";
+import { LIVE_MESSAGE_QUERY_OPTIONS, type UnifiedCommunicationMessage } from "@/lib/communications";
 
 type MainTab = "desk" | "client" | "note" | "ai";
 type ClientChannel = "email" | "sms" | "room";
@@ -129,7 +129,7 @@ export default function CaseMessagingWorkspace({
   const providerThreads = useQuery({
     queryKey: ["file-inbox-threads", dealerId],
     queryFn: async () => api<ProviderThread[]>(`/dealer-os/dealers/${dealerId}/inbox/threads`, { authToken: await auth() }),
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
   const selectedThread = useMemo(
     () => (providerThreads.data ?? []).find((thread) => thread.channel === clientChannel) ?? null,
@@ -139,19 +139,20 @@ export default function CaseMessagingWorkspace({
     queryKey: ["file-inbox-messages", dealerId, selectedThread?.id],
     queryFn: async () => api<ProviderMessage[]>(`/dealer-os/dealers/${dealerId}/inbox/threads/${selectedThread?.id}/messages`, { authToken: await auth() }),
     enabled: tab === "client" && clientChannel !== "room" && Boolean(selectedThread),
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
   const fileChannel = tab === "note" ? "note" : tab === "client" ? "client" : "desk";
   const fileMessages = useQuery({
     queryKey: ["messages", dealerId, fileChannel],
     queryFn: async () => api<FileMessage[]>(`/dealer-os/dealers/${dealerId}/messages?channel=${fileChannel}`, { authToken: await auth() }),
     enabled: tab !== "ai" && (tab !== "client" || clientChannel === "room"),
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
   const aiMessages = useQuery({
     queryKey: ["ai-thread", dealerId],
     queryFn: async () => api<AiMessage[]>(`/dealer-os/dealers/${dealerId}/ai/thread`, { authToken: await auth() }),
     enabled: tab === "ai",
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
   const smsDisclosure = useQuery({
     queryKey: ["sms-disclosure"],

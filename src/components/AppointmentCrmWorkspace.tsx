@@ -36,7 +36,7 @@ import {
 } from "@/lib/appointments";
 import Drawer from "./Drawer";
 import { ConversationBubbles } from "./ConversationBubbles";
-import type { UnifiedCommunicationThreadDetail } from "@/lib/communications";
+import { LIVE_MESSAGE_QUERY_OPTIONS, type UnifiedCommunicationThreadDetail } from "@/lib/communications";
 
 type WorkspaceTab = "overview" | "messages" | "notes" | "outcome" | "file" | "manage";
 type EditorMode = "details" | "edit" | "reschedule";
@@ -299,7 +299,7 @@ function Messages({
     queryKey: key,
     queryFn: () => callApi<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}`),
     enabled: Boolean(phone),
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
   const send = useMutation({

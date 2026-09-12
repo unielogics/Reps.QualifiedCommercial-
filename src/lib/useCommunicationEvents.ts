@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, apiBase } from "@/lib/api";
+import { LIVE_MESSAGE_POLL_MS } from "@/lib/communications";
 
 type StreamStatus = "connecting" | "connected" | "disconnected";
 
@@ -151,7 +152,7 @@ export function useCommunicationEvents(enabled: boolean): StreamStatus {
     };
 
     void check();
-    const timer = window.setInterval(() => void check(), 30_000);
+    const timer = window.setInterval(() => void check(), LIVE_MESSAGE_POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

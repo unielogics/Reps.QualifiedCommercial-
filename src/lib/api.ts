@@ -91,7 +91,8 @@ async function unwrap<T>(res: Response): Promise<T> {
 }
 
 export async function api<T>(path: string, opts: RequestInit & { authToken?: string } = {}): Promise<T> {
-  const { authToken, ...init } = opts;
+  const { authToken, cache, ...init } = opts;
+  const method = String(init.method ?? "GET").toUpperCase();
   const requestHeaders = {
     "Content-Type": "application/json",
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
@@ -99,12 +100,14 @@ export async function api<T>(path: string, opts: RequestInit & { authToken?: str
   };
   let res = await fetch(`${apiBase}${path}`, {
     ...init,
+    cache: cache ?? (method === "GET" ? "no-store" : undefined),
     headers: requestHeaders,
   });
   const liveAction = await trainingLiveAction(res);
   if (liveAction && confirmTrainingLiveAction(liveAction)) {
     res = await fetch(`${apiBase}${path}`, {
       ...init,
+      cache: cache ?? (method === "GET" ? "no-store" : undefined),
       headers: { ...requestHeaders, "X-QC-Training-Live-Action": "confirmed" },
     });
   }
