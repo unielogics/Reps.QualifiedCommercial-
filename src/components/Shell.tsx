@@ -49,6 +49,7 @@ type NotificationRow = {
   deep_link: string | null;
   read_at: string | null;
   created_at: string;
+  meta?: { send_after?: string | null; status?: string | null } | null;
 };
 
 type NotificationList = { unread_count: number; items: NotificationRow[] };
@@ -333,6 +334,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <button key={row.id} type="button" className="mi notificationItem" onClick={() => void openNotification(row)}>
               <b>{row.title}</b>
               <small>{row.body}</small>
+              {row.meta?.status === "pending_review" && row.meta.send_after && <span className="notificationCountdown">Auto-sends in {Math.max(0, Math.ceil((new Date(row.meta.send_after).getTime() - (now?.getTime() ?? Date.now())) / 1000))}s</span>}
             </button>
           ))}
           {!notifications.isLoading && (notifications.data?.items.length ?? 0) === 0 && (

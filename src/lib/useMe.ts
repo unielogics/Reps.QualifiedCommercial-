@@ -23,6 +23,10 @@ export type Me = {
   // The platform-documents gate: acknowledgment missing or out of date.
   // Computed by the backend so the apps cannot disagree.
   needs_acknowledgment?: boolean;
+  // The global master switch and this user's explicit assignment are combined
+  // by the backend. Undefined preserves compatibility during rolling deploys.
+  dealer_prospect_pipeline_enabled?: boolean;
+  dealer_prospect_pipeline_assigned?: boolean;
 };
 
 export function useMe() {
@@ -56,6 +60,8 @@ export function useMe() {
     // the answer when it is present; an older backend gets today's role rule.
     canEnter: q.data?.consoles ? q.data.consoles.some((c) => c.key === "field_desk") : (hasRepAccess || (role === "super_admin" || role === "loan_exec")),
     needsAcknowledgment: q.data?.needs_acknowledgment === true,
+    dealerProspectPipelineEnabled: q.data?.dealer_prospect_pipeline_enabled,
+    dealerProspectPipelineAssigned: q.data?.dealer_prospect_pipeline_assigned,
     // Deliberately not "not loading": role stays undefined until /auth/me
     // answers, and rendering a rep view to someone who turns out to have no
     // access is worse than a beat of skeleton.

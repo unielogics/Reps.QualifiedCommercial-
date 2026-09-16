@@ -72,6 +72,7 @@ export default function BookingDrawer({
   initialEmail,
   initialPhone,
   initialKind,
+  onBooked,
 }: {
   onClose: () => void;
   initialDealerId?: string | null;
@@ -79,6 +80,7 @@ export default function BookingDrawer({
   initialEmail?: string | null;
   initialPhone?: string | null;
   initialKind?: (typeof KINDS)[number]["key"];
+  onBooked?: (appointment: RepAppointment) => void;
 }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
@@ -169,6 +171,7 @@ export default function BookingDrawer({
         authToken: (await getToken()) ?? undefined,
       }),
     onSuccess: (created) => {
+      onBooked?.(created);
       void qc.invalidateQueries({ queryKey: ["appointments", dealerId] });
       void qc.invalidateQueries({ queryKey: ["rep-appointments"] });
       void qc.invalidateQueries({ queryKey: ["inbox-threads"] });

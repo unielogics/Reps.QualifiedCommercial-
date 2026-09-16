@@ -41,6 +41,7 @@ export type ProgramPdfAttachment = {
 
 export type InboxComposeRequest = {
   dealer_id?: string | null;
+  prospect_id?: string | null;
   recipient_name: string;
   company?: string | null;
   recipient_email?: string | null;

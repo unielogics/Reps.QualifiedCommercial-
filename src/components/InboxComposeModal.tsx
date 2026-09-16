@@ -9,6 +9,7 @@ import Drawer from "./Drawer";
 
 type ThreadSeed = {
   dealer_id?: string | null;
+  prospect_id?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
   contact_phone?: string | null;
@@ -24,10 +25,16 @@ export default function InboxComposeModal({
   onClose,
   seed,
   onSent,
+  initialChannel = "email",
+  initialMarketingConsent = false,
+  requireMarketingSmsConsent = false,
 }: {
   onClose: () => void;
   seed?: ThreadSeed | null;
   onSent?: (threadId: string | null) => void;
+  initialChannel?: "email" | "sms";
+  initialMarketingConsent?: boolean;
+  requireMarketingSmsConsent?: boolean;
 }) {
   const { getToken } = useAuth();
   const qc = useQueryClient();
@@ -35,12 +42,12 @@ export default function InboxComposeModal({
   const [company, setCompany] = useState(seed?.company ?? "");
   const [email, setEmail] = useState(seed?.contact_email ?? "");
   const [phone, setPhone] = useState(seed?.contact_phone ?? "");
-  const [sendEmail, setSendEmail] = useState(Boolean(seed?.contact_email ?? true));
-  const [sendSms, setSendSms] = useState(false);
+  const [sendEmail, setSendEmail] = useState(initialChannel === "email" && Boolean(seed?.contact_email ?? true));
+  const [sendSms, setSendSms] = useState(initialChannel === "sms");
   const [subject, setSubject] = useState("Qualified Commercial");
   const [body, setBody] = useState("");
   const [transactional, setTransactional] = useState(false);
-  const [marketing, setMarketing] = useState(false);
+  const [marketing, setMarketing] = useState(initialMarketingConsent);
 
   const channels: ComposeChannel[] = [
     ...(sendEmail ? (["email"] as const) : []),
@@ -52,13 +59,14 @@ export default function InboxComposeModal({
       (!sendEmail || subject.trim()) &&
       ((sendEmail && email.trim()) || (sendSms && phone.trim())) &&
       channels.length > 0 &&
-      (!sendSms || transactional || marketing),
+      (!sendSms || (requireMarketingSmsConsent ? marketing : transactional || marketing)),
   );
 
   const send = useMutation({
     mutationFn: async () => {
       const payload: InboxComposeRequest = {
         dealer_id: seed?.dealer_id ?? null,
+        prospect_id: seed?.prospect_id ?? null,
         recipient_name: name.trim(),
         company: company.trim() || null,
         recipient_email: email.trim() || null,
@@ -91,34 +99,34 @@ export default function InboxComposeModal({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <div>
               <label className="lbl">Name</label>
-              <input className="field" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+              <input className="field" value={name} disabled={requireMarketingSmsConsent} onChange={(e) => setName(e.target.value)} autoFocus />
             </div>
             <div>
               <label className="lbl">Company</label>
-              <input className="field" value={company} onChange={(e) => setCompany(e.target.value)} />
+              <input className="field" value={company} disabled={requireMarketingSmsConsent} onChange={(e) => setCompany(e.target.value)} />
             </div>
             <div>
               <label className="lbl">Email</label>
-              <input className="field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input className="field" type="email" value={email} disabled={requireMarketingSmsConsent} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
               <label className="lbl">Mobile</label>
-              <input className="field" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <input className="field" type="tel" value={phone} disabled={requireMarketingSmsConsent} onChange={(e) => setPhone(e.target.value)} />
             </div>
           </div>
 
           <div>
             <label className="lbl">Send by</label>
             <div className="row" style={{ gap: 8 }}>
-              <label className={`consent${sendEmail ? " on" : ""}`} style={{ margin: 0, flex: 1, display: "flex", gap: 10, alignItems: "flex-start" }}>
+              {!requireMarketingSmsConsent && <label className={`consent${sendEmail ? " on" : ""}`} style={{ margin: 0, flex: 1, display: "flex", gap: 10, alignItems: "flex-start" }}>
                 <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} />
                 <span className="ctext">
                   <span className="ctitle">Email</span>
                   Send to the email address above.
                 </span>
-              </label>
+              </label>}
               <label className={`consent${sendSms ? " on" : ""}`} style={{ margin: 0, flex: 1, display: "flex", gap: 10, alignItems: "flex-start" }}>
-                <input type="checkbox" checked={sendSms} onChange={(e) => setSendSms(e.target.checked)} />
+                <input type="checkbox" checked={sendSms} disabled={requireMarketingSmsConsent} onChange={(e) => setSendSms(e.target.checked)} />
                 <span className="ctext">
                   <span className="ctitle">SMS</span>
                   Send to the mobile number above.
@@ -131,7 +139,7 @@ export default function InboxComposeModal({
             <div className="note" style={{ marginTop: 0 }}>
               <div>
                 SMS requires consent first.
-                <div className={`consent${transactional ? " on" : ""}`} style={{ marginTop: 10 }}>
+                {!requireMarketingSmsConsent && <div className={`consent${transactional ? " on" : ""}`} style={{ marginTop: 10 }}>
                   <label>
                     <input type="checkbox" checked={transactional} onChange={(e) => setTransactional(e.target.checked)} />
                     <span className="ctext">
@@ -139,13 +147,13 @@ export default function InboxComposeModal({
                       They agreed to receive texts about their application and appointments.
                     </span>
                   </label>
-                </div>
+                </div>}
                 <div className={`consent${marketing ? " on" : ""}`} style={{ marginTop: 8 }}>
                   <label>
-                    <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} />
+                    <input type="checkbox" checked={marketing} disabled={requireMarketingSmsConsent} onChange={(e) => setMarketing(e.target.checked)} />
                     <span className="ctext">
                       <span className="ctitle">Program texts</span>
-                      They agreed to receive program introductions and company information.
+                      {requireMarketingSmsConsent ? "Marketing consent is recorded for this prospect." : "They agreed to receive program introductions and company information."}
                     </span>
                   </label>
                 </div>
