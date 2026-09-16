@@ -7,6 +7,24 @@ export type ProspectStage = {
   is_active?: boolean;
 };
 
+export type ProspectStageStrategy = "advance_follow_up";
+export type ProspectEmailAction = "dealer_information_pack" | "missed_call" | "callback_confirmation" | "booking_link";
+export type ProspectWorkflowAction = "book_appointment";
+
+export type ProspectOutcomeActionConfig = {
+  target_stage_key?: string;
+  stage_strategy?: ProspectStageStrategy;
+  email_action?: ProspectEmailAction;
+  workflow_action?: ProspectWorkflowAction;
+  requires_follow_up?: boolean;
+  requires_appointment?: boolean;
+  increment_call_attempt?: boolean;
+  set_do_not_contact?: boolean;
+  clear_follow_up?: boolean;
+  suppress_email?: boolean;
+  follow_up_delay_hours?: number;
+};
+
 export type ProspectOutcome = {
   id?: string;
   key: string;
@@ -16,7 +34,38 @@ export type ProspectOutcome = {
   requires_follow_up?: boolean;
   requires_appointment?: boolean;
   creates_email_draft?: boolean;
-  action_config?: Record<string, unknown>;
+  action_config?: ProspectOutcomeActionConfig;
+};
+
+export type ProspectDraftPurpose = "dealer_information" | "missed_call" | "callback_confirmation" | "booking" | "general";
+
+export type ProspectOutreachPolicy = {
+  drafting_guidance: string;
+  additional_blocked_phrases: string[];
+  locked_rules: string[];
+  review_seconds: number;
+  test_recipient_email: string;
+  updated_at?: string | null;
+  updated_by_user_id?: string | null;
+};
+
+export type ProspectTestEmailRequest = {
+  idempotency_key: string;
+  purpose: ProspectDraftPurpose;
+  sample_contact_name: string;
+  sample_dealer_name: string;
+  ai_instructions?: string | null;
+  include_collateral: boolean;
+};
+
+export type ProspectTestEmailResponse = {
+  ok: boolean;
+  delivery_state: "sent" | "failed" | "uncertain";
+  to_email: string;
+  subject: string;
+  draft_source: "ai" | "fallback";
+  attachment_names: string[];
+  detail: string;
 };
 
 export type DealerProspect = {

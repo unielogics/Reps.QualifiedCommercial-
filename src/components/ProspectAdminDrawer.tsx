@@ -1,14 +1,25 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, GripVertical, Plus, Search, Upload, Users } from "lucide-react";
+import { Bot, CheckCircle2, CircleAlert, CircleX, FileText, FlaskConical, GripVertical, Info, LockKeyhole, Mail, Plus, Search, ShieldCheck, Sparkles, Upload, Users } from "lucide-react";
 import { api, apiBlob, apiUpload } from "@/lib/api";
-import type { ProspectAccessList, ProspectAccessUser, ProspectOutcome, ProspectStage } from "@/lib/prospects";
+import type {
+  ProspectAccessList,
+  ProspectAccessUser,
+  ProspectDraftPurpose,
+  ProspectEmailAction,
+  ProspectOutcome,
+  ProspectOutcomeActionConfig,
+  ProspectOutreachPolicy,
+  ProspectStage,
+  ProspectTestEmailRequest,
+  ProspectTestEmailResponse,
+} from "@/lib/prospects";
 import Drawer from "./Drawer";
 
-type AdminTab = "access" | "stages" | "outcomes" | "collateral";
+type AdminTab = "access" | "stages" | "outcomes" | "email_ai" | "collateral";
 type CollateralAsset = {
   id: string;
   name: string;
@@ -34,6 +45,25 @@ type CollateralHistoryItem = {
   created_at: string;
 };
 type CollateralHistoryList = { items: CollateralHistoryItem[] };
+
+const OUTCOME_EMAIL_RECIPES: Array<{ value: ProspectEmailAction; label: string; detail: string }> = [
+  { value: "dealer_information_pack", label: "Dealer information pack", detail: "A complete capabilities introduction with the approved dealer website and collateral." },
+  { value: "missed_call", label: "Missed call", detail: "A brief follow-up after an unsuccessful call attempt." },
+  { value: "callback_confirmation", label: "Callback confirmation", detail: "Confirms the agreed callback and keeps the next step clear." },
+  { value: "booking_link", label: "Booking link", detail: "Invites the dealer to book through the approved scheduling page." },
+];
+
+const TEST_EMAIL_RECIPES: Array<{ value: ProspectDraftPurpose; label: string; detail: string }> = [
+  { value: "dealer_information", label: "Dealer information pack", detail: "Full capabilities overview" },
+  { value: "missed_call", label: "Missed call", detail: "Short call follow-up" },
+  { value: "callback_confirmation", label: "Callback confirmation", detail: "Callback details and next step" },
+  { value: "booking", label: "Booking link", detail: "Approved scheduling invitation" },
+  { value: "general", label: "General outreach", detail: "Grounded dealer introduction" },
+];
+
+function configFingerprint(config: ProspectOutcomeActionConfig): string {
+  return JSON.stringify(Object.entries(config).filter(([, value]) => value !== undefined).sort(([left], [right]) => left.localeCompare(right)));
+}
 
 function slug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -62,6 +92,7 @@ export default function ProspectAdminDrawer({
   const stageQuery = useQuery({ queryKey: ["prospect-stage-admin"], queryFn: async () => api<ProspectStage[]>("/dealer-os/prospect-stages?include_inactive=true", { authToken: (await getToken()) ?? undefined }), initialData: initialStages, enabled: tab === "stages" || tab === "outcomes" });
   const outcomeQuery = useQuery({ queryKey: ["prospect-outcome-admin"], queryFn: async () => api<ProspectOutcome[]>("/dealer-os/prospect-outcomes?include_inactive=true", { authToken: (await getToken()) ?? undefined }), initialData: initialOutcomes, enabled: tab === "outcomes" });
   const access = useQuery({ queryKey: ["prospect-access-admin"], queryFn: async () => api<ProspectAccessList>("/dealer-os/admin/prospect-access", { authToken: (await getToken()) ?? undefined }), enabled: tab === "access" });
+  const outreachPolicy = useQuery({ queryKey: ["prospect-outreach-policy"], queryFn: async () => api<ProspectOutreachPolicy>("/dealer-os/prospect-outreach/policy", { authToken: (await getToken()) ?? undefined }), enabled: tab === "outcomes" });
   const collateral = useQuery({ queryKey: ["marketing-collateral"], queryFn: async () => api<CollateralList>("/dealer-os/marketing-collateral?include_retired=true", { authToken: (await getToken()) ?? undefined }), enabled: tab === "collateral" });
   const invalidate = () => { void qc.invalidateQueries({ queryKey: ["prospect-stage-admin"] }); void qc.invalidateQueries({ queryKey: ["prospect-outcome-admin"] }); void qc.invalidateQueries({ queryKey: ["marketing-collateral"] }); onChanged(); };
 
@@ -136,15 +167,16 @@ export default function ProspectAdminDrawer({
     orderedIds.splice(to, 0, draggedCollateralId);
     reorderCollateral.mutate({ expectedIds, orderedIds });
   };
-  const error = createDefinition.error || updateDefinition.error || reorderDefinition.error || upload.error || updateCollateral.error || reorderCollateral.error || previewCollateral.error || access.error || updateAccess.error;
+  const error = createDefinition.error || updateDefinition.error || reorderDefinition.error || upload.error || updateCollateral.error || reorderCollateral.error || previewCollateral.error || access.error || outreachPolicy.error || updateAccess.error;
 
   return <Drawer title="Configure dealer pipeline" width={1050} onClose={onClose} variant="workspace">
     <div className="panel prospectAdmin">
-      <div className="prospectAdminTabs" role="tablist" aria-label="Pipeline configuration"><button type="button" role="tab" aria-selected={tab === "access"} className={tab === "access" ? "on" : ""} onClick={() => setTab("access")}>Team access</button><button type="button" role="tab" aria-selected={tab === "stages"} className={tab === "stages" ? "on" : ""} onClick={() => { setTab("stages"); setNewLabel(""); }}>Stages</button><button type="button" role="tab" aria-selected={tab === "outcomes"} className={tab === "outcomes" ? "on" : ""} onClick={() => { setTab("outcomes"); setNewLabel(""); }}>Call outcomes</button><button type="button" role="tab" aria-selected={tab === "collateral"} className={tab === "collateral" ? "on" : ""} onClick={() => setTab("collateral")}>Dealer collateral</button></div>
+      <div className="prospectAdminTabs" role="tablist" aria-label="Pipeline configuration"><button type="button" role="tab" aria-selected={tab === "access"} className={tab === "access" ? "on" : ""} onClick={() => setTab("access")}>Team access</button><button type="button" role="tab" aria-selected={tab === "stages"} className={tab === "stages" ? "on" : ""} onClick={() => { setTab("stages"); setNewLabel(""); }}>Stages</button><button type="button" role="tab" aria-selected={tab === "outcomes"} className={tab === "outcomes" ? "on" : ""} onClick={() => { setTab("outcomes"); setNewLabel(""); }}>Call outcomes</button><button type="button" role="tab" aria-selected={tab === "email_ai"} className={tab === "email_ai" ? "on" : ""} onClick={() => setTab("email_ai")}>Email AI & tests</button><button type="button" role="tab" aria-selected={tab === "collateral"} className={tab === "collateral" ? "on" : ""} onClick={() => setTab("collateral")}>Dealer collateral</button></div>
       <div className="panel-b">
         {tab === "access" && <ProspectAccessEditor data={access.data} loading={access.isLoading} updatingUserId={updateAccess.isPending ? updateAccess.variables?.user.user_id : undefined} onToggle={(user, enabled) => updateAccess.mutate({ user, enabled })} />}
         {tab === "stages" && <DefinitionEditor kind="stage" items={stageQuery.data ?? initialStages} newLabel={newLabel} setNewLabel={setNewLabel} busy={createDefinition.isPending || updateDefinition.isPending || reorderDefinition.isPending} onCreate={() => createDefinition.mutate({ kind: "stage", label: newLabel })} onUpdate={(definitionId, data) => updateDefinition.mutate({ kind: "stage", id: definitionId, data })} onReorder={(ids) => reorderDefinition.mutate({ kind: "stage", ids })} />}
-        {tab === "outcomes" && <><DefinitionEditor kind="outcome" items={outcomeQuery.data ?? initialOutcomes} newLabel={newLabel} setNewLabel={setNewLabel} busy={createDefinition.isPending || updateDefinition.isPending || reorderDefinition.isPending} onCreate={() => createDefinition.mutate({ kind: "outcome", label: newLabel })} onUpdate={(definitionId, data) => updateDefinition.mutate({ kind: "outcome", id: definitionId, data })} onReorder={(ids) => reorderDefinition.mutate({ kind: "outcome", ids })} /><OutcomeAutomationEditor outcomes={outcomeQuery.data ?? initialOutcomes} stages={stageQuery.data ?? initialStages} busy={updateDefinition.isPending} onSave={(id, actionConfig) => updateDefinition.mutate({ kind: "outcome", id, data: { action_config: actionConfig } })} /></>}
+        {tab === "outcomes" && <><DefinitionEditor kind="outcome" items={outcomeQuery.data ?? initialOutcomes} newLabel={newLabel} setNewLabel={setNewLabel} busy={createDefinition.isPending || updateDefinition.isPending || reorderDefinition.isPending} onCreate={() => createDefinition.mutate({ kind: "outcome", label: newLabel })} onUpdate={(definitionId, data) => updateDefinition.mutate({ kind: "outcome", id: definitionId, data })} onReorder={(ids) => reorderDefinition.mutate({ kind: "outcome", ids })} /><OutcomeAutomationEditor outcomes={outcomeQuery.data ?? initialOutcomes} stages={stageQuery.data ?? initialStages} reviewSeconds={outreachPolicy.data?.review_seconds} busy={updateDefinition.isPending} onSave={(id, actionConfig) => updateDefinition.mutate({ kind: "outcome", id, data: { action_config: actionConfig } })} /></>}
+        {tab === "email_ai" && <EmailAIControls />}
         {tab === "collateral" && <div className="prospectCollateralAdmin">
           <div className="prospectUploadBar"><label><span className="lbl">Display title</span><input className="field" value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} placeholder="Dealer capabilities guide" /></label><label className="prospectFilePicker"><span className="lbl">PDF file</span><input ref={fileInput} type="file" accept="application/pdf,.pdf" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} /><span className="btn"><Upload size={16} />{uploadFile?.name ?? "Choose PDF"}</span></label><button type="button" className="btn pri" disabled={!uploadFile || upload.isPending} onClick={() => upload.mutate()}>{upload.isPending ? "Validating…" : "Upload for approval"}</button></div>
           <p className="sub">Every active PDF in this library is attached to dealer outreach. Password-protected, invalid, or malware-flagged PDFs are rejected during upload.</p>
@@ -220,6 +252,121 @@ function ProspectAccessEditor({ data, loading, updatingUserId, onToggle }: { dat
   </div>;
 }
 
+function EmailAIControls() {
+  const { getToken } = useAuth();
+  const { user } = useUser();
+  const qc = useQueryClient();
+  const signedInEmail = user?.primaryEmailAddress?.emailAddress;
+  const [guidance, setGuidance] = useState("");
+  const [blockedPhrases, setBlockedPhrases] = useState("");
+  const [testForm, setTestForm] = useState<ProspectTestEmailRequest>({
+    idempotency_key: crypto.randomUUID(),
+    purpose: "dealer_information",
+    sample_contact_name: "Alex Morgan",
+    sample_dealer_name: "Example Motors",
+    ai_instructions: "",
+    include_collateral: true,
+  });
+  const [testResult, setTestResult] = useState<ProspectTestEmailResponse | null>(null);
+
+  const policy = useQuery({
+    queryKey: ["prospect-outreach-policy"],
+    queryFn: async () => api<ProspectOutreachPolicy>("/dealer-os/prospect-outreach/policy", { authToken: (await getToken()) ?? undefined }),
+  });
+
+  useEffect(() => {
+    if (!policy.data) return;
+    setGuidance(policy.data.drafting_guidance);
+    setBlockedPhrases(policy.data.additional_blocked_phrases.join("\n"));
+  }, [policy.data]);
+
+  const normalizedBlockedPhrases = blockedPhrases.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+  const blockedPhraseError = normalizedBlockedPhrases.length > 50
+    ? "Use no more than 50 blocked phrases."
+    : normalizedBlockedPhrases.find((value) => value.length > 160)
+      ? "Each blocked phrase must be 160 characters or fewer."
+      : "";
+  const policyDirty = Boolean(policy.data) && (
+    guidance.trim() !== policy.data?.drafting_guidance
+    || JSON.stringify(normalizedBlockedPhrases) !== JSON.stringify(policy.data?.additional_blocked_phrases ?? [])
+  );
+
+  const savePolicy = useMutation({
+    mutationFn: async () => api<ProspectOutreachPolicy>("/dealer-os/prospect-outreach/policy", {
+      method: "PATCH",
+      body: JSON.stringify({ drafting_guidance: guidance.trim(), additional_blocked_phrases: normalizedBlockedPhrases }),
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onSuccess: (next) => {
+      qc.setQueryData(["prospect-outreach-policy"], next);
+      setGuidance(next.drafting_guidance);
+      setBlockedPhrases(next.additional_blocked_phrases.join("\n"));
+    },
+  });
+
+  const sendTest = useMutation({
+    mutationFn: async () => api<ProspectTestEmailResponse>("/dealer-os/prospect-outreach/test-email", {
+      method: "POST",
+      body: JSON.stringify({ ...testForm, ai_instructions: testForm.ai_instructions?.trim() || null }),
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onMutate: () => setTestResult(null),
+    onSuccess: (result) => {
+      setTestResult(result);
+      // Keep the same key for an uncertain provider outcome so checking again
+      // can never create a duplicate. Completed attempts get a fresh key.
+      if (result.delivery_state !== "uncertain") {
+        setTestForm((current) => ({ ...current, idempotency_key: crypto.randomUUID() }));
+      }
+    },
+  });
+
+  const startSeparateTest = () => {
+    setTestForm((current) => ({ ...current, idempotency_key: crypto.randomUUID() }));
+    setTestResult(null);
+  };
+
+  const resetPolicy = () => {
+    setGuidance(policy.data?.drafting_guidance ?? "");
+    setBlockedPhrases((policy.data?.additional_blocked_phrases ?? []).join("\n"));
+  };
+  const selectedRecipe = TEST_EMAIL_RECIPES.find((recipe) => recipe.value === testForm.purpose);
+  const error = policy.error || savePolicy.error || sendTest.error;
+
+  return <div className="prospectEmailAIAdmin">
+    <section className="prospectAIIntro">
+      <span><Bot size={23} /></span>
+      <div><h3>Email AI controls</h3><p className="sub">The email choices under Call outcomes are <b>draft recipes</b>: they tell AI which approved message to prepare. They are not fixed, finished emails. Every draft remains grounded in QC&apos;s approved products, links, footer, and collateral.</p></div>
+    </section>
+
+    <section className="prospectAISettingsCard" aria-busy={policy.isLoading || savePolicy.isPending}>
+      <header><div><span className="prospectSectionEyebrow"><Sparkles size={14} /> Firm drafting policy</span><h3>Teach the drafting system what to avoid</h3><p className="sub">This is enforceable policy applied to every generation, edit, and final send—not model fine-tuning. Guidance shapes tone; blocked phrases are a hard stop.</p></div>{policy.data?.updated_at && <small>Last saved {new Date(policy.data.updated_at).toLocaleString()}</small>}</header>
+      {policy.isLoading ? <div className="empty compact">Loading AI email policy…</div> : <div className="prospectAIFormGrid">
+        <label><span className="lbl">Drafting guidance</span><textarea className="field" rows={7} maxLength={3000} value={guidance} onChange={(event) => setGuidance(event.target.value)} placeholder="Example: Be concise and consultative. Never use pressure tactics. Refer to the recipient as a dealership owner, not a borrower." /><small>Soft instructions for voice, structure, and phrases to avoid. Do not place private client information here.</small></label>
+        <label><span className="lbl">Additional blocked phrases · {normalizedBlockedPhrases.length}/50</span><textarea className="field" rows={7} value={blockedPhrases} onChange={(event) => setBlockedPhrases(event.target.value)} placeholder={"guaranteed approval\nbest rate in the market\npre-approved"} aria-invalid={Boolean(blockedPhraseError)} /><small className={blockedPhraseError ? "dangerText" : ""}>{blockedPhraseError || "One exact phrase per line. Matching copy is rejected even after a person edits a draft."}</small></label>
+      </div>}
+      <div className="prospectLockedRules"><div><ShieldCheck size={18} /><span><b>Permanent QC safeguards</b><small>Admins can add stricter rules, but these cannot be removed.</small></span></div><ul>{(policy.data?.locked_rules ?? []).map((rule) => <li key={rule}><LockKeyhole size={13} />{rule}</li>)}</ul></div>
+      <div className="prospectDialogActions"><button type="button" className="btn" disabled={!policyDirty || savePolicy.isPending} onClick={resetPolicy}>Discard changes</button><button type="button" className="btn pri" disabled={!policyDirty || Boolean(blockedPhraseError) || savePolicy.isPending || policy.isLoading} onClick={() => savePolicy.mutate()}>{savePolicy.isPending ? "Saving policy…" : "Save AI email policy"}</button></div>
+    </section>
+
+    <section className="prospectAITestCard">
+      <header><div><span className="prospectSectionEyebrow"><FlaskConical size={14} /> Safe test delivery</span><h3>Send yourself a real test email</h3><p className="sub">Runs the same AI rules, approved catalog, footer, and optional active PDFs used by live outreach.</p></div><span className="prospectTestRecipient"><Mail size={15} /><span><small>Only sends to your login email</small><b>{policy.data?.test_recipient_email ?? signedInEmail ?? "Signed-in administrator"}</b></span></span></header>
+      <div className="prospectAITestNotice"><Info size={16} /><span><b>This does not touch a prospect.</b> No stage, outcome, call attempt, follow-up, reply thread, or {policy.data?.review_seconds ? `${policy.data.review_seconds}-second` : "outreach"} countdown is created.</span></div>
+      {policyDirty && <div className="prospectAITestNotice"><CircleAlert size={16} /><span><b>Your AI policy has unsaved changes.</b> Save or discard them before starting a new test so the email uses exactly what this screen shows.</span></div>}
+      <div className="prospectAITestGrid">
+        <label><span className="lbl">AI draft recipe</span><select className="field" value={testForm.purpose} onChange={(event) => setTestForm((current) => ({ ...current, purpose: event.target.value as ProspectDraftPurpose }))}>{TEST_EMAIL_RECIPES.map((recipe) => <option key={recipe.value} value={recipe.value}>{recipe.label}</option>)}</select><small>{selectedRecipe?.detail}</small></label>
+        <label><span className="lbl">Sample contact name</span><input className="field" maxLength={160} value={testForm.sample_contact_name} onChange={(event) => setTestForm((current) => ({ ...current, sample_contact_name: event.target.value }))} /></label>
+        <label><span className="lbl">Sample dealer name</span><input className="field" maxLength={180} value={testForm.sample_dealer_name} onChange={(event) => setTestForm((current) => ({ ...current, sample_dealer_name: event.target.value }))} /></label>
+        <label className="prospectAITestInstructions"><span className="lbl">Instructions for this test only</span><textarea className="field" rows={4} maxLength={1500} value={testForm.ai_instructions ?? ""} onChange={(event) => setTestForm((current) => ({ ...current, ai_instructions: event.target.value }))} placeholder="Optional context or tone request. Firm policy still wins." /></label>
+      </div>
+      <label className="prospectCheckCard"><input type="checkbox" checked={testForm.include_collateral} onChange={(event) => setTestForm((current) => ({ ...current, include_collateral: event.target.checked }))} /><span><b>Attach every active Dealer Outreach PDF</b><small>Uses the approved bundle exactly as a live information email would.</small></span></label>
+      {testResult && <div className={testResult.delivery_state === "sent" ? "prospectTestSuccess" : testResult.delivery_state === "uncertain" ? "prospectTestUncertain" : "prospectTestFailure"} role="status">{testResult.delivery_state === "sent" ? <CheckCircle2 size={19} /> : testResult.delivery_state === "uncertain" ? <CircleAlert size={19} /> : <CircleX size={19} />}<span><b>{testResult.delivery_state === "sent" ? `Provider accepted the test for ${testResult.to_email}` : testResult.delivery_state === "uncertain" ? `Delivery to ${testResult.to_email} is uncertain` : `The test to ${testResult.to_email} was not accepted`}</b><small>{testResult.subject} · {testResult.draft_source === "ai" ? "AI draft" : "approved fallback"} · {testResult.attachment_names.length} attachment{testResult.attachment_names.length === 1 ? "" : "s"}</small>{testResult.detail && <small>{testResult.detail}</small>}</span></div>}
+      <div className="prospectDialogActions">{testResult?.delivery_state === "uncertain" && <button type="button" className="btn" disabled={sendTest.isPending} onClick={startSeparateTest}>I checked — start a separate test</button>}<button type="button" className="btn pri" disabled={sendTest.isPending || !testForm.sample_contact_name.trim() || !testForm.sample_dealer_name.trim() || (policyDirty && testResult?.delivery_state !== "uncertain")} onClick={() => sendTest.mutate()}><Mail size={16} />{sendTest.isPending ? "Working…" : testResult?.delivery_state === "uncertain" ? "Check delivery status" : "Send test to my login email"}</button></div>
+    </section>
+    {error && <div className="note" role="alert">{error instanceof Error ? error.message : "The email AI settings could not be completed."}</div>}
+  </div>;
+}
+
 function CollateralHistory({ assetId }: { assetId: string }) {
   const { getToken } = useAuth();
   const [open, setOpen] = useState(false);
@@ -248,14 +395,119 @@ function DefinitionEditor({ kind, items, newLabel, setNewLabel, busy, onCreate, 
   return <div className="prospectDefinitionEditor"><div className="prospectConfigIntro"><div><h3>{kind === "stage" ? "Pipeline stages" : "Call outcomes"}</h3><p className="sub">Labels can change; stable system keys remain fixed. Drag the handle to reorder.</p></div><form onSubmit={(event) => { event.preventDefault(); if (newLabel.trim()) onCreate(); }}><input className="field" value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder={`New ${kind} label`} /><button type="submit" className="btn pri" disabled={!newLabel.trim() || busy}><Plus size={16} /> Add</button></form></div><div className="prospectDefinitionRows">{ordered.map((item) => <div key={item.key} className={`prospectDefinitionRow${item.is_active === false ? " retired" : ""}`} onDragOver={(event) => { if (item.is_active !== false) event.preventDefault(); }} onDrop={() => drop(item.key)}><button type="button" className="prospectDragHandle" draggable={item.is_active !== false} onDragStart={(event) => { setDragged(item.key); event.dataTransfer.effectAllowed = "move"; }} disabled={item.is_active === false} aria-label={`Drag to reorder ${item.label}`} title="Drag to reorder"><GripVertical size={18} /></button><span><b>{item.label}</b><small>{item.key}</small></span><input className="field" aria-label={`Rename ${item.label}`} defaultValue={item.label} onBlur={(event) => { const label = event.target.value.trim(); if (label && label !== item.label && item.id) onUpdate(item.id, { label }); }} /><button type="button" className="btn sm" disabled={busy || !item.id} onClick={() => item.id && onUpdate(item.id, { is_active: item.is_active === false })}>{item.is_active === false ? "Restore" : "Retire"}</button></div>)}</div></div>;
 }
 
-function OutcomeAutomationEditor({ outcomes, stages, busy, onSave }: { outcomes: ProspectOutcome[]; stages: ProspectStage[]; busy: boolean; onSave: (id: string, actionConfig: Record<string, unknown>) => void }) {
+function OutcomeAutomationEditor({ outcomes, stages, reviewSeconds, busy, onSave }: { outcomes: ProspectOutcome[]; stages: ProspectStage[]; reviewSeconds?: number; busy: boolean; onSave: (id: string, actionConfig: ProspectOutcomeActionConfig) => void }) {
   const active = outcomes.filter((item) => item.is_active !== false);
+  const activeStages = stages.filter((stage) => stage.is_active !== false);
   const [selectedKey, setSelectedKey] = useState(active[0]?.key ?? "");
   const selected = active.find((item) => item.key === selectedKey) ?? active[0];
-  const config = selected?.action_config ?? {};
-  const [draft, setDraft] = useState<Record<string, unknown>>(config);
-  const choose = (key: string) => { const next = active.find((item) => item.key === key); setSelectedKey(key); setDraft(next?.action_config ?? {}); };
-  const set = (key: string, value: unknown) => setDraft((current) => { const next = { ...current }; if (value === "" || value === false || value == null) delete next[key]; else next[key] = value; return next; });
+  const storedConfig = selected?.action_config ?? {};
+  const storedFingerprint = configFingerprint(storedConfig);
+  const [draft, setDraft] = useState<ProspectOutcomeActionConfig>(storedConfig);
+
+  useEffect(() => {
+    setDraft({ ...storedConfig });
+  }, [selectedKey, storedFingerprint]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const choose = (key: string) => {
+    const next = active.find((item) => item.key === key);
+    setSelectedKey(key);
+    setDraft({ ...(next?.action_config ?? {}) });
+  };
+  const patchDraft = (patch: Partial<ProspectOutcomeActionConfig>, remove: Array<keyof ProspectOutcomeActionConfig> = []) => setDraft((current) => {
+    const next = { ...current, ...patch };
+    remove.forEach((key) => delete next[key]);
+    return next;
+  });
+  const stageEffect = draft.stage_strategy === "advance_follow_up" ? "advance_follow_up" : draft.target_stage_key ? `stage:${draft.target_stage_key}` : "none";
+  const followUpEffect = draft.clear_follow_up ? "clear" : draft.requires_follow_up ? "required" : draft.follow_up_delay_hours ? "automatic" : "none";
+  const selectedRecipe = OUTCOME_EMAIL_RECIPES.find((recipe) => recipe.value === draft.email_action);
+  const dirty = configFingerprint(draft) !== storedFingerprint;
+
+  const changeStageEffect = (value: string) => {
+    const next = { ...draft };
+    if (draft.target_stage_key === "booked") delete next.requires_appointment;
+    delete next.stage_strategy;
+    delete next.target_stage_key;
+    if (value === "advance_follow_up") {
+      next.stage_strategy = "advance_follow_up";
+      delete next.requires_appointment;
+      delete next.set_do_not_contact;
+      delete next.suppress_email;
+      delete next.clear_follow_up;
+    } else if (value.startsWith("stage:")) {
+      const target = value.slice(6);
+      next.target_stage_key = target;
+      if (target === "booked") next.requires_appointment = true;
+      else delete next.requires_appointment;
+      if (target === "not_interested") {
+        next.set_do_not_contact = true;
+        next.clear_follow_up = true;
+        delete next.email_action;
+        delete next.workflow_action;
+        delete next.requires_follow_up;
+        delete next.follow_up_delay_hours;
+      } else {
+        delete next.set_do_not_contact;
+      }
+    }
+    setDraft(next);
+  };
+  const changeEmailAction = (value: string) => {
+    if (!value) return patchDraft({}, ["email_action"]);
+    patchDraft({ email_action: value as ProspectEmailAction }, ["set_do_not_contact", "suppress_email"]);
+  };
+  const changeFollowUpEffect = (value: string) => {
+    if (value === "required") return patchDraft({ requires_follow_up: true }, ["follow_up_delay_hours", "clear_follow_up"]);
+    if (value === "automatic") return patchDraft({ follow_up_delay_hours: draft.follow_up_delay_hours || 24 }, ["requires_follow_up", "clear_follow_up"]);
+    if (value === "clear") return patchDraft({ clear_follow_up: true }, ["requires_follow_up", "follow_up_delay_hours"]);
+    patchDraft({}, ["requires_follow_up", "follow_up_delay_hours", "clear_follow_up"]);
+  };
+  const changeDoNotContact = (checked: boolean) => {
+    if (!checked) return patchDraft({}, ["set_do_not_contact"]);
+    const remove: Array<keyof ProspectOutcomeActionConfig> = ["email_action", "workflow_action", "requires_follow_up", "follow_up_delay_hours", "stage_strategy", "requires_appointment"];
+    if (draft.target_stage_key !== "not_interested") remove.push("target_stage_key");
+    patchDraft({ set_do_not_contact: true, clear_follow_up: true }, remove);
+  };
+  const changeSuppressEmail = (checked: boolean) => {
+    if (!checked) return patchDraft({}, ["suppress_email"]);
+    const remove: Array<keyof ProspectOutcomeActionConfig> = ["email_action", "workflow_action", "requires_follow_up", "follow_up_delay_hours", "stage_strategy", "requires_appointment"];
+    if (draft.target_stage_key !== "not_interested") remove.push("target_stage_key");
+    patchDraft({ suppress_email: true, set_do_not_contact: true, clear_follow_up: true }, remove);
+  };
+
+  const effectSummary = useMemo(() => {
+    const effects: string[] = [];
+    if (draft.stage_strategy === "advance_follow_up") effects.push("Advance New → Emailed → Follow-up 1 → Follow-up 2 (and remain at Follow-up 2 after that).");
+    else if (draft.target_stage_key) effects.push(`Move the prospect to ${activeStages.find((stage) => stage.key === draft.target_stage_key)?.label ?? draft.target_stage_key}.`);
+    else effects.push("Keep the prospect in the current stage.");
+    if (selectedRecipe) effects.push(`Create the “${selectedRecipe.label}” AI draft. It enters the ${reviewSeconds ? `${reviewSeconds}-second` : "configured"} review window and sends automatically if the agent does not approve, edit, or cancel it first.`);
+    else effects.push("Do not create an email.");
+    if (draft.workflow_action === "book_appointment") effects.push("Open the booking workflow for the agent.");
+    if (draft.requires_appointment) effects.push("Require a linked appointment before the outcome can finish.");
+    if (draft.requires_follow_up) effects.push("Require the agent to choose a callback date and time.");
+    else if (draft.follow_up_delay_hours) effects.push(`Schedule the next follow-up ${draft.follow_up_delay_hours} hour${draft.follow_up_delay_hours === 1 ? "" : "s"} later.`);
+    else if (draft.clear_follow_up) effects.push("Clear any scheduled follow-up.");
+    if (draft.increment_call_attempt) effects.push("Add one call attempt.");
+    if (draft.set_do_not_contact) effects.push("Mark the prospect do-not-contact.");
+    if (draft.suppress_email) effects.push("Add the address to email suppression.");
+    return effects;
+  }, [activeStages, draft, reviewSeconds, selectedRecipe]);
+
   if (!selected) return null;
-  return <section className="prospectOutcomeAutomation"><header><div><h3>Outcome automation</h3><p className="sub">Choose the explicit stage, email draft, consent, and follow-up effects for an outcome.</p></div><select className="field" value={selected.key} onChange={(event) => choose(event.target.value)}>{active.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></header><div className="prospectAutomationGrid"><label><span className="lbl">Move to stage</span><select className="field" value={String(draft.target_stage_key ?? "")} onChange={(event) => set("target_stage_key", event.target.value)}><option value="">No automatic move</option>{stages.filter((stage) => stage.is_active !== false).map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}</select></label><label><span className="lbl">Email draft</span><select className="field" value={String(draft.email_action ?? "")} onChange={(event) => set("email_action", event.target.value)}><option value="">No email</option><option value="dealer_information_pack">Dealer information pack</option><option value="missed_call">Missed call</option><option value="callback_confirmation">Callback confirmation</option><option value="booking_link">Booking link</option></select></label><label><span className="lbl">Workflow</span><select className="field" value={String(draft.workflow_action ?? "")} onChange={(event) => set("workflow_action", event.target.value)}><option value="">No workflow</option><option value="book_appointment">Book appointment</option></select></label><label><span className="lbl">Automatic follow-up delay</span><input className="field" type="number" min={1} max={8760} step={1} placeholder="Hours (optional)" value={String(draft.follow_up_delay_hours ?? "")} onChange={(event) => set("follow_up_delay_hours", event.target.value ? Math.min(8760, Math.max(1, Number(event.target.value))) : "")} /><small className="prospectFieldHelp">Schedules the next attempt without asking the agent for a callback time.</small></label></div><div className="prospectAutomationChecks"><label><input type="checkbox" checked={draft.requires_follow_up === true} onChange={(event) => set("requires_follow_up", event.target.checked)} /> Require callback time from agent</label><label><input type="checkbox" checked={draft.requires_appointment === true} onChange={(event) => set("requires_appointment", event.target.checked)} /> Require appointment</label><label><input type="checkbox" checked={draft.increment_call_attempt === true} onChange={(event) => set("increment_call_attempt", event.target.checked)} /> Count call attempt</label><label><input type="checkbox" checked={draft.set_do_not_contact === true} onChange={(event) => set("set_do_not_contact", event.target.checked)} /> Mark do-not-contact</label><label><input type="checkbox" checked={draft.clear_follow_up === true} onChange={(event) => set("clear_follow_up", event.target.checked)} /> Clear follow-up</label><label><input type="checkbox" checked={draft.suppress_email === true} onChange={(event) => set("suppress_email", event.target.checked)} /> Suppress email</label></div><div className="prospectDialogActions"><button type="button" className="btn pri" disabled={busy || !selected.id} onClick={() => selected.id && onSave(selected.id, draft)}>{busy ? "Saving…" : "Save outcome automation"}</button></div></section>;
+  return <section className="prospectOutcomeAutomation">
+    <header><div><span className="prospectSectionEyebrow"><Bot size={14} /> Outcome builder</span><h3>What should happen after this call?</h3><p className="sub">Configure one clear set of effects. Conflicting choices are removed automatically.</p></div><label><span className="lbl">Editing outcome</span><select className="field" value={selected.key} onChange={(event) => choose(event.target.value)}>{active.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></header>
+
+    <div className="prospectAutomationSections">
+      <section><header><span>1</span><div><b>Pipeline position</b><small>Choose either a fixed destination or the follow-up sequence.</small></div></header><label><span className="lbl">Stage after outcome</span><select className="field" value={stageEffect} onChange={(event) => changeStageEffect(event.target.value)}><option value="none">Stay in current stage</option><option value="advance_follow_up">Advance through follow-up sequence</option><optgroup label="Move to a specific stage">{activeStages.filter((stage) => stage.key !== "converted").map((stage) => <option key={stage.key} value={`stage:${stage.key}`}>{stage.label}</option>)}</optgroup></select><small>Converted is intentionally excluded; conversion must complete through Create AI Intake.</small></label></section>
+
+      <section><header><span>2</span><div><b>Dealer email</b><small>These options are AI draft recipes, not finished templates.</small></div></header><label><span className="lbl">AI draft after outcome</span><select className="field" value={draft.email_action ?? ""} onChange={(event) => changeEmailAction(event.target.value)} disabled={draft.set_do_not_contact || draft.suppress_email}><option value="">No email</option>{OUTCOME_EMAIL_RECIPES.map((recipe) => <option key={recipe.value} value={recipe.value}>{recipe.label}</option>)}</select><small>{selectedRecipe ? `${selectedRecipe.detail} The server starts the ${reviewSeconds ? `${reviewSeconds}-second` : "configured"} review window after drafting.` : draft.set_do_not_contact || draft.suppress_email ? "Email is unavailable while do-not-contact or suppression is enabled." : "This outcome will not draft or send an email."}</small></label></section>
+
+      <section><header><span>3</span><div><b>Next action</b><small>Control booking, appointment, and follow-up requirements.</small></div></header><div className="prospectAutomationStack"><label><span className="lbl">Agent workflow</span><select className="field" value={draft.workflow_action ?? ""} onChange={(event) => event.target.value ? patchDraft({ workflow_action: "book_appointment" }, ["set_do_not_contact", "suppress_email"]) : patchDraft({}, ["workflow_action"])} disabled={draft.set_do_not_contact || draft.suppress_email}><option value="">No workflow</option><option value="book_appointment">Open booking workflow</option></select></label><label><span className="lbl">Follow-up handling</span><select className="field" value={followUpEffect} onChange={(event) => changeFollowUpEffect(event.target.value)} disabled={draft.set_do_not_contact || draft.suppress_email}><option value="none">Leave follow-up unchanged</option><option value="required">Require callback date and time</option><option value="automatic">Schedule automatically</option><option value="clear">Clear scheduled follow-up</option></select></label>{followUpEffect === "automatic" && <label><span className="lbl">Delay in hours</span><input className="field" type="number" min={1} max={8760} step={1} value={draft.follow_up_delay_hours ?? 24} onChange={(event) => patchDraft({ follow_up_delay_hours: Math.min(8760, Math.max(1, Number(event.target.value) || 1)) })} /></label>}</div></section>
+
+      <section><header><span>4</span><div><b>Call and contact controls</b><small>Safety choices override incompatible outreach actions.</small></div></header><div className="prospectAutomationChecks"><label><input type="checkbox" checked={draft.increment_call_attempt === true} onChange={(event) => event.target.checked ? patchDraft({ increment_call_attempt: true }) : patchDraft({}, ["increment_call_attempt"])} /> Count this call attempt</label><label><input type="checkbox" checked={draft.requires_appointment === true} disabled={draft.target_stage_key === "booked"} onChange={(event) => event.target.checked ? patchDraft({ requires_appointment: true }) : patchDraft({}, ["requires_appointment"])} /> Require linked appointment</label><label><input type="checkbox" checked={draft.set_do_not_contact === true} disabled={draft.target_stage_key === "not_interested"} onChange={(event) => changeDoNotContact(event.target.checked)} /> Mark do-not-contact</label><label><input type="checkbox" checked={draft.suppress_email === true} onChange={(event) => changeSuppressEmail(event.target.checked)} /> Suppress this email address</label></div></section>
+    </div>
+
+    <div className="prospectEffectSummary"><span><CheckCircle2 size={19} /></span><div><b>Result when “{selected.label}” is applied</b><ul>{effectSummary.map((effect) => <li key={effect}>{effect}</li>)}</ul></div></div>
+    <div className="prospectDialogActions"><button type="button" className="btn" disabled={!dirty || busy} onClick={() => setDraft({ ...storedConfig })}>Discard changes</button><button type="button" className="btn pri" disabled={busy || !selected.id || !dirty} onClick={() => selected.id && onSave(selected.id, draft)}>{busy ? "Saving outcome…" : "Save outcome automation"}</button></div>
+  </section>;
 }
