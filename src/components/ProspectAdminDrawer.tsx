@@ -5,6 +5,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, CheckCircle2, CircleAlert, CircleX, FileText, FlaskConical, GripVertical, Info, LockKeyhole, Mail, Plus, Search, ShieldCheck, Sparkles, Upload, Users } from "lucide-react";
 import { api, apiBlob, apiUpload } from "@/lib/api";
+import { prospectGenerationReasonLabel } from "@/lib/prospects";
 import type {
   ProspectAccessList,
   ProspectAccessUser,
@@ -264,10 +265,12 @@ function EmailAIControls() {
     purpose: "dealer_information",
     sample_contact_name: "Alex Morgan",
     sample_dealer_name: "Example Motors",
+    verified_conversation_context: "",
     ai_instructions: "",
     include_collateral: true,
   });
   const [testResult, setTestResult] = useState<ProspectTestEmailResponse | null>(null);
+  const [submittedTest, setSubmittedTest] = useState<ProspectTestEmailRequest | null>(null);
 
   const policy = useQuery({
     queryKey: ["prospect-outreach-policy"],
@@ -305,12 +308,15 @@ function EmailAIControls() {
   });
 
   const sendTest = useMutation({
-    mutationFn: async () => api<ProspectTestEmailResponse>("/dealer-os/prospect-outreach/test-email", {
+    mutationFn: async (request: ProspectTestEmailRequest) => api<ProspectTestEmailResponse>("/dealer-os/prospect-outreach/test-email", {
       method: "POST",
-      body: JSON.stringify({ ...testForm, ai_instructions: testForm.ai_instructions?.trim() || null }),
+      body: JSON.stringify(request),
       authToken: (await getToken()) ?? undefined,
     }),
-    onMutate: () => setTestResult(null),
+    onMutate: (request) => {
+      setSubmittedTest(request);
+      setTestResult(null);
+    },
     onSuccess: (result) => {
       setTestResult(result);
       // Keep the same key for an uncertain provider outcome so checking again
@@ -322,8 +328,19 @@ function EmailAIControls() {
   });
 
   const startSeparateTest = () => {
+    sendTest.reset();
     setTestForm((current) => ({ ...current, idempotency_key: crypto.randomUUID() }));
+    setSubmittedTest(null);
     setTestResult(null);
+  };
+
+  const submitTest = () => {
+    const retryingUnresolvedAttempt = (testResult?.delivery_state === "uncertain" || sendTest.isError) && submittedTest;
+    sendTest.mutate(retryingUnresolvedAttempt || {
+      ...testForm,
+      verified_conversation_context: testForm.verified_conversation_context?.trim().replace(/\s+/g, " ") || null,
+      ai_instructions: testForm.ai_instructions?.trim() || null,
+    });
   };
 
   const resetPolicy = () => {
@@ -332,6 +349,23 @@ function EmailAIControls() {
   };
   const selectedRecipe = TEST_EMAIL_RECIPES.find((recipe) => recipe.value === testForm.purpose);
   const error = policy.error || savePolicy.error || sendTest.error;
+  const uncertainAttempt = testResult?.delivery_state === "uncertain";
+  const unresolvedTestAttempt = Boolean(sendTest.isError && submittedTest);
+  const retryingExistingTest = uncertainAttempt || unresolvedTestAttempt;
+  const testFieldsLocked = sendTest.isPending || retryingExistingTest;
+  const submittedInstructions = submittedTest?.ai_instructions?.trim() ?? "";
+  const submittedVerifiedContext = submittedTest?.verified_conversation_context?.trim() ?? "";
+  const instructionsNotApplied = Boolean(submittedInstructions) && Boolean(testResult) && (
+    testResult?.draft_source === "fallback"
+    || testResult?.instruction_disposition === "not_applied_fallback"
+  );
+  const instructionsSubmittedToAI = Boolean(submittedInstructions)
+    && testResult?.draft_source === "ai"
+    && testResult?.instruction_disposition === "submitted_to_ai";
+  const instructionDispositionUnknown = Boolean(submittedInstructions)
+    && testResult?.draft_source === "ai"
+    && testResult?.instruction_disposition === "unknown";
+  const generationReason = prospectGenerationReasonLabel(testResult?.generation_reason);
 
   return <div className="prospectEmailAIAdmin">
     <section className="prospectAIIntro">
@@ -354,16 +388,21 @@ function EmailAIControls() {
       <div className="prospectAITestNotice"><Info size={16} /><span><b>This does not touch a prospect.</b> No stage, outcome, call attempt, follow-up, reply thread, or {policy.data?.review_seconds ? `${policy.data.review_seconds}-second` : "outreach"} countdown is created.</span></div>
       {policyDirty && <div className="prospectAITestNotice"><CircleAlert size={16} /><span><b>Your AI policy has unsaved changes.</b> Save or discard them before starting a new test so the email uses exactly what this screen shows.</span></div>}
       <div className="prospectAITestGrid">
-        <label><span className="lbl">AI draft recipe</span><select className="field" value={testForm.purpose} onChange={(event) => setTestForm((current) => ({ ...current, purpose: event.target.value as ProspectDraftPurpose }))}>{TEST_EMAIL_RECIPES.map((recipe) => <option key={recipe.value} value={recipe.value}>{recipe.label}</option>)}</select><small>{selectedRecipe?.detail}</small></label>
-        <label><span className="lbl">Sample contact name</span><input className="field" maxLength={160} value={testForm.sample_contact_name} onChange={(event) => setTestForm((current) => ({ ...current, sample_contact_name: event.target.value }))} /></label>
-        <label><span className="lbl">Sample dealer name</span><input className="field" maxLength={180} value={testForm.sample_dealer_name} onChange={(event) => setTestForm((current) => ({ ...current, sample_dealer_name: event.target.value }))} /></label>
-        <label className="prospectAITestInstructions"><span className="lbl">Instructions for this test only</span><textarea className="field" rows={4} maxLength={1500} value={testForm.ai_instructions ?? ""} onChange={(event) => setTestForm((current) => ({ ...current, ai_instructions: event.target.value }))} placeholder="Optional context or tone request. Firm policy still wins." /></label>
+        <label><span className="lbl">AI draft recipe</span><select className="field" value={testForm.purpose} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, purpose: event.target.value as ProspectDraftPurpose }))}>{TEST_EMAIL_RECIPES.map((recipe) => <option key={recipe.value} value={recipe.value}>{recipe.label}</option>)}</select><small>{selectedRecipe?.detail}</small></label>
+        <label><span className="lbl">Sample contact name</span><input className="field" maxLength={160} value={testForm.sample_contact_name} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, sample_contact_name: event.target.value }))} /></label>
+        <label><span className="lbl">Sample dealer name</span><input className="field" maxLength={180} value={testForm.sample_dealer_name} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, sample_dealer_name: event.target.value }))} /></label>
+        <label className="prospectAITestInstructions"><span className="lbl">Verified conversation context · this test only</span><textarea className="field" rows={3} maxLength={500} value={testForm.verified_conversation_context ?? ""} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, verified_conversation_context: event.target.value }))} placeholder="We spoke earlier today at 10:00 AM." /><small>Enter one short fact the agent can verify. It is inserted exactly into both AI and fallback drafts, then checked by QC&apos;s safeguards.</small></label>
+        <label className="prospectAITestInstructions"><span className="lbl">AI tone and format instructions · this test only</span><textarea className="field" rows={4} maxLength={1500} value={testForm.ai_instructions ?? ""} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, ai_instructions: event.target.value }))} placeholder="Keep the email concise, warm, and use bullets instead of long paragraphs." /><small>These instructions guide AI wording only. They cannot select programs, change approved claims, or override blocked phrases. Programs come from QC&apos;s centrally managed dealer scope.</small></label>
       </div>
-      <label className="prospectCheckCard"><input type="checkbox" checked={testForm.include_collateral} onChange={(event) => setTestForm((current) => ({ ...current, include_collateral: event.target.checked }))} /><span><b>Attach every active Dealer Outreach PDF</b><small>Uses the approved bundle exactly as a live information email would.</small></span></label>
-      {testResult && <div className={testResult.delivery_state === "sent" ? "prospectTestSuccess" : testResult.delivery_state === "uncertain" ? "prospectTestUncertain" : "prospectTestFailure"} role="status">{testResult.delivery_state === "sent" ? <CheckCircle2 size={19} /> : testResult.delivery_state === "uncertain" ? <CircleAlert size={19} /> : <CircleX size={19} />}<span><b>{testResult.delivery_state === "sent" ? `Provider accepted the test for ${testResult.to_email}` : testResult.delivery_state === "uncertain" ? `Delivery to ${testResult.to_email} is uncertain` : `The test to ${testResult.to_email} was not accepted`}</b><small>{testResult.subject} · {testResult.draft_source === "ai" ? "AI draft" : "approved fallback"} · {testResult.attachment_names.length} attachment{testResult.attachment_names.length === 1 ? "" : "s"}</small>{testResult.detail && <small>{testResult.detail}</small>}</span></div>}
-      <div className="prospectDialogActions">{testResult?.delivery_state === "uncertain" && <button type="button" className="btn" disabled={sendTest.isPending} onClick={startSeparateTest}>I checked — start a separate test</button>}<button type="button" className="btn pri" disabled={sendTest.isPending || !testForm.sample_contact_name.trim() || !testForm.sample_dealer_name.trim() || (policyDirty && testResult?.delivery_state !== "uncertain")} onClick={() => sendTest.mutate()}><Mail size={16} />{sendTest.isPending ? "Working…" : testResult?.delivery_state === "uncertain" ? "Check delivery status" : "Send test to my login email"}</button></div>
+      <label className="prospectCheckCard"><input type="checkbox" checked={testForm.include_collateral} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, include_collateral: event.target.checked }))} /><span><b>Attach every active Dealer Outreach PDF</b><small>Uses the approved bundle exactly as a live information email would.</small></span></label>
+      {testResult && <div className="prospectTestResultStack">
+        <div className={`prospectGenerationStatus ${testResult.draft_source === "ai" ? "ai" : "fallback"}`} role="status">{testResult.draft_source === "ai" ? <Sparkles size={20} /> : <ShieldCheck size={20} />}<span><b>{testResult.draft_source === "ai" ? "AI draft used" : "Deterministic safe fallback — AI was not used"}</b><small>{testResult.draft_source === "ai" ? "AI prepared the personalized wording under QC's saved guidance and safeguards. Program names and claims remained centrally controlled." : "The delivered copy came from QC's fixed approved template. Verified conversation context remains deterministic; AI tone and format guidance does not change fallback copy."}</small>{generationReason && <small><b>Reason:</b> {generationReason}</small>}{submittedVerifiedContext && <small className="prospectVerifiedContext"><b>Verified context was included deterministically:</b> {submittedVerifiedContext}</small>}{instructionsSubmittedToAI && <small className="prospectInstructionApplied">Your tone and format instructions were submitted to AI. Exact wording may vary; QC&apos;s central rules still control the result.</small>}{instructionsNotApplied && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>Tone instructions were not applied.</b> The verified conversation context was still included deterministically.</span></small>}{instructionDispositionUnknown && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>AI instruction handling is unknown for this replayed result.</b> Verified conversation context remains deterministic; run a separate test before relying on the requested tone or format.</span></small>}</span></div>
+        <div className={testResult.delivery_state === "sent" ? "prospectTestSuccess" : testResult.delivery_state === "uncertain" ? "prospectTestUncertain" : "prospectTestFailure"} role="status">{testResult.delivery_state === "sent" ? <CheckCircle2 size={19} /> : testResult.delivery_state === "uncertain" ? <CircleAlert size={19} /> : <CircleX size={19} />}<span><b>{testResult.delivery_state === "sent" ? `Provider accepted the test for ${testResult.to_email}` : testResult.delivery_state === "uncertain" ? `Delivery to ${testResult.to_email} is uncertain` : `The test to ${testResult.to_email} was not accepted`}</b><small>{testResult.subject} · {testResult.attachment_names.length} attachment{testResult.attachment_names.length === 1 ? "" : "s"}</small>{testResult.detail && <small>{testResult.detail}</small>}</span></div>
+      </div>}
+      {unresolvedTestAttempt && <div className="prospectTestUncertain" role="alert"><CircleAlert size={19} /><span><b>The request did not return a resolved delivery result.</b><small>{sendTest.error instanceof Error ? sendTest.error.message : "The network or API request did not complete."} The original fields and idempotency key are frozen. Retry the exact same test safely, or start a separate test to edit anything.</small></span></div>}
+      <div className="prospectDialogActions">{retryingExistingTest && <button type="button" className="btn" disabled={sendTest.isPending} onClick={startSeparateTest}>{uncertainAttempt ? "I checked — start a separate test" : "Start a separate test and edit"}</button>}<button type="button" className="btn pri" disabled={sendTest.isPending || !testForm.sample_contact_name.trim() || !testForm.sample_dealer_name.trim() || (policyDirty && !retryingExistingTest)} onClick={submitTest}><Mail size={16} />{sendTest.isPending ? "Working…" : unresolvedTestAttempt ? "Retry the same test safely" : uncertainAttempt ? "Check delivery status" : "Send test to my login email"}</button></div>
     </section>
-    {error && <div className="note" role="alert">{error instanceof Error ? error.message : "The email AI settings could not be completed."}</div>}
+    {error && !unresolvedTestAttempt && <div className="note" role="alert">{error instanceof Error ? error.message : "The email AI settings could not be completed."}</div>}
   </div>;
 }
 

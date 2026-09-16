@@ -38,6 +38,23 @@ export type ProspectOutcome = {
 };
 
 export type ProspectDraftPurpose = "dealer_information" | "missed_call" | "callback_confirmation" | "booking" | "general";
+export type ProspectGenerationReason = "ai_generated" | "ai_disabled" | "ai_access_blocked" | "ai_provider_error" | "ai_output_rejected" | "ai_usage_record_failed" | "approved_fallback" | "fallback_reason_not_recorded";
+export type ProspectInstructionDisposition = "none" | "submitted_to_ai" | "not_applied_fallback" | "unknown";
+
+export function prospectGenerationReasonLabel(reason?: ProspectGenerationReason | null): string | null {
+  if (!reason) return null;
+  const labels: Record<ProspectGenerationReason, string> = {
+    ai_generated: "AI completed the personalized draft.",
+    ai_disabled: "AI drafting is currently disabled.",
+    ai_access_blocked: "The drafting service could not access the approved AI model.",
+    ai_provider_error: "The AI provider could not complete this draft.",
+    ai_output_rejected: "The AI response did not pass QC's content safeguards.",
+    ai_usage_record_failed: "AI processing could not be completed with the required audit record.",
+    approved_fallback: "The approved deterministic template was selected.",
+    fallback_reason_not_recorded: "This earlier result did not record a specific fallback reason.",
+  };
+  return labels[reason];
+}
 
 export type ProspectOutreachPolicy = {
   drafting_guidance: string;
@@ -54,8 +71,17 @@ export type ProspectTestEmailRequest = {
   purpose: ProspectDraftPurpose;
   sample_contact_name: string;
   sample_dealer_name: string;
+  verified_conversation_context?: string | null;
   ai_instructions?: string | null;
   include_collateral: boolean;
+};
+
+export type ProspectEmailDraftCreateRequest = {
+  idempotency_key: string;
+  purpose: ProspectDraftPurpose;
+  private_note?: string | null;
+  verified_conversation_context?: string | null;
+  ai_instructions?: string | null;
 };
 
 export type ProspectTestEmailResponse = {
@@ -64,6 +90,8 @@ export type ProspectTestEmailResponse = {
   to_email: string;
   subject: string;
   draft_source: "ai" | "fallback";
+  generation_reason?: ProspectGenerationReason | null;
+  instruction_disposition?: ProspectInstructionDisposition | null;
   attachment_names: string[];
   detail: string;
 };
@@ -117,6 +145,8 @@ export type ProspectEmailDraft = {
   attachment_names?: string[];
   version?: number;
   draft_source?: "ai" | "fallback";
+  generation_reason?: ProspectGenerationReason | null;
+  instruction_disposition?: ProspectInstructionDisposition | null;
   secure_bundle_link_required?: boolean;
   delivery_mode?: "attachments" | "secure_link";
   secure_bundle_expires_at?: string | null;
