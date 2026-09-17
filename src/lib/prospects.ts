@@ -87,6 +87,16 @@ export type ProspectEmailDraftCreateRequest = {
   collateral_asset_ids: string[];
 };
 
+export type DealerProspectCreateRequest = {
+  contact_id?: string | null;
+  contact_name: string;
+  dealer_name: string;
+  email: string;
+  phone: string;
+  source: "quick_add";
+  initial_note?: string | null;
+};
+
 export type ProspectSenderIdentity = {
   sender_display_name?: string | null;
   sender_title?: string | null;

@@ -23,10 +23,14 @@ export default function ProspectEmailComposer({
   prospect,
   initialDraft,
   onClose,
+  embedded = false,
+  onDraftChange,
 }: {
   prospect: DealerProspect;
   initialDraft?: ProspectEmailDraft | null;
   onClose: () => void;
+  embedded?: boolean;
+  onDraftChange?: (draft: ProspectEmailDraft | null) => void;
 }) {
   const { getToken } = useAuth();
   const me = useMe();
@@ -105,6 +109,10 @@ export default function ProspectEmailComposer({
     };
     generate.mutate(request);
   };
+
+  useEffect(() => {
+    onDraftChange?.(draft);
+  }, [draft, onDraftChange]);
 
   const senderPreview = useQuery({
     queryKey: ["prospect-outreach", "sender-preview"],
@@ -196,8 +204,7 @@ export default function ProspectEmailComposer({
     alternate_contact_email: draft.alternate_contact_email,
   } : senderPreview.data ?? { sender_display_name: me.name, sender_display_email: me.email };
 
-  return <Drawer title="Dealer outreach email" width={920} onClose={onClose} dismissOnBackdrop={false}>
-    <div className="prospectComposer">
+  const content = <div className="prospectComposer">
       <section className="panel">
         <div className="panel-h"><b>Draft controls</b><span className={`prospectDraftStatus status-${draft?.status ?? "empty"}`}><Clock3 size={14} />{statusLabel}</span></div>
         <div className="panel-b prospectComposerControls">
@@ -221,7 +228,7 @@ export default function ProspectEmailComposer({
             <div className="prospectAttachmentList"><b>Approved dealer collateral</b>{(draft.attachment_names ?? []).map((name) => <span key={name}><FileText size={15} />{name}</span>)}{!(draft.attachment_names ?? []).length && <small>{draft.attachment_count ?? 0} approved PDF attachment{draft.attachment_count === 1 ? "" : "s"}</small>}</div>
             {draft.secure_bundle_link_required && <div className="prospectSecureBundle"><span><b>Attachment bundle is too large</b><small>Use one secure seven-day ZIP link for the complete approved bundle. Nothing will be silently omitted.</small></span><button type="button" className="btn" disabled={busy} onClick={() => useSecureBundle.mutate()}>{useSecureBundle.isPending ? "Preparing secure link…" : "Use secure bundle link"}</button></div>}
             {draft.delivery_mode === "secure_link" && <div className="prospectSuccess">Complete collateral will be delivered through a secure bundle link{draft.secure_bundle_expires_at ? ` expiring ${new Date(draft.secure_bundle_expires_at).toLocaleString()}` : ""}.</div>}
-            {draft.status === "pending_review" && <div className="prospectCountdown"><Clock3 size={20} /><span><b>{remaining > 0 ? `${remaining} seconds to review` : "Handing off to the delivery queue"}</b><small>The countdown continues if this drawer or browser closes.</small></span></div>}
+            {draft.status === "pending_review" && <div className="prospectCountdown"><Clock3 size={20} /><span><b>{remaining > 0 ? `${remaining} seconds to review` : "Handing off to the delivery queue"}</b><small>The countdown continues if this window or browser closes.</small></span></div>}
             {(draft.status === "pending_review" || draft.status === "editing") && <div className="prospectDialogActions">
               <button type="button" className="btn" disabled={busy} onClick={() => cancel.mutate()}>Cancel send</button>
               {!editing && <button type="button" className="btn" disabled={busy} onClick={() => stopForEdit.mutate()}>Edit</button>}
@@ -234,6 +241,8 @@ export default function ProspectEmailComposer({
           {error && !unresolvedGeneration && <div className="note" role="alert">{error instanceof Error ? error.message : "The email action could not be completed."}</div>}
         </div>
       </section>
-    </div>
-  </Drawer>;
+    </div>;
+
+  if (embedded) return content;
+  return <Drawer title="Dealer outreach email" width={920} onClose={onClose} dismissOnBackdrop={false}>{content}</Drawer>;
 }
