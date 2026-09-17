@@ -56,7 +56,7 @@ export function prospectGenerationReasonLabel(reason?: ProspectGenerationReason 
   return labels[reason];
 }
 
-export type ProspectOutreachPolicy = {
+export type ProspectOutreachPolicy = ProspectSenderIdentity & {
   drafting_guidance: string;
   additional_blocked_phrases: string[];
   locked_rules: string[];
@@ -74,6 +74,7 @@ export type ProspectTestEmailRequest = {
   verified_conversation_context?: string | null;
   ai_instructions?: string | null;
   include_collateral: boolean;
+  collateral_asset_ids: string[];
 };
 
 export type ProspectEmailDraftCreateRequest = {
@@ -82,9 +83,58 @@ export type ProspectEmailDraftCreateRequest = {
   private_note?: string | null;
   verified_conversation_context?: string | null;
   ai_instructions?: string | null;
+  include_collateral: boolean;
+  collateral_asset_ids: string[];
 };
 
-export type ProspectTestEmailResponse = {
+export type ProspectSenderIdentity = {
+  sender_display_name?: string | null;
+  sender_title?: string | null;
+  sender_phone?: string | null;
+  sender_display_email?: string | null;
+  sender_from_name?: string | null;
+  envelope_from_email?: string | null;
+  reply_contact_email?: string | null;
+  alternate_contact_email?: string | null;
+};
+
+export type MarketingCollateralAsset = {
+  id: string;
+  assignment?: string;
+  logical_key?: string;
+  name: string;
+  file_name: string;
+  version: number;
+  sort_order: number;
+  status: "pending_approval" | "active" | "retired";
+  content_type?: string;
+  size_bytes?: number | null;
+  sha256?: string | null;
+  validation_status?: string | null;
+  validation_detail?: string | null;
+  preview_url?: string | null;
+  download_url?: string | null;
+  uploaded_by_user_id?: string | null;
+  approved_by_user_id?: string | null;
+  retired_by_user_id?: string | null;
+  created_at?: string;
+};
+
+export type MarketingCollateralList = { items: MarketingCollateralAsset[] };
+
+export type ProspectCollateralOption = {
+  id: string;
+  name: string;
+  file_name: string;
+  version: number;
+  sort_order: number;
+  size_bytes: number;
+  preview_url?: string | null;
+};
+
+export type ProspectCollateralOptionList = { items: ProspectCollateralOption[] };
+
+export type ProspectTestEmailResponse = ProspectSenderIdentity & {
   ok: boolean;
   delivery_state: "sent" | "failed" | "uncertain";
   to_email: string;
@@ -129,7 +179,7 @@ export type ProspectActivity = {
   created_at: string;
 };
 
-export type ProspectEmailDraft = {
+export type ProspectEmailDraft = ProspectSenderIdentity & {
   id: string;
   prospect_id?: string;
   to_email?: string;

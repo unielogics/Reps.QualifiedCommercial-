@@ -6,8 +6,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, Clock3, FileText, ShieldCheck, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { prospectGenerationReasonLabel } from "@/lib/prospects";
-import type { DealerProspect, ProspectEmailDraft, ProspectEmailDraftCreateRequest } from "@/lib/prospects";
+import type { DealerProspect, ProspectEmailDraft, ProspectEmailDraftCreateRequest, ProspectSenderIdentity } from "@/lib/prospects";
+import { useMe } from "@/lib/useMe";
 import Drawer from "./Drawer";
+import ProspectCollateralSelector, { type ProspectCollateralSelection } from "./ProspectCollateralSelector";
+import ProspectSenderIdentityCard from "./ProspectSenderIdentityCard";
 
 const WEBSITE = "https://qualifiedcommercial.com/industries/auto";
 
@@ -26,10 +29,13 @@ export default function ProspectEmailComposer({
   onClose: () => void;
 }) {
   const { getToken } = useAuth();
+  const me = useMe();
   const qc = useQueryClient();
   const [privateNote, setPrivateNote] = useState("");
   const [verifiedContext, setVerifiedContext] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [collateralSelection, setCollateralSelection] = useState<ProspectCollateralSelection>({ includeAll: true, selectedIds: [], sendWithoutPdfs: false });
+  const [collateralReady, setCollateralReady] = useState(false);
   const [generationKey, setGenerationKey] = useState(() => crypto.randomUUID());
   const [submittedGeneration, setSubmittedGeneration] = useState<ProspectEmailDraftCreateRequest | null>(null);
   const [subject, setSubject] = useState(initialDraft?.subject ?? "");
@@ -94,9 +100,17 @@ export default function ProspectEmailComposer({
       verified_conversation_context: verifiedContext.trim().replace(/\s+/g, " ") || null,
       ai_instructions: instructions.trim() || null,
       purpose: "dealer_information" as const,
+      include_collateral: collateralSelection.includeAll,
+      collateral_asset_ids: collateralSelection.selectedIds,
     };
     generate.mutate(request);
   };
+
+  const senderPreview = useQuery({
+    queryKey: ["prospect-outreach", "sender-preview"],
+    queryFn: async () => api<ProspectSenderIdentity>("/dealer-os/prospect-outreach/sender-preview", { authToken: (await getToken()) ?? undefined }),
+    staleTime: 60_000,
+  });
 
   const startSeparateGeneration = () => {
     generate.reset();
@@ -157,7 +171,7 @@ export default function ProspectEmailComposer({
     onSuccess: (updated) => { setDraft(updated); setSubject(updated.subject); setBody(updated.body); setRemaining(updated.countdown_seconds ?? secondsUntil(updated.send_after)); setEditing(false); refresh(); },
   });
 
-  const error = generate.error || stopForEdit.error || approve.error || cancel.error || useSecureBundle.error || liveDraft.error;
+  const error = generate.error || stopForEdit.error || approve.error || cancel.error || useSecureBundle.error || liveDraft.error || (!draft && senderPreview.error);
   const busy = generate.isPending || stopForEdit.isPending || approve.isPending || cancel.isPending || useSecureBundle.isPending;
   const unresolvedGeneration = Boolean(generate.isError && submittedGeneration && !draft);
   const generationFieldsLocked = generate.isPending || unresolvedGeneration;
@@ -171,6 +185,16 @@ export default function ProspectEmailComposer({
   const toneInstructionsNotApplied = draft?.instruction_disposition === "not_applied_fallback";
   const toneInstructionsSubmitted = draft?.instruction_disposition === "submitted_to_ai";
   const toneInstructionStatusUnknown = draft?.draft_source === "ai" && draft?.instruction_disposition === "unknown";
+  const senderIdentity: ProspectSenderIdentity = draft ? {
+    sender_display_name: draft.sender_display_name,
+    sender_title: draft.sender_title,
+    sender_phone: draft.sender_phone,
+    sender_display_email: draft.sender_display_email,
+    sender_from_name: draft.sender_from_name,
+    envelope_from_email: draft.envelope_from_email || draft.from_email,
+    reply_contact_email: draft.reply_contact_email || draft.reply_to,
+    alternate_contact_email: draft.alternate_contact_email,
+  } : senderPreview.data ?? { sender_display_name: me.name, sender_display_email: me.email };
 
   return <Drawer title="Dealer outreach email" width={920} onClose={onClose} dismissOnBackdrop={false}>
     <div className="prospectComposer">
@@ -182,11 +206,14 @@ export default function ProspectEmailComposer({
             <label><span className="lbl">Private internal note</span><textarea className="field" rows={3} value={privateNote} disabled={generationFieldsLocked} onChange={(event) => setPrivateNote(event.target.value)} placeholder="Call notes for the activity history. This is never sent to AI or the recipient." /><small className="prospectFieldHelp">Private to your team; excluded from the AI prompt and email.</small></label>
             <label><span className="lbl">Verified conversation context</span><textarea className="field" rows={3} maxLength={500} value={verifiedContext} disabled={generationFieldsLocked} onChange={(event) => setVerifiedContext(event.target.value)} placeholder="We spoke earlier today at 10:00 AM." /><small className="prospectFieldHelp">Enter one short fact you can verify. It is inserted exactly into AI and deterministic fallback drafts, then checked by QC&apos;s safeguards.</small></label>
             <label><span className="lbl">AI tone and format instructions</span><textarea className="field" rows={4} maxLength={1500} value={instructions} disabled={generationFieldsLocked} onChange={(event) => setInstructions(event.target.value)} placeholder="Keep the introduction warm and concise. Use bullets instead of long paragraphs." /><small className="prospectFieldHelp">Guides wording and structure only. It cannot select programs, change approved claims, or override blocked phrases.</small></label>
+            <ProspectSenderIdentityCard identity={senderIdentity} fallbackName={me.name} fallbackEmail={me.email} />
+            <ProspectCollateralSelector value={collateralSelection} disabled={generationFieldsLocked} onChange={setCollateralSelection} onReadyChange={setCollateralReady} />
             <div className="prospectGuardrail"><ShieldCheck size={18} /><span><b>Approved content stays authoritative</b><small>The AI cannot change program facts, promises, website link, signature, compliance footer, or collateral.</small></span></div>
             {unresolvedGeneration && <div className="prospectTestUncertain" role="alert"><CircleAlert size={19} /><span><b>Draft creation did not return a resolved result.</b><small>{generate.error instanceof Error ? generate.error.message : "The network or API request did not complete."} The exact inputs and idempotency key are frozen. Retry the same request first. Starting separately uses a new key and could duplicate a draft if the first request reached the server; check the prospect activity or shared outbox before doing so.</small></span></div>}
-            <div className="prospectDialogActions">{unresolvedGeneration && <button type="button" className="btn" disabled={generate.isPending} onClick={startSeparateGeneration}>I checked activity — start a separate draft</button>}<button type="button" className="btn pri" disabled={generate.isPending} onClick={submitGeneration}>{generate.isPending ? "Drafting…" : unresolvedGeneration ? "Retry the exact same draft request" : "Generate draft and start 60-second review"}</button></div>
+            <div className="prospectDialogActions">{unresolvedGeneration && <button type="button" className="btn" disabled={generate.isPending} onClick={startSeparateGeneration}>I checked activity — start a separate draft</button>}<button type="button" className="btn pri" disabled={generate.isPending || (!unresolvedGeneration && (senderPreview.isLoading || senderPreview.isError || !collateralReady))} onClick={submitGeneration}>{generate.isPending ? "Drafting…" : unresolvedGeneration ? "Retry the exact same draft request" : senderPreview.isLoading ? "Loading sender identity…" : "Generate draft and start 60-second review"}</button></div>
           </>}
           {draft && <>
+            <ProspectSenderIdentityCard identity={senderIdentity} fallbackName={me.name} fallbackEmail={me.email} />
             {draft.draft_source && <div className={`prospectGenerationStatus ${draft.draft_source === "ai" ? "ai" : "fallback"}`} role="status">{draft.draft_source === "ai" ? <Sparkles size={20} /> : <ShieldCheck size={20} />}<span><b>{draft.draft_source === "ai" ? "AI draft used" : "Deterministic safe fallback — AI was not used"}</b><small>{draft.draft_source === "ai" ? "AI prepared the personalized wording under QC's safeguards. Verified conversation context was inserted deterministically, and programs and claims remained centrally controlled." : "QC's fixed approved template prepared this draft. Verified conversation context was still inserted deterministically; AI tone and format instructions did not shape the copy."}</small>{generationReason && <small><b>Reason:</b> {generationReason}</small>}{submittedVerifiedContext && <small className="prospectVerifiedContext"><b>Verified context included exactly:</b> {submittedVerifiedContext}</small>}{toneInstructionsSubmitted && <small className="prospectInstructionApplied">Tone and format instructions were submitted to AI. Exact wording may vary.</small>}{toneInstructionsNotApplied && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>Tone instructions were not applied.</b> Verified conversation context remains included deterministically.</span></small>}{toneInstructionStatusUnknown && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>AI instruction handling is unknown for this earlier draft.</b> Verified conversation context remains deterministic.</span></small>}</span></div>}
             <label><span className="lbl">Subject</span><input className="field" value={subject} readOnly={!editing} onChange={(event) => setSubject(event.target.value)} /></label>
             <label><span className="lbl">Message</span><textarea className="field prospectEmailBody" rows={15} value={body} readOnly={!editing} onChange={(event) => setBody(event.target.value)} /></label>

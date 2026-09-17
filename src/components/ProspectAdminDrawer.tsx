@@ -7,6 +7,8 @@ import { Bot, CheckCircle2, CircleAlert, CircleX, FileText, FlaskConical, GripVe
 import { api, apiBlob, apiUpload } from "@/lib/api";
 import { prospectGenerationReasonLabel } from "@/lib/prospects";
 import type {
+  MarketingCollateralAsset,
+  MarketingCollateralList,
   ProspectAccessList,
   ProspectAccessUser,
   ProspectDraftPurpose,
@@ -19,24 +21,10 @@ import type {
   ProspectTestEmailResponse,
 } from "@/lib/prospects";
 import Drawer from "./Drawer";
+import ProspectCollateralSelector, { type ProspectCollateralSelection } from "./ProspectCollateralSelector";
+import ProspectSenderIdentityCard from "./ProspectSenderIdentityCard";
 
 type AdminTab = "access" | "stages" | "outcomes" | "email_ai" | "collateral";
-type CollateralAsset = {
-  id: string;
-  name: string;
-  file_name: string;
-  version: number;
-  sort_order: number;
-  status: "pending_approval" | "active" | "retired";
-  size_bytes?: number | null;
-  sha256?: string | null;
-  validation_status?: string | null;
-  uploaded_by_user_id?: string | null;
-  approved_by_user_id?: string | null;
-  retired_by_user_id?: string | null;
-  created_at: string;
-};
-type CollateralList = { items: CollateralAsset[] };
 type CollateralHistoryItem = {
   id: string;
   asset_id: string;
@@ -70,6 +58,22 @@ function slug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
+function canonicalGuidance(value: string): string {
+  return value.replace(/\r\n?/g, "\n").trim();
+}
+
+function canonicalBlockedPhrases(value: string | string[]): string[] {
+  const rows = Array.isArray(value) ? value : value.split(/\r?\n/);
+  const seen = new Set<string>();
+  return rows.map((item) => item.trim().replace(/\s+/g, " ")).filter((item) => {
+    if (!item) return false;
+    const key = item.toLocaleLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export default function ProspectAdminDrawer({
   onClose,
   stages: initialStages,
@@ -94,7 +98,7 @@ export default function ProspectAdminDrawer({
   const outcomeQuery = useQuery({ queryKey: ["prospect-outcome-admin"], queryFn: async () => api<ProspectOutcome[]>("/dealer-os/prospect-outcomes?include_inactive=true", { authToken: (await getToken()) ?? undefined }), initialData: initialOutcomes, enabled: tab === "outcomes" });
   const access = useQuery({ queryKey: ["prospect-access-admin"], queryFn: async () => api<ProspectAccessList>("/dealer-os/admin/prospect-access", { authToken: (await getToken()) ?? undefined }), enabled: tab === "access" });
   const outreachPolicy = useQuery({ queryKey: ["prospect-outreach-policy"], queryFn: async () => api<ProspectOutreachPolicy>("/dealer-os/prospect-outreach/policy", { authToken: (await getToken()) ?? undefined }), enabled: tab === "outcomes" });
-  const collateral = useQuery({ queryKey: ["marketing-collateral"], queryFn: async () => api<CollateralList>("/dealer-os/marketing-collateral?include_retired=true", { authToken: (await getToken()) ?? undefined }), enabled: tab === "collateral" });
+  const collateral = useQuery({ queryKey: ["marketing-collateral"], queryFn: async () => api<MarketingCollateralList>("/dealer-os/marketing-collateral?include_retired=true", { authToken: (await getToken()) ?? undefined }), enabled: tab === "collateral" });
   const invalidate = () => { void qc.invalidateQueries({ queryKey: ["prospect-stage-admin"] }); void qc.invalidateQueries({ queryKey: ["prospect-outcome-admin"] }); void qc.invalidateQueries({ queryKey: ["marketing-collateral"] }); onChanged(); };
 
   const createDefinition = useMutation({
@@ -113,7 +117,7 @@ export default function ProspectAdminDrawer({
     mutationFn: async () => {
       if (!uploadFile) throw new Error("Choose a PDF first.");
       const form = new FormData(); form.append("file", uploadFile); form.append("name", uploadTitle.trim() || uploadFile.name.replace(/\.pdf$/i, "")); form.append("sort_order", "0");
-      return apiUpload<CollateralAsset>("/dealer-os/marketing-collateral", form, { authToken: (await getToken()) ?? undefined });
+      return apiUpload<MarketingCollateralAsset>("/dealer-os/marketing-collateral", form, { authToken: (await getToken()) ?? undefined });
     },
     onSuccess: () => { setUploadFile(null); setUploadTitle(""); if (fileInput.current) fileInput.current.value = ""; invalidate(); },
   });
@@ -122,7 +126,7 @@ export default function ProspectAdminDrawer({
     onSuccess: invalidate,
   });
   const reorderCollateral = useMutation({
-    mutationFn: async ({ expectedIds, orderedIds }: { expectedIds: string[]; orderedIds: string[] }) => api<CollateralList>("/dealer-os/marketing-collateral/reorder", {
+    mutationFn: async ({ expectedIds, orderedIds }: { expectedIds: string[]; orderedIds: string[] }) => api<MarketingCollateralList>("/dealer-os/marketing-collateral/reorder", {
       method: "POST",
       body: JSON.stringify({ expected_ids: expectedIds, ordered_ids: orderedIds }),
       authToken: (await getToken()) ?? undefined,
@@ -180,7 +184,7 @@ export default function ProspectAdminDrawer({
         {tab === "email_ai" && <EmailAIControls />}
         {tab === "collateral" && <div className="prospectCollateralAdmin">
           <div className="prospectUploadBar"><label><span className="lbl">Display title</span><input className="field" value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} placeholder="Dealer capabilities guide" /></label><label className="prospectFilePicker"><span className="lbl">PDF file</span><input ref={fileInput} type="file" accept="application/pdf,.pdf" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} /><span className="btn"><Upload size={16} />{uploadFile?.name ?? "Choose PDF"}</span></label><button type="button" className="btn pri" disabled={!uploadFile || upload.isPending} onClick={() => upload.mutate()}>{upload.isPending ? "Validating…" : "Upload for approval"}</button></div>
-          <p className="sub">Every active PDF in this library is attached to dealer outreach. Password-protected, invalid, or malware-flagged PDFs are rejected during upload.</p>
+          <p className="sub">Every active PDF in this library appears in the outreach attachment picker and is included when an agent chooses the complete bundle. Password-protected, invalid, or malware-flagged PDFs are rejected during upload.</p>
           <div className="prospectCollateralRows">
             {collateral.isLoading && <div className="empty compact">Loading collateral…</div>}
             {(collateral.data?.items ?? []).slice().sort((a, b) => a.status === "retired" === (b.status === "retired") ? a.sort_order - b.sort_order : a.status === "retired" ? 1 : -1).map((asset) => (
@@ -260,6 +264,9 @@ function EmailAIControls() {
   const signedInEmail = user?.primaryEmailAddress?.emailAddress;
   const [guidance, setGuidance] = useState("");
   const [blockedPhrases, setBlockedPhrases] = useState("");
+  const [savedPolicy, setSavedPolicy] = useState<{ guidance: string; blockedPhrases: string[] } | null>(null);
+  const [policyTouched, setPolicyTouched] = useState(false);
+  const hydratedPolicyRevision = useRef<string | null>(null);
   const [testForm, setTestForm] = useState<ProspectTestEmailRequest>({
     idempotency_key: crypto.randomUUID(),
     purpose: "dealer_information",
@@ -268,7 +275,10 @@ function EmailAIControls() {
     verified_conversation_context: "",
     ai_instructions: "",
     include_collateral: true,
+    collateral_asset_ids: [],
   });
+  const [testSendWithoutPdfs, setTestSendWithoutPdfs] = useState(false);
+  const [testCollateralReady, setTestCollateralReady] = useState(false);
   const [testResult, setTestResult] = useState<ProspectTestEmailResponse | null>(null);
   const [submittedTest, setSubmittedTest] = useState<ProspectTestEmailRequest | null>(null);
 
@@ -279,31 +289,45 @@ function EmailAIControls() {
 
   useEffect(() => {
     if (!policy.data) return;
-    setGuidance(policy.data.drafting_guidance);
-    setBlockedPhrases(policy.data.additional_blocked_phrases.join("\n"));
-  }, [policy.data]);
+    const next = {
+      guidance: canonicalGuidance(policy.data.drafting_guidance),
+      blockedPhrases: canonicalBlockedPhrases(policy.data.additional_blocked_phrases),
+    };
+    const revision = JSON.stringify([policy.data.updated_at ?? null, policy.data.updated_by_user_id ?? null, next]);
+    if (hydratedPolicyRevision.current === revision || (policyTouched && savedPolicy)) return;
+    hydratedPolicyRevision.current = revision;
+    setSavedPolicy(next);
+    setGuidance(next.guidance);
+    setBlockedPhrases(next.blockedPhrases.join("\n"));
+    setPolicyTouched(false);
+  }, [policy.data, policyTouched, savedPolicy]);
 
-  const normalizedBlockedPhrases = blockedPhrases.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+  const normalizedGuidance = canonicalGuidance(guidance);
+  const normalizedBlockedPhrases = canonicalBlockedPhrases(blockedPhrases);
   const blockedPhraseError = normalizedBlockedPhrases.length > 50
     ? "Use no more than 50 blocked phrases."
     : normalizedBlockedPhrases.find((value) => value.length > 160)
       ? "Each blocked phrase must be 160 characters or fewer."
       : "";
-  const policyDirty = Boolean(policy.data) && (
-    guidance.trim() !== policy.data?.drafting_guidance
-    || JSON.stringify(normalizedBlockedPhrases) !== JSON.stringify(policy.data?.additional_blocked_phrases ?? [])
-  );
+  const guidanceDirty = Boolean(savedPolicy) && normalizedGuidance !== savedPolicy?.guidance;
+  const blockedPhrasesDirty = Boolean(savedPolicy) && JSON.stringify(normalizedBlockedPhrases) !== JSON.stringify(savedPolicy?.blockedPhrases ?? []);
+  const policyDirty = guidanceDirty || blockedPhrasesDirty;
+  const changedPolicySections = [guidanceDirty ? "Drafting guidance" : null, blockedPhrasesDirty ? "Additional blocked phrases" : null].filter((value): value is string => Boolean(value));
 
   const savePolicy = useMutation({
     mutationFn: async () => api<ProspectOutreachPolicy>("/dealer-os/prospect-outreach/policy", {
       method: "PATCH",
-      body: JSON.stringify({ drafting_guidance: guidance.trim(), additional_blocked_phrases: normalizedBlockedPhrases }),
+      body: JSON.stringify({ drafting_guidance: normalizedGuidance, additional_blocked_phrases: normalizedBlockedPhrases }),
       authToken: (await getToken()) ?? undefined,
     }),
     onSuccess: (next) => {
       qc.setQueryData(["prospect-outreach-policy"], next);
-      setGuidance(next.drafting_guidance);
-      setBlockedPhrases(next.additional_blocked_phrases.join("\n"));
+      const baseline = { guidance: canonicalGuidance(next.drafting_guidance), blockedPhrases: canonicalBlockedPhrases(next.additional_blocked_phrases) };
+      hydratedPolicyRevision.current = JSON.stringify([next.updated_at ?? null, next.updated_by_user_id ?? null, baseline]);
+      setSavedPolicy(baseline);
+      setGuidance(baseline.guidance);
+      setBlockedPhrases(baseline.blockedPhrases.join("\n"));
+      setPolicyTouched(false);
     },
   });
 
@@ -344,8 +368,9 @@ function EmailAIControls() {
   };
 
   const resetPolicy = () => {
-    setGuidance(policy.data?.drafting_guidance ?? "");
-    setBlockedPhrases((policy.data?.additional_blocked_phrases ?? []).join("\n"));
+    setGuidance(savedPolicy?.guidance ?? "");
+    setBlockedPhrases((savedPolicy?.blockedPhrases ?? []).join("\n"));
+    setPolicyTouched(false);
   };
   const selectedRecipe = TEST_EMAIL_RECIPES.find((recipe) => recipe.value === testForm.purpose);
   const error = policy.error || savePolicy.error || sendTest.error;
@@ -366,6 +391,15 @@ function EmailAIControls() {
     && testResult?.draft_source === "ai"
     && testResult?.instruction_disposition === "unknown";
   const generationReason = prospectGenerationReasonLabel(testResult?.generation_reason);
+  const collateralSelection: ProspectCollateralSelection = {
+    includeAll: testForm.include_collateral,
+    selectedIds: testForm.collateral_asset_ids,
+    sendWithoutPdfs: testSendWithoutPdfs,
+  };
+  const setCollateralSelection = (next: ProspectCollateralSelection) => {
+    setTestForm((current) => ({ ...current, include_collateral: next.includeAll, collateral_asset_ids: next.selectedIds }));
+    setTestSendWithoutPdfs(next.sendWithoutPdfs);
+  };
 
   return <div className="prospectEmailAIAdmin">
     <section className="prospectAIIntro">
@@ -376,8 +410,8 @@ function EmailAIControls() {
     <section className="prospectAISettingsCard" aria-busy={policy.isLoading || savePolicy.isPending}>
       <header><div><span className="prospectSectionEyebrow"><Sparkles size={14} /> Firm drafting policy</span><h3>Teach the drafting system what to avoid</h3><p className="sub">This is enforceable policy applied to every generation, edit, and final send—not model fine-tuning. Guidance shapes tone; blocked phrases are a hard stop.</p></div>{policy.data?.updated_at && <small>Last saved {new Date(policy.data.updated_at).toLocaleString()}</small>}</header>
       {policy.isLoading ? <div className="empty compact">Loading AI email policy…</div> : <div className="prospectAIFormGrid">
-        <label><span className="lbl">Drafting guidance</span><textarea className="field" rows={7} maxLength={3000} value={guidance} onChange={(event) => setGuidance(event.target.value)} placeholder="Example: Be concise and consultative. Never use pressure tactics. Refer to the recipient as a dealership owner, not a borrower." /><small>Soft instructions for voice, structure, and phrases to avoid. Do not place private client information here.</small></label>
-        <label><span className="lbl">Additional blocked phrases · {normalizedBlockedPhrases.length}/50</span><textarea className="field" rows={7} value={blockedPhrases} onChange={(event) => setBlockedPhrases(event.target.value)} placeholder={"guaranteed approval\nbest rate in the market\npre-approved"} aria-invalid={Boolean(blockedPhraseError)} /><small className={blockedPhraseError ? "dangerText" : ""}>{blockedPhraseError || "One exact phrase per line. Matching copy is rejected even after a person edits a draft."}</small></label>
+        <label><span className="lbl">Drafting guidance</span><textarea className="field" rows={7} maxLength={3000} value={guidance} onChange={(event) => { setGuidance(event.target.value); setPolicyTouched(true); }} placeholder="Example: Be concise and consultative. Never use pressure tactics. Refer to the recipient as a dealership owner, not a borrower." /><small>Soft instructions for voice, structure, and phrases to avoid. Do not place private client information here.</small></label>
+        <label><span className="lbl">Additional blocked phrases · {normalizedBlockedPhrases.length}/50</span><textarea className="field" rows={7} value={blockedPhrases} onChange={(event) => { setBlockedPhrases(event.target.value); setPolicyTouched(true); }} placeholder={"guaranteed approval\nbest rate in the market\npre-approved"} aria-invalid={Boolean(blockedPhraseError)} /><small className={blockedPhraseError ? "dangerText" : ""}>{blockedPhraseError || "One exact phrase per line. Matching copy is rejected even after a person edits a draft."}</small></label>
       </div>}
       <div className="prospectLockedRules"><div><ShieldCheck size={18} /><span><b>Permanent QC safeguards</b><small>Admins can add stricter rules, but these cannot be removed.</small></span></div><ul>{(policy.data?.locked_rules ?? []).map((rule) => <li key={rule}><LockKeyhole size={13} />{rule}</li>)}</ul></div>
       <div className="prospectDialogActions"><button type="button" className="btn" disabled={!policyDirty || savePolicy.isPending} onClick={resetPolicy}>Discard changes</button><button type="button" className="btn pri" disabled={!policyDirty || Boolean(blockedPhraseError) || savePolicy.isPending || policy.isLoading} onClick={() => savePolicy.mutate()}>{savePolicy.isPending ? "Saving policy…" : "Save AI email policy"}</button></div>
@@ -386,7 +420,8 @@ function EmailAIControls() {
     <section className="prospectAITestCard">
       <header><div><span className="prospectSectionEyebrow"><FlaskConical size={14} /> Safe test delivery</span><h3>Send yourself a real test email</h3><p className="sub">Runs the same AI rules, approved catalog, footer, and optional active PDFs used by live outreach.</p></div><span className="prospectTestRecipient"><Mail size={15} /><span><small>Only sends to your login email</small><b>{policy.data?.test_recipient_email ?? signedInEmail ?? "Signed-in administrator"}</b></span></span></header>
       <div className="prospectAITestNotice"><Info size={16} /><span><b>This does not touch a prospect.</b> No stage, outcome, call attempt, follow-up, reply thread, or {policy.data?.review_seconds ? `${policy.data.review_seconds}-second` : "outreach"} countdown is created.</span></div>
-      {policyDirty && <div className="prospectAITestNotice"><CircleAlert size={16} /><span><b>Your AI policy has unsaved changes.</b> Save or discard them before starting a new test so the email uses exactly what this screen shows.</span></div>}
+      {policyDirty && <div className="prospectAITestNotice"><CircleAlert size={16} /><span><b>Unsaved: {changedPolicySections.join(" and ")}.</b> Tests continue using the last saved policy—not the text currently shown above. Save or discard these edits before starting a new test.</span></div>}
+      <ProspectSenderIdentityCard identity={policy.data} fallbackName={user?.fullName} fallbackEmail={signedInEmail} />
       <div className="prospectAITestGrid">
         <label><span className="lbl">AI draft recipe</span><select className="field" value={testForm.purpose} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, purpose: event.target.value as ProspectDraftPurpose }))}>{TEST_EMAIL_RECIPES.map((recipe) => <option key={recipe.value} value={recipe.value}>{recipe.label}</option>)}</select><small>{selectedRecipe?.detail}</small></label>
         <label><span className="lbl">Sample contact name</span><input className="field" maxLength={160} value={testForm.sample_contact_name} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, sample_contact_name: event.target.value }))} /></label>
@@ -394,13 +429,13 @@ function EmailAIControls() {
         <label className="prospectAITestInstructions"><span className="lbl">Verified conversation context · this test only</span><textarea className="field" rows={3} maxLength={500} value={testForm.verified_conversation_context ?? ""} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, verified_conversation_context: event.target.value }))} placeholder="We spoke earlier today at 10:00 AM." /><small>Enter one short fact the agent can verify. It is inserted exactly into both AI and fallback drafts, then checked by QC&apos;s safeguards.</small></label>
         <label className="prospectAITestInstructions"><span className="lbl">AI tone and format instructions · this test only</span><textarea className="field" rows={4} maxLength={1500} value={testForm.ai_instructions ?? ""} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, ai_instructions: event.target.value }))} placeholder="Keep the email concise, warm, and use bullets instead of long paragraphs." /><small>These instructions guide AI wording only. They cannot select programs, change approved claims, or override blocked phrases. Programs come from QC&apos;s centrally managed dealer scope.</small></label>
       </div>
-      <label className="prospectCheckCard"><input type="checkbox" checked={testForm.include_collateral} disabled={testFieldsLocked} onChange={(event) => setTestForm((current) => ({ ...current, include_collateral: event.target.checked }))} /><span><b>Attach every active Dealer Outreach PDF</b><small>Uses the approved bundle exactly as a live information email would.</small></span></label>
+      <ProspectCollateralSelector value={collateralSelection} disabled={testFieldsLocked} onChange={setCollateralSelection} onReadyChange={setTestCollateralReady} />
       {testResult && <div className="prospectTestResultStack">
         <div className={`prospectGenerationStatus ${testResult.draft_source === "ai" ? "ai" : "fallback"}`} role="status">{testResult.draft_source === "ai" ? <Sparkles size={20} /> : <ShieldCheck size={20} />}<span><b>{testResult.draft_source === "ai" ? "AI draft used" : "Deterministic safe fallback — AI was not used"}</b><small>{testResult.draft_source === "ai" ? "AI prepared the personalized wording under QC's saved guidance and safeguards. Program names and claims remained centrally controlled." : "The delivered copy came from QC's fixed approved template. Verified conversation context remains deterministic; AI tone and format guidance does not change fallback copy."}</small>{generationReason && <small><b>Reason:</b> {generationReason}</small>}{submittedVerifiedContext && <small className="prospectVerifiedContext"><b>Verified context was included deterministically:</b> {submittedVerifiedContext}</small>}{instructionsSubmittedToAI && <small className="prospectInstructionApplied">Your tone and format instructions were submitted to AI. Exact wording may vary; QC&apos;s central rules still control the result.</small>}{instructionsNotApplied && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>Tone instructions were not applied.</b> The verified conversation context was still included deterministically.</span></small>}{instructionDispositionUnknown && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>AI instruction handling is unknown for this replayed result.</b> Verified conversation context remains deterministic; run a separate test before relying on the requested tone or format.</span></small>}</span></div>
         <div className={testResult.delivery_state === "sent" ? "prospectTestSuccess" : testResult.delivery_state === "uncertain" ? "prospectTestUncertain" : "prospectTestFailure"} role="status">{testResult.delivery_state === "sent" ? <CheckCircle2 size={19} /> : testResult.delivery_state === "uncertain" ? <CircleAlert size={19} /> : <CircleX size={19} />}<span><b>{testResult.delivery_state === "sent" ? `Provider accepted the test for ${testResult.to_email}` : testResult.delivery_state === "uncertain" ? `Delivery to ${testResult.to_email} is uncertain` : `The test to ${testResult.to_email} was not accepted`}</b><small>{testResult.subject} · {testResult.attachment_names.length} attachment{testResult.attachment_names.length === 1 ? "" : "s"}</small>{testResult.detail && <small>{testResult.detail}</small>}</span></div>
       </div>}
       {unresolvedTestAttempt && <div className="prospectTestUncertain" role="alert"><CircleAlert size={19} /><span><b>The request did not return a resolved delivery result.</b><small>{sendTest.error instanceof Error ? sendTest.error.message : "The network or API request did not complete."} The original fields and idempotency key are frozen. Retry the exact same test safely, or start a separate test to edit anything.</small></span></div>}
-      <div className="prospectDialogActions">{retryingExistingTest && <button type="button" className="btn" disabled={sendTest.isPending} onClick={startSeparateTest}>{uncertainAttempt ? "I checked — start a separate test" : "Start a separate test and edit"}</button>}<button type="button" className="btn pri" disabled={sendTest.isPending || !testForm.sample_contact_name.trim() || !testForm.sample_dealer_name.trim() || (policyDirty && !retryingExistingTest)} onClick={submitTest}><Mail size={16} />{sendTest.isPending ? "Working…" : unresolvedTestAttempt ? "Retry the same test safely" : uncertainAttempt ? "Check delivery status" : "Send test to my login email"}</button></div>
+      <div className="prospectDialogActions">{retryingExistingTest && <button type="button" className="btn" disabled={sendTest.isPending} onClick={startSeparateTest}>{uncertainAttempt ? "I checked — start a separate test" : "Start a separate test and edit"}</button>}<button type="button" className="btn pri" disabled={sendTest.isPending || !testForm.sample_contact_name.trim() || !testForm.sample_dealer_name.trim() || (!retryingExistingTest && (policy.isLoading || policy.isError || !testCollateralReady)) || (policyDirty && !retryingExistingTest)} onClick={submitTest}><Mail size={16} />{sendTest.isPending ? "Working…" : unresolvedTestAttempt ? "Retry the same test safely" : uncertainAttempt ? "Check delivery status" : policy.isLoading ? "Loading sender and policy…" : "Send test to my login email"}</button></div>
     </section>
     {error && !unresolvedTestAttempt && <div className="note" role="alert">{error instanceof Error ? error.message : "The email AI settings could not be completed."}</div>}
   </div>;
