@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CircleAlert, Mail, ShieldCheck } from "lucide-react";
+import { CircleAlert, Mail, PenLine, ShieldCheck, Sparkles } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type {
   DealerProspect,
@@ -46,8 +46,11 @@ export default function ProspectQuickAddModal({
   const [email, setEmail] = useState(initialValues?.email ?? "");
   const [phone, setPhone] = useState(initialValues?.phone ?? "");
   const [firstNote, setFirstNote] = useState("");
+  const [composeMode, setComposeMode] = useState<"ai" | "manual">("ai");
   const [verifiedContext, setVerifiedContext] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [manualSubject, setManualSubject] = useState("");
+  const [manualBody, setManualBody] = useState("");
   const [collateralSelection, setCollateralSelection] = useState<ProspectCollateralSelection>({ includeAll: true, selectedIds: [], sendWithoutPdfs: false });
   const [collateralReady, setCollateralReady] = useState(false);
   const [createdProspect, setCreatedProspect] = useState<DealerProspect | null>(null);
@@ -98,14 +101,15 @@ export default function ProspectQuickAddModal({
     : null;
   const duplicates = duplicateDetail?.code === "duplicate_prospect" ? duplicateDetail.candidates ?? [] : [];
   const setupLocked = create.isPending || createDraft.isPending || Boolean(createdProspect);
-  const canStartEmail = canCreate && collateralReady && senderPreview.isSuccess && !setupLocked;
+  const canStartEmail = canCreate && collateralReady && senderPreview.isSuccess && !setupLocked && (composeMode === "ai" || Boolean(manualSubject.trim() && manualBody.trim()));
   const draftFailureIsResolved = createDraft.error instanceof ApiError && createDraft.error.status >= 400 && createDraft.error.status < 500;
   const reviewIsSending = reviewDraft != null && ["pending_review", "queued", "sending"].includes(reviewDraft.status);
   const setupDirty = name !== (initialValues?.name ?? "")
     || dealerName !== (initialValues?.dealer_name ?? "")
     || email !== (initialValues?.email ?? "")
     || phone !== (initialValues?.phone ?? "")
-    || Boolean(firstNote || verifiedContext || instructions)
+    || Boolean(firstNote || verifiedContext || instructions || manualSubject || manualBody)
+    || composeMode !== "ai"
     || !collateralSelection.includeAll
     || collateralSelection.selectedIds.length > 0
     || collateralSelection.sendWithoutPdfs;
@@ -122,10 +126,13 @@ export default function ProspectQuickAddModal({
 
   const emailRequest = (): ProspectEmailDraftCreateRequest => ({
     idempotency_key: crypto.randomUUID(),
+    compose_mode: composeMode,
     purpose: "dealer_information",
     private_note: null,
-    verified_conversation_context: verifiedContext.trim().replace(/\s+/g, " ") || null,
-    ai_instructions: instructions.trim() || null,
+    verified_conversation_context: composeMode === "ai" ? verifiedContext.trim().replace(/\s+/g, " ") || null : null,
+    ai_instructions: composeMode === "ai" ? instructions.trim() || null : null,
+    subject: composeMode === "manual" ? manualSubject.trim() : null,
+    body: composeMode === "manual" ? manualBody.trim() : null,
     include_collateral: collateralSelection.includeAll,
     collateral_asset_ids: collateralSelection.selectedIds,
   });
@@ -178,7 +185,7 @@ export default function ProspectQuickAddModal({
   if (createdProspect && firstDraft) {
     return <Modal title="Review first dealer email" width={960} onClose={requestReviewClose}>
       <div className="prospectQuickStartReview">
-        <div className="prospectQuickStartSaved" role="status"><ShieldCheck size={19} /><span><b>{createdProspect.dealer_name} was added to the pipeline.</b><small>{firstNote.trim() ? "The first internal note is saved. " : ""}Review the email below; closing this window does not stop its server-side countdown.</small></span></div>
+        <div className="prospectQuickStartSaved" role="status"><ShieldCheck size={19} /><span><b>{createdProspect.dealer_name} was added to the Marketing pipeline.</b><small>{firstNote.trim() ? "The first internal note is saved. " : ""}{firstDraft.compose_mode === "manual" ? "Review and explicitly approve the manual email below; there is no automatic countdown." : "Review the email below; closing this window does not stop its server-side countdown."}</small></span></div>
         <ProspectEmailComposer prospect={createdProspect} initialDraft={firstDraft} onClose={requestReviewClose} onDraftChange={setReviewDraft} embedded />
         <div className="prospectDialogActions"><button type="button" className="btn" onClick={requestReviewClose}>{reviewIsSending ? "Keep sending & open prospect" : "Open prospect"}</button></div>
       </div>
@@ -202,8 +209,14 @@ export default function ProspectQuickAddModal({
       <section className="prospectQuickStartSection prospectQuickStartEmail">
         <header><span>2</span><div><b>Prepare the first email</b><small>Personalize approved copy and choose exactly which dealer PDFs to include.</small></div><span className="cellchip c-ok"><Mail size={13} /> Ready from here</span></header>
         <div className="prospectQuickStartRecipient"><small>To</small><b>{name.trim() || "Contact name"} · {dealerName.trim() || "Dealer name"}</b><span>{email.trim() || "Email address"}</span></div>
-        <label><span className="lbl">Verified conversation context <small>Optional</small></span><textarea className="field" rows={3} maxLength={500} disabled={setupLocked} value={verifiedContext} onChange={(event) => setVerifiedContext(event.target.value)} placeholder="We spoke earlier today at 10:00 AM about renovating your facility." /><small>Only enter facts you can verify. This context may appear in the dealer&apos;s email.</small></label>
-        <label><span className="lbl">AI tone and format instructions <small>Optional</small></span><textarea className="field" rows={3} maxLength={1500} disabled={setupLocked} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Keep it concise and use bullets instead of long paragraphs." /><small>Controls wording and structure only; approved products, claims, links, and compliance language stay locked.</small></label>
+        <div className="prospectComposeMode" role="tablist" aria-label="First email drafting method"><button type="button" role="tab" aria-selected={composeMode === "ai"} className={composeMode === "ai" ? "on" : ""} disabled={setupLocked} onClick={() => setComposeMode("ai")}><Sparkles size={16} /> AI-assisted</button><button type="button" role="tab" aria-selected={composeMode === "manual"} className={composeMode === "manual" ? "on" : ""} disabled={setupLocked} onClick={() => setComposeMode("manual")}><PenLine size={16} /> Write manually</button></div>
+        {composeMode === "ai" ? <>
+          <label><span className="lbl">Verified conversation context <small>Optional</small></span><textarea className="field" rows={3} maxLength={500} disabled={setupLocked} value={verifiedContext} onChange={(event) => setVerifiedContext(event.target.value)} placeholder="We spoke earlier today at 10:00 AM about renovating your facility." /><small>Only enter facts you can verify. This context may appear in the dealer&apos;s email.</small></label>
+          <label><span className="lbl">AI tone and format instructions <small>Optional</small></span><textarea className="field" rows={3} maxLength={1500} disabled={setupLocked} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Keep it concise and use bullets instead of long paragraphs." /><small>Controls wording and structure only; approved products, claims, links, and compliance language stay locked.</small></label>
+        </> : <>
+          <label><span className="lbl">Subject</span><input className="field" maxLength={220} required disabled={setupLocked} value={manualSubject} onChange={(event) => setManualSubject(event.target.value)} placeholder={`A note for ${dealerName.trim() || "your dealership"}`} /></label>
+          <label><span className="lbl">Message</span><textarea className="field prospectEmailBody" rows={10} required disabled={setupLocked} value={manualBody} onChange={(event) => setManualBody(event.target.value)} placeholder="Write the message in your own words. QC adds the locked signature, disclosures, reply guidance, and unsubscribe controls." /><small>Manual copy is validated against firm policy and waits for your explicit approval; it never auto-sends.</small></label>
+        </>}
         <ProspectSenderIdentityCard identity={senderPreview.data} fallbackName={me.name} fallbackEmail={me.email} />
         {senderPreview.isError && <div className="note" role="alert">The verified sender identity could not be loaded. You can add the prospect without email, or retry when sender settings are available.</div>}
         <ProspectCollateralSelector value={collateralSelection} disabled={setupLocked} onChange={setCollateralSelection} onReadyChange={setCollateralReady} />
@@ -219,7 +232,7 @@ export default function ProspectQuickAddModal({
         <button type="button" className="btn" onClick={requestSetupClose}>{createdProspect ? "Open saved prospect" : "Cancel"}</button>
         <span />
         {!createdProspect && <button type="button" className="btn" disabled={!canCreate || create.isPending} onClick={addProspectOnly}>{create.isPending ? "Saving…" : "Add prospect only"}</button>}
-        {!createdProspect && <button type="button" className="btn pri" disabled={!canStartEmail} onClick={addProspectAndEmail}>{create.isPending ? "Saving prospect…" : senderPreview.isLoading ? "Loading sender…" : "Create prospect & start 60-second review"}</button>}
+        {!createdProspect && <button type="button" className="btn pri" disabled={!canStartEmail} onClick={addProspectAndEmail}>{create.isPending ? "Saving prospect…" : senderPreview.isLoading ? "Loading sender…" : composeMode === "manual" ? "Create prospect & review manual email" : "Create prospect & start 60-second review"}</button>}
         {createdProspect && createDraft.isError && <button type="button" className="btn pri" disabled={createDraft.isPending} onClick={retryExactEmail}>Retry exact email request</button>}
       </div>
     </form>

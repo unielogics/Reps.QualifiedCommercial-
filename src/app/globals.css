@@ -2804,3 +2804,58 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   .prospectAccessIntro { grid-template-columns: auto minmax(0, 1fr); }.prospectAccessIntro > div:last-child { grid-column: 2; justify-items: start; }.prospectAccessToolbar { grid-template-columns: 1fr; }.prospectAccessRow { grid-template-columns: auto minmax(0, 1fr); }.prospectAccessIdentity, .prospectAccessRole, .prospectAccessRow > .cellchip, .prospectAccessSwitch { grid-column: 2; grid-row: auto; justify-self: start; }
   .prospectAutomationStack, .prospectAutomationChecks, .prospectLockedRules ul, .prospectAITestGrid { grid-template-columns: 1fr; }.prospectAITestInstructions { grid-column: auto; }.prospectAISettingsCard > header, .prospectAITestCard > header, .prospectCollateralChoiceHeader { align-items: stretch; flex-direction: column; }.prospectTestRecipient { width: 100%; max-width: none; }.prospectCollateralChoiceRow { align-items: stretch; flex-direction: column; }.prospectCollateralChoiceRow > .btn { align-self: flex-start; }
 }
+
+/* Marketing email drafting, conversion routing, and audited Inbox history. */
+.prospectComposeMode { display: inline-flex; width: max-content; max-width: 100%; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--sunken2); }
+.prospectComposeMode button { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 750 11px/1 var(--fb); cursor: pointer; }
+.prospectComposeMode button:hover { color: var(--ink); }.prospectComposeMode button.on { background: var(--surface); color: var(--accent); box-shadow: var(--sh1); }.prospectComposeMode button:disabled { cursor: default; opacity: .65; }
+.prospectGenerationStatus.manual { border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line)); background: var(--sunken2); color: var(--accent); }
+.prospectLockedFooter { display: grid; gap: 5px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.prospectLockedFooter pre { margin: 0; padding: 10px; border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; background: var(--surface); color: var(--ink2); font: 11px/1.55 var(--fb); white-space: pre-wrap; overflow-wrap: anywhere; }
+.prospectLockedFooter small { color: var(--muted); font-size: 10px; }
+.prospectDeliveryPending { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--warn) 28%, var(--line)); border-radius: 8px; background: var(--warn-tint); color: var(--warn); font-size: 11px; font-weight: 700; }
+.prospectConversionPanel { display: grid; gap: 11px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--sunken2); }
+.prospectConversionPanel > div:first-child, .prospectConversionStep { display: grid; gap: 2px; }.prospectConversionPanel small { color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.prospectConversionTargets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.prospectConversionTargets button { min-height: 82px; display: grid; align-content: center; gap: 4px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
+.prospectConversionTargets button:hover, .prospectConversionTargets button.selected { border-color: var(--accent); background: var(--accent-100); }.prospectConversionTargets button b { font-size: 12px; }.prospectConversionTargets button small { color: var(--muted); }
+.prospectConversionChoices { background: var(--surface); }.prospectIntakeCandidate em { color: var(--accent); font-size: 9.5px; font-style: normal; }
+.prospectPortfolioFields { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--accent-200); border-radius: 8px; background: var(--surface); }.prospectPortfolioFields > label { display: grid; gap: 5px; }
+
+.inboxModeTabs { width: max-content; max-width: 100%; display: flex; gap: 4px; margin: 12px 0; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunken2); }
+.inboxModeTabs a { min-height: 38px; display: inline-flex; align-items: center; padding: 0 15px; border-radius: 7px; color: var(--muted); font-size: 11.5px; font-weight: 800; text-decoration: none; }
+.inboxModeTabs a:hover { color: var(--ink); }.inboxModeTabs a.on { background: var(--surface); color: var(--accent); box-shadow: var(--sh1); }
+.marketingEmailAudit { display: grid; gap: 12px; min-width: 0; }
+.marketingEmailFilters { grid-template-columns: minmax(270px, 1fr) repeat(3, minmax(145px, 190px)); }
+.marketingEmailFilters.withOwner { grid-template-columns: minmax(260px, 1fr) repeat(4, minmax(135px, 175px)); }
+.marketingEmailSearch { position: relative; min-width: 0; }.marketingEmailSearch > svg { position: absolute; z-index: 1; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); }.marketingEmailSearch .field { width: 100%; padding-left: 38px; }
+.marketingEmailWorkspace { min-width: 0; min-height: min(710px, calc(100dvh - 250px)); display: grid; grid-template-columns: minmax(330px, .74fr) minmax(0, 1.45fr); align-items: stretch; gap: 12px; }
+.marketingEmailList, .marketingEmailDetail { min-width: 0; overflow: hidden; }.marketingEmailList { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.marketingEmailList .panel-h > span, .marketingEmailDetailHead > span:first-child { min-width: 0; display: grid; gap: 2px; }.marketingEmailList .panel-h small, .marketingEmailDetailHead small { color: var(--muted); font-size: 10px; }
+.marketingEmailRows { min-height: 280px; max-height: calc(100dvh - 350px); overflow-y: auto; border-block: 1px solid var(--line); }
+.marketingEmailRow { width: 100%; display: grid; gap: 5px; padding: 12px 13px; border: 0; border-bottom: 1px solid var(--line); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }.marketingEmailRow:last-child { border-bottom: 0; }.marketingEmailRow:hover { background: var(--sunken2); }.marketingEmailRow.selected { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-100); }
+.marketingEmailRowTop, .marketingEmailRowMeta { min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; }.marketingEmailRowTop b, .marketingEmailRow > strong, .marketingEmailRow > small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.marketingEmailRowTop b { font-size: 11.5px; }.marketingEmailRowTop time, .marketingEmailRow > small { color: var(--muted); font-size: 9.5px; }.marketingEmailRow > strong { font-size: 11px; }.marketingEmailRowMeta { justify-content: flex-start; flex-wrap: wrap; }
+.marketingDeliveryState { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 99px; background: var(--sunken); color: var(--muted); font-size: 9.5px; font-weight: 800; }.marketingDeliveryState.tone-success { background: var(--ok-tint); color: var(--ok); }.marketingDeliveryState.tone-warning { background: var(--warn-tint); color: var(--warn); }.marketingDeliveryState.tone-danger { background: var(--danger-tint); color: var(--danger); }.marketingDeliveryState.tone-accent { background: var(--accent-100); color: var(--accent); }
+.marketingEmailList .paginationRow { margin: 0; padding: 9px 11px; border-top: 0; }
+.marketingEmailDetail { align-self: stretch; }.marketingEmailDetailHead { justify-content: space-between; gap: 12px; }.marketingEmailDetailHead > span:first-child b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.marketingEmailDetailBody { display: grid; gap: 14px; max-height: calc(100dvh - 300px); overflow-y: auto; }
+.marketingEmailIdentityGrid, .marketingEmailAuditGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }.marketingEmailIdentityGrid > div, .marketingEmailAuditGrid > div { min-width: 0; display: grid; gap: 2px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); }.marketingEmailIdentityGrid span, .marketingEmailAuditGrid span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }.marketingEmailIdentityGrid b, .marketingEmailIdentityGrid small, .marketingEmailAuditGrid b { overflow-wrap: anywhere; font-size: 10.5px; }.marketingEmailIdentityGrid small { color: var(--muted); }
+.marketingProspectLink { justify-self: start; }
+.marketingEmailCopy { display: grid; gap: 6px; }.marketingEmailCopy > div, .marketingEmailCopy pre { margin: 0; padding: 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink2); font: 11px/1.58 var(--fb); white-space: pre-wrap; overflow-wrap: anywhere; }.marketingEmailCopy pre { min-height: 220px; }
+.marketingEmailAttachments { display: grid; gap: 8px; }.marketingEmailAttachments > div:first-child { display: grid; gap: 2px; }.marketingEmailAttachments > div:first-child small { color: var(--muted); font-size: 10px; }
+.marketingEmailAttachment { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); }.marketingEmailAttachment > svg { color: var(--accent); }.marketingEmailAttachment > span { min-width: 0; display: grid; gap: 1px; }.marketingEmailAttachment b, .marketingEmailAttachment small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.marketingEmailAttachment b { font-size: 10.5px; }.marketingEmailAttachment small { color: var(--muted); font-size: 9.5px; }
+.marketingProviderRecord { display: grid; gap: 7px; padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }.marketingProviderRecord > span { display: grid; gap: 2px; }.marketingProviderRecord small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }.marketingProviderRecord p { margin: 0; color: var(--ink2); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.marketingAttachmentPreview { width: 100%; height: min(76dvh, 880px); border: 1px solid var(--line); border-radius: 8px; background: white; }
+
+@media (max-width: 1100px) {
+  .marketingEmailFilters, .marketingEmailFilters.withOwner { grid-template-columns: repeat(2, minmax(0, 1fr)); }.marketingEmailSearch { grid-column: 1 / -1; }
+  .marketingEmailWorkspace { grid-template-columns: minmax(290px, .68fr) minmax(0, 1fr); }.marketingEmailIdentityGrid, .marketingEmailAuditGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+  .prospectConversionTargets { grid-template-columns: 1fr; }.prospectConversionPanel { padding: 10px; }
+  .marketingEmailWorkspace { min-height: 0; grid-template-columns: 1fr; }.marketingEmailRows { max-height: 430px; }.marketingEmailDetailBody { max-height: none; }.marketingEmailDetail { min-height: 360px; }
+}
+@media (max-width: 560px) {
+  .prospectComposeMode { width: 100%; }.prospectComposeMode button { min-width: 0; flex: 1; justify-content: center; }.prospectConversionActions { display: grid; }
+  .inboxModeTabs { width: 100%; }.inboxModeTabs a { flex: 1; justify-content: center; }.marketingEmailFilters, .marketingEmailFilters.withOwner { grid-template-columns: 1fr; }.marketingEmailSearch { grid-column: auto; }.marketingEmailIdentityGrid, .marketingEmailAuditGrid { grid-template-columns: 1fr; }.marketingEmailAttachment { grid-template-columns: auto minmax(0, 1fr); }.marketingEmailAttachment .btn { grid-column: 2; justify-self: start; }
+}

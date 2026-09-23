@@ -25,7 +25,6 @@ import ProspectQuickAddModal from "@/components/ProspectQuickAddModal";
 import { useMe } from "@/lib/useMe";
 import ProspectEmailComposer from "@/components/ProspectEmailComposer";
 import type { RepAppointment } from "@/lib/appointments";
-import ProspectOutboxDrawer from "@/components/ProspectOutboxDrawer";
 
 type Contact = { id: string; name: string; company: string | null; email: string | null; phone: string | null; source: string; updated_at: string };
 type ContactPage = { items: Contact[]; total: number; limit: number; offset: number };
@@ -44,7 +43,7 @@ function stageTone(key: string): string {
   return "neutral";
 }
 
-export default function ContactsPage() {
+export default function MarketingPage() {
   const router = useRouter();
   const { getToken } = useAuth();
   const qc = useQueryClient();
@@ -62,7 +61,6 @@ export default function ContactsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [quickAddSeed, setQuickAddSeed] = useState<{ contact_id?: string | null; name?: string | null; dealer_name?: string | null; email?: string | null; phone?: string | null } | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
-  const [outboxOpen, setOutboxOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null);
   const [moveConflict, setMoveConflict] = useState<string | null>(null);
   const [bookingProspect, setBookingProspect] = useState<DealerProspect | null>(null);
@@ -137,16 +135,16 @@ export default function ContactsPage() {
 
   return <div className="contactsPage prospectPipelinePage">
     <header className="hd portfolioHeading prospectPipelineHeading">
-      <div><span className="eyebrow">Dealer relationships</span><h2>Contacts</h2><p className="lede">Move dealer prospects from the first call through booking and AI Intake.</p></div>
+      <div><span className="eyebrow">Dealer relationships</span><h2>Marketing</h2><p className="lede">Manage dealer prospects, audited outreach, and explicit conversion into a funding file.</p></div>
       <div className="prospectHeaderActions">
-        {pipelineUnavailable && isTeam && <button type="button" className="btn" onClick={() => setAdminOpen(true)}><Settings2 size={16} /> Set up dealer pipeline</button>}
+        {pipelineUnavailable && isTeam && <button type="button" className="btn" onClick={() => setAdminOpen(true)}><Settings2 size={16} /> Set up Marketing pipeline</button>}
         {section === "pipeline" && isTeam && <button type="button" className="btn" onClick={() => setAdminOpen(true)}><Settings2 size={16} /> Configure</button>}
-        {section === "pipeline" && <button type="button" className="btn" onClick={() => setOutboxOpen(true)}><Mail size={16} /> Email outbox</button>}
+        {section === "pipeline" && <Link className="btn" href="/inbox?view=marketing"><Mail size={16} /> Email activity</Link>}
         {section === "pipeline" && <button type="button" className="btn pri" onClick={() => setQuickAddSeed({})}><Plus size={17} /> Add prospect</button>}
         {section === "contacts" && <Link href="/products" className="btn pri">Start Product Finder</Link>}
       </div>
     </header>
-    <div className="prospectTopTabs" role="tablist" aria-label="Contact workspace">
+    <div className="prospectTopTabs" role="tablist" aria-label="Marketing workspace">
       {!pipelineUnavailable && <button type="button" role="tab" aria-selected={section === "pipeline"} className={section === "pipeline" ? "on" : ""} onClick={() => { setSection("pipeline"); setPage(0); }}>Pipeline</button>}
       <button type="button" role="tab" aria-selected={section === "contacts"} className={section === "contacts" ? "on" : ""} onClick={() => { setSection("contacts"); setPage(0); }}>All contacts</button>
     </div>
@@ -160,8 +158,8 @@ export default function ContactsPage() {
       </>}
       <span className="sub prospectTotal">{total} {section === "pipeline" ? "prospects" : "contacts"}</span>
     </div>
-    {section === "pipeline" && prospects.isLoading && <div className="panel mt"><div className="empty">Loading dealer pipeline…</div></div>}
-    {section === "pipeline" && prospects.isError && <div className="note mt" role="alert">{prospects.error instanceof Error ? prospects.error.message : "The dealer pipeline could not be loaded."}</div>}
+    {section === "pipeline" && prospects.isLoading && <div className="panel mt"><div className="empty">Loading Marketing pipeline…</div></div>}
+    {section === "pipeline" && prospects.isError && <div className="note mt" role="alert">{prospects.error instanceof Error ? prospects.error.message : "The Marketing pipeline could not be loaded."}</div>}
     {section === "pipeline" && assignOwner.isError && <div className="note mt" role="alert">{assignOwner.error instanceof Error ? assignOwner.error.message : "The prospect could not be reassigned."}</div>}
     {section === "pipeline" && completeBookedMove.isError && <div className="note mt" role="alert">The appointment was booked, but the prospect could not move to Booked. {completeBookedMove.error instanceof Error ? completeBookedMove.error.message : "Refresh and link the appointment from the prospect."}</div>}
     {section === "pipeline" && moveConflict && <div className="note mt" role="alert">{moveConflict}</div>}
@@ -173,7 +171,7 @@ export default function ContactsPage() {
           <header><span className={`prospectStageDot tone-${stageTone(stage.key)}`} /><b>{stage.label}</b><span>{stageRows.length}</span></header>
           <div className="prospectColumnBody">
             {stageRows.map((prospect) => <article key={prospect.id} className={`prospectCard${draggedId === prospect.id ? " dragging" : ""}`} draggable onDragStart={(event) => { setDraggedId(prospect.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", prospect.id); }} onDragEnd={() => { setDraggedId(null); setDragOverStage(null); }}>
-              <Link href={`/contacts/prospects/${prospect.id}`} className="prospectCardMain"><span className="contactAvatar compact">{initials(prospect.name)}</span><span><b>{prospect.dealer_name}</b><strong>{prospect.name}</strong><small>{prospect.email}</small></span></Link>
+              <Link href={`/marketing/prospects/${prospect.id}`} className="prospectCardMain"><span className="contactAvatar compact">{initials(prospect.name)}</span><span><b>{prospect.dealer_name}</b><strong>{prospect.name}</strong><small>{prospect.email}</small></span></Link>
               <div className="prospectCardMeta"><span>{prospect.owner_name || "Unassigned"}</span><span>{prospect.call_attempt_count} call{prospect.call_attempt_count === 1 ? "" : "s"}</span></div>
               {prospect.next_follow_up_at && <div className="prospectFollowUp">Follow up {displayDate(prospect.next_follow_up_at, true)}</div>}
               {prospect.last_outcome_label && <span className="cellchip c-mut">{prospect.last_outcome_label}</span>}
@@ -185,19 +183,18 @@ export default function ContactsPage() {
       })}
     </div>}
     {section === "pipeline" && !prospects.isLoading && pipelineView === "table" && <div className="panel mt prospectTablePanel"><div className="tblwrap"><table className="tbl portfolioTable prospectTable"><thead><tr><SortableHeader label="Dealer / Contact" sortKey="dealer_name" active={sortBy} direction={sortDir} onSort={changeSort} /><th>Contact details</th><SortableHeader label="Stage" sortKey="stage" active={sortBy} direction={sortDir} onSort={changeSort} /><SortableHeader label="Last outcome" sortKey="outcome" active={sortBy} direction={sortDir} onSort={changeSort} /><SortableHeader label="Owner" sortKey="owner" active={sortBy} direction={sortDir} onSort={changeSort} /><SortableHeader label="Next follow-up" sortKey="next_follow_up" active={sortBy} direction={sortDir} onSort={changeSort} /><SortableHeader label="Activity" sortKey="last_activity" active={sortBy} direction={sortDir} onSort={changeSort} /><th>Move</th></tr></thead><tbody>
-      {rows.map((prospect) => <tr key={prospect.id} role="link" tabIndex={0} aria-label={`Open ${prospect.dealer_name}`} onClick={() => router.push(`/contacts/prospects/${prospect.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); router.push(`/contacts/prospects/${prospect.id}`); } }}><td><span className="contactTableIdentity"><span className="contactAvatar compact">{initials(prospect.name)}</span><span><b>{prospect.dealer_name}</b><small>{prospect.name}</small></span></span></td><td><span className="prospectContactCell"><span>{prospect.email}</span><small>{prospect.phone}</small></span></td><td><span className={`prospectStageBadge tone-${stageTone(prospect.stage_key)}`}>{prospect.stage_label ?? stages.find((item) => item.key === prospect.stage_key)?.label ?? prospect.stage_key}</span></td><td>{prospect.last_outcome_label || <span className="sub">No call logged</span>}</td><td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{isTeam ? <select className="field prospectOwnerSelect" aria-label={`Assign ${prospect.name}`} value={prospect.owner_user_id ?? ""} disabled={assignOwner.isPending} onChange={(event) => event.target.value && assignOwner.mutate({ prospect, ownerId: event.target.value })}><option value="" disabled>Unassigned</option>{(team.data ?? []).map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select> : prospect.owner_name || <span className="sub">Unassigned</span>}</td><td>{displayDate(prospect.next_follow_up_at, true)}</td><td>{displayDate(prospect.last_activity_at ?? prospect.updated_at, true)}</td><td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><select className="field prospectTableMove" aria-label={`Move ${prospect.name}`} value="" onChange={(event) => chooseMove(prospect, event.target.value)}><option value="">Move…</option>{stages.filter((item) => item.key !== prospect.stage_key).map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></td></tr>)}
+      {rows.map((prospect) => <tr key={prospect.id} role="link" tabIndex={0} aria-label={`Open ${prospect.dealer_name}`} onClick={() => router.push(`/marketing/prospects/${prospect.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); router.push(`/marketing/prospects/${prospect.id}`); } }}><td><span className="contactTableIdentity"><span className="contactAvatar compact">{initials(prospect.name)}</span><span><b>{prospect.dealer_name}</b><small>{prospect.name}</small></span></span></td><td><span className="prospectContactCell"><span>{prospect.email}</span><small>{prospect.phone}</small></span></td><td><span className={`prospectStageBadge tone-${stageTone(prospect.stage_key)}`}>{prospect.stage_label ?? stages.find((item) => item.key === prospect.stage_key)?.label ?? prospect.stage_key}</span></td><td>{prospect.last_outcome_label || <span className="sub">No call logged</span>}</td><td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{isTeam ? <select className="field prospectOwnerSelect" aria-label={`Assign ${prospect.name}`} value={prospect.owner_user_id ?? ""} disabled={assignOwner.isPending} onChange={(event) => event.target.value && assignOwner.mutate({ prospect, ownerId: event.target.value })}><option value="" disabled>Unassigned</option>{(team.data ?? []).map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select> : prospect.owner_name || <span className="sub">Unassigned</span>}</td><td>{displayDate(prospect.next_follow_up_at, true)}</td><td>{displayDate(prospect.last_activity_at ?? prospect.updated_at, true)}</td><td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><select className="field prospectTableMove" aria-label={`Move ${prospect.name}`} value="" onChange={(event) => chooseMove(prospect, event.target.value)}><option value="">Move…</option>{stages.filter((item) => item.key !== prospect.stage_key).map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></td></tr>)}
       {!rows.length && <tr><td colSpan={8}><div className="empty">No prospects match these filters.</div></td></tr>}
     </tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} /></div>}
     {section === "contacts" && <div className="panel mt"><div className="tblwrap"><table className="tbl portfolioTable contactTable"><thead><tr><th>Contact</th><th>Company</th><th>Email</th><th>Mobile</th><th>Source</th><th>Updated</th><th>Pipeline</th></tr></thead><tbody>
-      {contactRows.map((contact) => <tr key={contact.id} role="link" tabIndex={0} aria-label={`Open ${contact.name}`} onClick={() => router.push(`/contacts/${contact.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); router.push(`/contacts/${contact.id}`); } }}><td><span className="contactTableIdentity"><span className="contactAvatar compact">{initials(contact.name)}</span><b>{contact.name}</b></span></td><td>{contact.company || <span className="sub">Independent contact</span>}</td><td className="sub">{contact.email || "-"}</td><td className="sub num">{contact.phone || "-"}</td><td><span className="cellchip c-mut">{sourceLabel(contact.source)}</span></td><td className="sub num">{displayDate(contact.updated_at)}</td><td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{pipelineUnavailable ? <span className="sub">Not enabled</span> : <button type="button" className="btn sm" onClick={() => setQuickAddSeed({ contact_id: contact.id, name: contact.name, dealer_name: contact.company, email: contact.email, phone: contact.phone })}>Add to pipeline</button>}</td></tr>)}
+      {contactRows.map((contact) => <tr key={contact.id} role="link" tabIndex={0} aria-label={`Open ${contact.name}`} onClick={() => router.push(`/marketing/${contact.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); router.push(`/marketing/${contact.id}`); } }}><td><span className="contactTableIdentity"><span className="contactAvatar compact">{initials(contact.name)}</span><b>{contact.name}</b></span></td><td>{contact.company || <span className="sub">Independent contact</span>}</td><td className="sub">{contact.email || "-"}</td><td className="sub num">{contact.phone || "-"}</td><td><span className="cellchip c-mut">{sourceLabel(contact.source)}</span></td><td className="sub num">{displayDate(contact.updated_at)}</td><td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{pipelineUnavailable ? <span className="sub">Not enabled</span> : <button type="button" className="btn sm" onClick={() => setQuickAddSeed({ contact_id: contact.id, name: contact.name, dealer_name: contact.company, email: contact.email, phone: contact.phone })}>Add to pipeline</button>}</td></tr>)}
       {contacts.isLoading && <tr><td colSpan={7}><div className="empty">Loading contacts…</div></td></tr>}{!contacts.isLoading && !contactRows.length && <tr><td colSpan={7}><div className="empty">No contacts match this search.</div></td></tr>}
     </tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} noun="contacts" /></div>}
-    {quickAddSeed && <ProspectQuickAddModal initialValues={quickAddSeed} onClose={() => setQuickAddSeed(null)} onProspectSaved={refreshPipeline} onCreated={(created) => { setQuickAddSeed(null); refreshPipeline(); router.push(`/contacts/prospects/${created.id}`); }} onOpenExisting={(prospectId) => { setQuickAddSeed(null); router.push(`/contacts/prospects/${prospectId}`); }} />}
+    {quickAddSeed && <ProspectQuickAddModal initialValues={quickAddSeed} onClose={() => setQuickAddSeed(null)} onProspectSaved={refreshPipeline} onCreated={(created) => { setQuickAddSeed(null); refreshPipeline(); router.push(`/marketing/prospects/${created.id}`); }} onOpenExisting={(prospectId) => { setQuickAddSeed(null); router.push(`/marketing/prospects/${prospectId}`); }} />}
     {moveTarget && <ProspectMoveDialog prospect={moveTarget.prospect} stages={stages} destination={moveTarget.stage} onClose={() => setMoveTarget(null)} onConflict={setMoveConflict} onBook={() => { setBookingProspect(moveTarget.prospect); setMoveTarget(null); }} onEmailDraft={(moved, draft) => setEmailDraft({ prospect: moved, draft })} onMoved={() => { setMoveTarget(null); refreshPipeline(); }} />}
     {bookingProspect && <BookingDrawer onClose={() => setBookingProspect(null)} onBooked={(appointment) => completeBookedMove.mutate({ prospect: bookingProspect, appointment })} initialName={bookingProspect.name} initialEmail={bookingProspect.email} initialPhone={bookingProspect.phone} initialKind="program_intro" />}
     {emailDraft && <ProspectEmailComposer prospect={emailDraft.prospect} initialDraft={emailDraft.draft} onClose={() => setEmailDraft(null)} />}
     {adminOpen && <ProspectAdminDrawer onClose={() => setAdminOpen(false)} stages={stages} outcomes={outcomes} onChanged={refreshPipeline} />}
-    {outboxOpen && <ProspectOutboxDrawer onClose={() => setOutboxOpen(false)} />}
   </div>;
 }
 

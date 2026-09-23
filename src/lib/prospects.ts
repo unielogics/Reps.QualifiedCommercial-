@@ -79,10 +79,13 @@ export type ProspectTestEmailRequest = {
 
 export type ProspectEmailDraftCreateRequest = {
   idempotency_key: string;
+  compose_mode?: "ai" | "manual";
   purpose: ProspectDraftPurpose;
   private_note?: string | null;
   verified_conversation_context?: string | null;
   ai_instructions?: string | null;
+  subject?: string | null;
+  body?: string | null;
   include_collateral: boolean;
   collateral_asset_ids: string[];
 };
@@ -177,6 +180,8 @@ export type DealerProspect = {
   version: number;
   do_not_contact?: boolean;
   marketing_sms_consent?: boolean;
+  conversion_target?: "portfolio_application" | "dealer_ai_intake" | null;
+  converted_application_id?: string | null;
   converted_intake_id?: string | null;
 };
 
@@ -192,6 +197,7 @@ export type ProspectActivity = {
 export type ProspectEmailDraft = ProspectSenderIdentity & {
   id: string;
   prospect_id?: string;
+  compose_mode?: "ai" | "manual";
   to_email?: string;
   from_email?: string;
   reply_to?: string;
@@ -201,10 +207,35 @@ export type ProspectEmailDraft = ProspectSenderIdentity & {
   send_after?: string | null;
   countdown_seconds?: number | null;
   sent_at?: string | null;
+  prospect_name?: string | null;
+  contact_id?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  dealer_name?: string | null;
+  owner_user_id?: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  triggering_agent_id?: string | null;
+  triggering_agent_name?: string | null;
+  triggering_agent_email?: string | null;
+  prospect_archived_at?: string | null;
+  delivery_status?: string | null;
+  provider_detail?: string | null;
+  provider_status?: string | null;
+  provider?: string | null;
+  provider_message_id?: string | null;
+  message_send_id?: string | null;
+  delivered_at?: string | null;
+  opened_at?: string | null;
+  failed_at?: string | null;
+  editable_body?: string | null;
+  locked_footer_text?: string | null;
   attachment_count?: number;
   attachment_names?: string[];
+  attachments?: ProspectEmailAttachment[];
   version?: number;
-  draft_source?: "ai" | "fallback";
+  draft_source?: "ai" | "fallback" | "manual";
   generation_reason?: ProspectGenerationReason | null;
   instruction_disposition?: ProspectInstructionDisposition | null;
   secure_bundle_link_required?: boolean;
@@ -213,6 +244,46 @@ export type ProspectEmailDraft = ProspectSenderIdentity & {
   created_at: string;
   updated_at?: string;
   error?: string | null;
+};
+
+export type ProspectEmailAttachment = {
+  id: string;
+  name: string;
+  file_name: string;
+  version: number;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  sha256?: string | null;
+  preview_url?: string | null;
+  download_url?: string | null;
+};
+
+export type ProspectConversionTarget = "portfolio_application" | "dealer_ai_intake";
+export type ProspectConversionAction = "detect" | "link" | "reactivate" | "create";
+export type ProspectConversionCandidate = {
+  id: string;
+  target: ProspectConversionTarget;
+  status: string;
+  archived: boolean;
+  display_name: string;
+  email?: string | null;
+  phone?: string | null;
+  created_at?: string | null;
+  match_reasons?: string[];
+  route?: string | null;
+};
+export type ProspectConversionCandidates = {
+  target: ProspectConversionTarget;
+  prospect_id: string;
+  already_converted?: boolean;
+  candidates: ProspectConversionCandidate[];
+};
+export type PortfolioConversionFields = {
+  entity_type: string;
+  requested_amount: number;
+  funding_purpose: string;
+  use_of_proceeds_note: string;
+  secure_room_pin: string;
 };
 
 export type ProspectPage = {

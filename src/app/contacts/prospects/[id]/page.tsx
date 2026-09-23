@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, CalendarDays, ExternalLink, Mail, MessageSquareText, Phone, Plus, Send, StickyNote } from "lucide-react";
@@ -30,8 +30,15 @@ const FUNDING_APP_URL = process.env.NEXT_PUBLIC_FUNDING_APP_URL ?? process.env.N
 
 function humanize(value: string): string { return value.replaceAll("_", " ").replace(/\b\w/g, (part) => part.toUpperCase()); }
 
+function isActiveOutreachDraft(draft: ProspectEmailDraft): boolean {
+  const delivery = String(draft.delivery_status ?? "").toLowerCase();
+  if (["delivered", "bounced", "complaint", "failed", "blocked", "cancelled", "unavailable"].includes(delivery)) return false;
+  return ["drafting", "pending_review", "editing", "queued", "sending"].includes(draft.status);
+}
+
 export default function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const params = useSearchParams();
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [composerDraft, setComposerDraft] = useState<ProspectEmailDraft | null | undefined>(undefined);
@@ -45,6 +52,7 @@ export default function ProspectDetailPage() {
   const [note, setNote] = useState("");
   const [outcomeDraftError, setOutcomeDraftError] = useState<string | null>(null);
   const [moveConflict, setMoveConflict] = useState<string | null>(null);
+  const composeLinkHandledFor = useRef<string | null>(null);
 
   const detail = useQuery({
     queryKey: ["dealer-prospect", id],
@@ -99,25 +107,38 @@ export default function ProspectDetailPage() {
     onError: refresh,
   });
 
+  const emailDrafts = draftQuery.data?.items ?? row?.email_drafts ?? [];
+  const activeDraft = emailDrafts.find(isActiveOutreachDraft);
+
+  useEffect(() => {
+    if (params.get("compose") !== "email") {
+      composeLinkHandledFor.current = null;
+      return;
+    }
+    if (composeLinkHandledFor.current === id || draftQuery.isLoading) return;
+    composeLinkHandledFor.current = id;
+    setComposerDraft(activeDraft ?? null);
+  }, [activeDraft, draftQuery.isLoading, id, params]);
+
   if (detail.isLoading) return <div className="empty">Loading dealer prospect…</div>;
   if (detail.isError || !row) return <div className="note" role="alert">{detail.error instanceof Error ? detail.error.message : "Dealer prospect unavailable."}</div>;
   const seed = { prospect_id: row.id, contact_name: row.name, company: row.dealer_name, contact_email: row.email, contact_phone: row.phone };
-  const emailDrafts = draftQuery.data?.items ?? row.email_drafts ?? [];
-  const latestDraft = emailDrafts.find((draft) => draft.status === "pending_review" || draft.status === "editing");
 
   return <div className="prospectDetailPage">
     <header className="contactHero prospectHero">
-      <div><Link href="/contacts" className="backLink">← Dealer pipeline</Link><div className="contactIdentity"><div className="contactAvatar large">{initials(row.name)}</div><div><span className="eyebrow">Dealer prospect</span><h2>{row.dealer_name}</h2><p>{row.name} · {row.owner_name || "Unassigned"}</p></div></div></div>
+      <div><Link href="/marketing" className="backLink">← Marketing pipeline</Link><div className="contactIdentity"><div className="contactAvatar large">{initials(row.name)}</div><div><span className="eyebrow">Marketing prospect</span><h2>{row.dealer_name}</h2><p>{row.name} · {row.owner_name || "Unassigned"}</p></div></div></div>
       <div className="prospectHeroStatus"><span className="prospectStageBadge">{row.stage_label ?? humanize(row.stage_key)}</span><span className="sub">Version {row.version}</span></div>
-      <div className="contactQuick"><button type="button" className="btn" disabled={row.do_not_contact} onClick={() => setComposerDraft(latestDraft ?? null)}><Mail size={16} /> Email</button><a className="btn pri" href={`tel:${row.phone}`}><Phone size={16} /> Call</a></div>
+      <div className="contactQuick"><button type="button" className="btn" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Mail size={16} /> Email</button><a className="btn pri" href={`tel:${row.phone}`}><Phone size={16} /> Call</a></div>
     </header>
 
     <div className="prospectActionBar">
-      <button type="button" className="btn pri" disabled={row.do_not_contact} onClick={() => setComposerDraft(latestDraft ?? null)}><Bot size={17} /> {latestDraft ? "Resume email review" : "Draft dealer email"}</button>
+      <button type="button" className="btn pri" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Bot size={17} /> {activeDraft ? "Resume active email" : "Draft dealer email"}</button>
       <button type="button" className="btn" disabled={row.do_not_contact || !row.marketing_sms_consent} title={!row.marketing_sms_consent ? "Record marketing SMS consent before texting this prospect." : undefined} onClick={() => setComposeMode("sms")}><MessageSquareText size={16} /> Text</button>
       <button type="button" className="btn" onClick={() => setBooking(true)}><CalendarDays size={16} /> Book appointment</button>
-      {!row.converted_intake_id && <button type="button" className="btn" onClick={() => setMoveStage(stages.find((stage) => stage.key === "converted") ?? null)}><Plus size={16} /> Create AI Intake</button>}
+      {!row.converted_intake_id && !row.converted_application_id && <button type="button" className="btn" onClick={() => setMoveStage(stages.find((stage) => stage.key === "converted") ?? null)}><Plus size={16} /> Convert prospect</button>}
+      {row.converted_application_id && <Link className="btn" href={`/applications/${row.converted_application_id}`}>Open Portfolio application <ExternalLink size={15} /></Link>}
       {row.converted_intake_id && <a className="btn" target="_blank" rel="noreferrer" href={`${FUNDING_APP_URL}/admin/ai-underwriter-leads?lead=${row.converted_intake_id}&view=underwriting`}>Open AI Intake <ExternalLink size={15} /></a>}
+      <Link className="btn" href={emailDrafts[0] ? `/inbox?view=marketing&draft_id=${emailDrafts[0].id}` : `/inbox?view=marketing&q=${encodeURIComponent(row.dealer_name)}`}><Mail size={16} /> Email activity</Link>
       <label className="prospectInlineMove"><span className="lbl">Move stage</span><select className="field" value="" onChange={(event) => setMoveStage(stages.find((stage) => stage.key === event.target.value) ?? null)}><option value="">Choose…</option>{stages.filter((stage) => stage.key !== row.stage_key).map((stage) => <option value={stage.key} key={stage.key}>{stage.label}</option>)}</select></label>
     </div>
     {row.do_not_contact && <div className="prospectDoNotContact">Prospect outreach is disabled for this contact.</div>}
@@ -144,7 +165,7 @@ export default function ProspectDetailPage() {
         {!row.activities.length && <div className="empty compact">No prospect activity yet.</div>}
       </div></section>
     </main><aside>
-      <section className="panel prospectDetailSection"><div className="panel-h"><b>Contact</b></div><div className="panel-b prospectContactFacts"><div><span>Email</span><a href={`mailto:${row.email}`}>{row.email}</a></div><div><span>Phone</span><a href={`tel:${row.phone}`}>{row.phone}</a></div><div><span>Next follow-up</span><b>{displayDate(row.next_follow_up_at, true)}</b></div><div><span>Last activity</span><b>{displayDate(row.last_activity_at ?? row.updated_at, true)}</b></div></div></section>
+      <section className="panel prospectDetailSection"><div className="panel-h"><b>Contact</b></div><div className="panel-b prospectContactFacts"><div><span>Email</span><b>{row.email}</b></div><div><span>Phone</span><a href={`tel:${row.phone}`}>{row.phone}</a></div><div><span>Next follow-up</span><b>{displayDate(row.next_follow_up_at, true)}</b></div><div><span>Last activity</span><b>{displayDate(row.last_activity_at ?? row.updated_at, true)}</b></div></div></section>
       <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Email delivery</b><span className="sp" /><span className="cellchip c-mut">{emailDrafts.length}</span></div><div className="panel-b prospectDraftHistory">{emailDrafts.map((draft) => <button type="button" key={draft.id} onClick={() => setComposerDraft(draft)}><span><b>{draft.subject}</b><small>{displayDate(draft.sent_at ?? draft.created_at, true)}</small></span><span className={`prospectDraftStatus status-${draft.status}`}>{humanize(draft.status)}</span></button>)}{draftQuery.isLoading && <div className="empty compact">Loading email history…</div>}{!draftQuery.isLoading && !emailDrafts.length && <div className="empty compact">No dealer outreach drafted.</div>}</div></section>
       <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Dealer replies</b><span className="sp" /><span className="cellchip c-mut">{repliesQuery.data?.items.length ?? 0}</span></div><div className="panel-b prospectReplies">{repliesQuery.isLoading && <div className="empty compact">Loading replies…</div>}{repliesQuery.isError && <div className="note" role="alert">{repliesQuery.error instanceof Error ? repliesQuery.error.message : "Replies could not be loaded."}</div>}{(repliesQuery.data?.items ?? []).map((reply) => <article key={reply.id}><header><b>{reply.subject || "Dealer reply"}</b><time>{displayDate(reply.received_at, true)}</time></header><small>From {reply.from_email}</small><p>{reply.body}</p></article>)}{!repliesQuery.isLoading && !repliesQuery.isError && !(repliesQuery.data?.items ?? []).length && <div className="empty compact">No replies received yet.</div>}</div></section>
       <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Current state</b></div><div className="panel-b prospectContactFacts"><div><span>Stage</span><b>{row.stage_label ?? humanize(row.stage_key)}</b></div><div><span>Last outcome</span><b>{row.last_outcome_label || "No call logged"}</b></div><div><span>Created</span><b>{displayDate(row.created_at)}</b></div><div><span>SMS marketing consent</span><b>{row.marketing_sms_consent ? "Recorded" : "Not recorded"}</b></div></div></section>

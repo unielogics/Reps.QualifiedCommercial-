@@ -14,6 +14,7 @@
 // rendering, and the way it behaves on a phone.
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ import ContactShareDrawer from "@/components/ContactShareDrawer";
 import InboxComposeModal from "@/components/InboxComposeModal";
 import { ConversationBubbles } from "@/components/ConversationBubbles";
 import { ChatComposer } from "@/components/ChatComposer";
+import MarketingEmailAudit from "@/components/MarketingEmailAudit";
 import {
   shortDate,
   LIVE_MESSAGE_QUERY_OPTIONS,
@@ -42,6 +44,7 @@ export default function InboxPage() {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const params = useSearchParams();
+  const inboxMode: "conversations" | "marketing" = params.get("view") === "marketing" ? "marketing" : "conversations";
 
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(params.get("thread"));
@@ -59,6 +62,7 @@ export default function InboxPage() {
         authToken: (await getToken()) ?? undefined,
       }),
     ...LIVE_MESSAGE_QUERY_OPTIONS,
+    enabled: inboxMode === "conversations",
   });
 
   const groups = useMemo(() => contacts.data?.items ?? [], [contacts.data]);
@@ -73,8 +77,8 @@ export default function InboxPage() {
       api<UnifiedCommunicationThreadDetail>(`/communications/threads/${selectedId}`, {
         authToken: (await getToken()) ?? undefined,
       }),
-    enabled: Boolean(selectedId),
     ...LIVE_MESSAGE_QUERY_OPTIONS,
+    enabled: inboxMode === "conversations" && Boolean(selectedId),
   });
 
   const send = useMutation({
@@ -98,7 +102,7 @@ export default function InboxPage() {
   }, [groups, selectedId]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (inboxMode !== "conversations" || !selectedId) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -118,7 +122,7 @@ export default function InboxPage() {
     return () => {
       cancelled = true;
     };
-  }, [getToken, qc, selectedId]);
+  }, [getToken, inboxMode, qc, selectedId]);
 
   // Their drawers seed from the conversation's contact. A unified thread
   // carries the same facts under different names.
@@ -142,12 +146,25 @@ export default function InboxPage() {
     if (threadCount <= 1) setView("thread");
   };
 
+  const modeTabs = <nav className="inboxModeTabs" aria-label="Inbox views">
+    <Link href={selectedId ? `/inbox?view=conversations&thread=${selectedId}` : "/inbox?view=conversations"} className={inboxMode === "conversations" ? "on" : ""} aria-current={inboxMode === "conversations" ? "page" : undefined}>Conversations</Link>
+    <Link href="/inbox?view=marketing" className={inboxMode === "marketing" ? "on" : ""} aria-current={inboxMode === "marketing" ? "page" : undefined}>Marketing emails</Link>
+  </nav>;
+
+  if (inboxMode === "marketing") return <>
+    <div className="hd inboxHeading"><span className="eyebrow">Audited outreach</span><h2>Inbox</h2><p className="lede">Review the exact Marketing emails your access permits and distinguish provider acceptance from confirmed delivery.</p></div>
+    {modeTabs}
+    <MarketingEmailAudit />
+  </>;
+
   return (
     <>
       <div className="hd">
         <h2>Inbox</h2>
         <p className="lede">Everyone you talk to — text, email, and in-system — grouped by contact.</p>
       </div>
+
+      {modeTabs}
 
       <div className="row mt" style={{ justifyContent: "flex-end" }}>
         <button type="button" className="btn pri" onClick={() => setCompose(true)}>

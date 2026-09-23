@@ -105,7 +105,7 @@ function formatTopTime(value: Date) {
 
 const REP_NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Portfolio", icon: "home" },
-  { href: "/contacts", label: "Contacts", icon: "contacts" },
+  { href: "/marketing", label: "Marketing", icon: "contacts" },
   { href: "/products", label: "Products", icon: "products" },
   { href: "/inbox", label: "Inbox", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "calendar" },
@@ -156,7 +156,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     });
     setNotificationsOpen(false);
     await notifications.refetch();
-    if (row.deep_link) window.location.assign(row.deep_link);
+    if (row.deep_link) {
+      const deepLink = row.deep_link === "/contacts" || row.deep_link.startsWith("/contacts/")
+        ? row.deep_link.replace(/^\/contacts/, "/marketing")
+        : row.deep_link;
+      window.location.assign(deepLink);
+    }
   };
 
   const clearNotifications = async () => {

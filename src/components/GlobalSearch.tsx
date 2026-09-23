@@ -36,7 +36,7 @@ type GlobalSearchResponse = {
 
 const KIND_LABEL: Record<SearchKind, string> = {
   file: "Files",
-  contact: "Contacts",
+  contact: "Marketing",
   email: "Email",
   sms: "SMS",
   booking: "Bookings",
@@ -123,7 +123,10 @@ export default function GlobalSearch() {
     setOpen(false);
     setValue("");
     inputRef.current?.blur();
-    router.push(item.href);
+    const href = item.href === "/contacts" || item.href.startsWith("/contacts/")
+      ? item.href.replace(/^\/contacts/, "/marketing")
+      : item.href;
+    router.push(href);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {

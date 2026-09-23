@@ -2,13 +2,49 @@
 
 import { useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import type { DealerProspect, ProspectEmailDraft, ProspectStage } from "@/lib/prospects";
+import type {
+  DealerProspect,
+  PortfolioConversionFields,
+  ProspectConversionAction,
+  ProspectConversionCandidate,
+  ProspectConversionCandidates,
+  ProspectConversionTarget,
+  ProspectEmailDraft,
+  ProspectStage,
+} from "@/lib/prospects";
 import Modal from "./Modal";
 
-type MoveResult = { prospect: DealerProspect; intake_id?: string | null; email_draft_id?: string | null; status?: string };
-type IntakeCandidate = { id: string; full_name: string; business_name?: string | null; status: string; outcome_status?: string | null; created_at?: string };
+type MoveResult = {
+  prospect: DealerProspect;
+  intake_id?: string | null;
+  application_id?: string | null;
+  route?: string | null;
+  email_draft_id?: string | null;
+  status?: string;
+};
+
+const PURPOSES = [
+  ["working_capital", "Working capital"],
+  ["equipment", "Equipment"],
+  ["real_estate", "Real estate"],
+  ["refinance", "Refinance existing debt"],
+  ["floorplan", "Floorplan"],
+  ["other", "Not sure yet"],
+] as const;
+
+const EMPTY_PORTFOLIO: PortfolioConversionFields = {
+  entity_type: "",
+  requested_amount: 0,
+  funding_purpose: "",
+  use_of_proceeds_note: "",
+  secure_room_pin: "",
+};
+
+function targetLabel(target: ProspectConversionTarget): string {
+  return target === "portfolio_application" ? "Portfolio application" : "Dealer AI Intake";
+}
 
 export default function ProspectMoveDialog({
   prospect,
@@ -36,20 +72,55 @@ export default function ProspectMoveDialog({
   const [action, setAction] = useState("");
   const [appointmentId, setAppointmentId] = useState("");
   const [confirmedDoNotContact, setConfirmedDoNotContact] = useState(false);
-  const [conversionCandidates, setConversionCandidates] = useState<IntakeCandidate[]>([]);
-  const [conversionAction, setConversionAction] = useState<"detect" | "link" | "reactivate" | "create">("detect");
-  const [conversionIntakeId, setConversionIntakeId] = useState("");
+  const [conversionTarget, setConversionTarget] = useState<ProspectConversionTarget | "">("");
+  const [conversionAction, setConversionAction] = useState<ProspectConversionAction>("detect");
+  const [candidateId, setCandidateId] = useState("");
+  const [detectedCandidates, setDetectedCandidates] = useState<ProspectConversionCandidate[]>([]);
+  const [restrictedMatch, setRestrictedMatch] = useState(false);
+  const [portfolio, setPortfolio] = useState<PortfolioConversionFields>(EMPTY_PORTFOLIO);
   const current = useMemo(() => stages.find((stage) => stage.key === prospect.stage_key), [prospect.stage_key, stages]);
   const isBooked = destination.key === "booked";
   const isConverted = destination.key === "converted";
   const isNotInterested = destination.key === "not_interested";
 
+  const conversionCandidates = useQuery({
+    queryKey: ["prospect-conversion-candidates", prospect.id, conversionTarget],
+    queryFn: async () => api<ProspectConversionCandidates>(`/dealer-os/prospects/${prospect.id}/conversion-candidates?target=${conversionTarget}`, { authToken: (await getToken()) ?? undefined }),
+    enabled: isConverted && Boolean(conversionTarget),
+  });
+  const candidates = detectedCandidates.length ? detectedCandidates : conversionCandidates.data?.candidates ?? [];
+  const selectedCandidate = candidates.find((candidate) => candidate.id === candidateId);
+  const needsCreateFields = conversionTarget === "portfolio_application" && (conversionAction === "detect" || conversionAction === "create");
+  const portfolioComplete = !needsCreateFields || Boolean(
+    portfolio.entity_type
+    && portfolio.requested_amount > 0
+    && portfolio.funding_purpose
+    && portfolio.use_of_proceeds_note.trim()
+    && /^\d{6}$/.test(portfolio.secure_room_pin),
+  );
+
+  const selectTarget = (target: ProspectConversionTarget) => {
+    setConversionTarget(target);
+    setConversionAction("detect");
+    setCandidateId("");
+    setDetectedCandidates([]);
+    setRestrictedMatch(false);
+  };
+
   const move = useMutation({
     mutationFn: async (): Promise<{ prospect: DealerProspect; emailDraft?: ProspectEmailDraft }> => {
       if (isConverted) {
-        const result = await api<MoveResult>(`/dealer-os/prospects/${prospect.id}/convert-to-ai-intake`, {
+        if (!conversionTarget) throw new Error("Choose where to create the funding file.");
+        const result = await api<MoveResult>(`/dealer-os/prospects/${prospect.id}/convert`, {
           method: "POST",
-          body: JSON.stringify({ action: conversionAction, intake_id: conversionAction === "link" || conversionAction === "reactivate" ? conversionIntakeId || null : null, expected_version: prospect.version, note: note.trim() || null }),
+          body: JSON.stringify({
+            target: conversionTarget,
+            action: conversionAction,
+            expected_version: prospect.version,
+            candidate_id: conversionAction === "link" || conversionAction === "reactivate" ? candidateId : null,
+            note: note.trim() || null,
+            portfolio_application: needsCreateFields ? portfolio : null,
+          }),
           authToken: (await getToken()) ?? undefined,
         });
         return { prospect: result.prospect };
@@ -69,24 +140,29 @@ export default function ProspectMoveDialog({
       });
       const moved = result.prospect;
       if (action !== "draft_email") return { prospect: moved };
-      let emailDraft: ProspectEmailDraft | undefined;
-      try {
-        if (!result.email_draft_id) throw new Error("No email draft reference was returned.");
-        emailDraft = await api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${result.email_draft_id}`, { authToken: (await getToken()) ?? undefined });
-      } catch (error) {
-        throw new Error(`The stage changed and its email was created, but the review window could not be opened. Refresh the prospect to resume it. ${error instanceof Error ? error.message : ""}`.trim());
-      }
+      if (!result.email_draft_id) throw new Error("The stage changed, but no email draft reference was returned. Open Email activity to inspect the result.");
+      const emailDraft = await api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${result.email_draft_id}`, { authToken: (await getToken()) ?? undefined });
       return { prospect: moved, emailDraft };
     },
-    onSuccess: (result) => { if (result.emailDraft) onEmailDraft?.(result.prospect, result.emailDraft); onMoved(result.prospect); },
+    onSuccess: (result) => {
+      if (result.emailDraft) onEmailDraft?.(result.prospect, result.emailDraft);
+      onMoved(result.prospect);
+    },
     onError: (error) => {
       void qc.invalidateQueries({ queryKey: ["dealer-prospects"] });
       void qc.invalidateQueries({ queryKey: ["dealer-prospect", prospect.id] });
       if (!(error instanceof ApiError) || error.status !== 409) return;
       const detail = (error.body as { detail?: unknown } | null)?.detail;
       if (isConverted && detail && typeof detail === "object" && (detail as { code?: unknown }).code === "prospect_conversion_choice_required") {
-        const candidates = (detail as { candidates?: unknown }).candidates;
-        if (Array.isArray(candidates)) setConversionCandidates(candidates as IntakeCandidate[]);
+        const rows = (detail as { candidates?: unknown }).candidates;
+        if (Array.isArray(rows)) setDetectedCandidates(rows as ProspectConversionCandidate[]);
+        return;
+      }
+      if (isConverted && detail && typeof detail === "object" && (detail as { code?: unknown }).code === "prospect_conversion_restricted_match") {
+        setRestrictedMatch(true);
+        setDetectedCandidates([]);
+        setCandidateId("");
+        setConversionAction("detect");
         return;
       }
       const message = detail && typeof detail === "object" && typeof (detail as { message?: unknown }).message === "string"
@@ -97,34 +173,59 @@ export default function ProspectMoveDialog({
     },
   });
 
-  const canMove = (!isBooked || Boolean(appointmentId.trim())) && (!isNotInterested || confirmedDoNotContact) && (!isConverted || conversionAction === "detect" || conversionAction === "create" || Boolean(conversionIntakeId));
+  const candidatesRequireChoice = isConverted && candidates.length > 0 && conversionAction === "detect";
+  const restrictedMatchRequiresChoice = isConverted && restrictedMatch && conversionAction !== "create";
+  const candidateChoiceComplete = conversionAction === "detect" || conversionAction === "create" || Boolean(candidateId);
+  const canMove = (!isBooked || Boolean(appointmentId.trim()))
+    && (!isNotInterested || confirmedDoNotContact)
+    && (!isConverted || (Boolean(conversionTarget) && !conversionCandidates.isLoading && !candidatesRequireChoice && !restrictedMatchRequiresChoice && candidateChoiceComplete && portfolioComplete));
   const summary = isConverted
-    ? "An AI Intake file will be created or linked. The card moves only after conversion succeeds."
+    ? "Choose one destination. Marketing history stays here; borrower records are created or linked only after this conversion succeeds."
     : isBooked
       ? "A booked prospect must be linked to an appointment before the stage changes."
       : isNotInterested
         ? "The next follow-up will be cleared and prospect outreach will be disabled. No email will be sent."
         : "This changes the pipeline stage. No email is sent unless you explicitly choose one below.";
 
-  return <Modal title={`Move ${prospect.name}`} width={720} onClose={onClose}>
+  return <Modal title={isConverted ? `Convert ${prospect.name}` : `Move ${prospect.name}`} width={760} onClose={onClose}>
     <div className="prospectMoveDialog">
-      <div className="prospectMoveRoute">
-        <span><small>Current stage</small><b>{current?.label ?? prospect.stage_label ?? prospect.stage_key}</b></span>
-        <span aria-hidden>→</span>
-        <span><small>Destination</small><b>{destination.label}</b></span>
-      </div>
+      <div className="prospectMoveRoute"><span><small>Current stage</small><b>{current?.label ?? prospect.stage_label ?? prospect.stage_key}</b></span><span aria-hidden>→</span><span><small>Destination</small><b>{destination.label}</b></span></div>
       <div className={`prospectEffectSummary${isNotInterested ? " danger" : ""}`}><b>What will happen</b><span>{summary}</span></div>
-      {isConverted && conversionCandidates.length > 0 && <div className="prospectConversionChoices"><div><b>A matching AI Intake already exists</b><span>Choose exactly how to handle the matching file. A new intake is never created silently.</span></div>{conversionCandidates.map((candidate) => <label key={candidate.id} className={`prospectIntakeCandidate${conversionIntakeId === candidate.id ? " selected" : ""}`}><input type="radio" name="conversion-intake" value={candidate.id} checked={conversionIntakeId === candidate.id} onChange={() => { setConversionIntakeId(candidate.id); if (conversionAction === "detect" || conversionAction === "create") setConversionAction("link"); }} /><span><b>{candidate.business_name || candidate.full_name}</b><small>{candidate.full_name} · {candidate.status}{candidate.outcome_status ? ` · ${candidate.outcome_status}` : ""}</small></span></label>)}<div className="prospectConversionActions"><label><input type="radio" name="conversion-action" checked={conversionAction === "link"} onChange={() => setConversionAction("link")} disabled={!conversionIntakeId} /> Link existing</label><label><input type="radio" name="conversion-action" checked={conversionAction === "reactivate"} onChange={() => setConversionAction("reactivate")} disabled={!conversionIntakeId} /> Reactivate and link</label><label><input type="radio" name="conversion-action" checked={conversionAction === "create"} onChange={() => { setConversionAction("create"); setConversionIntakeId(""); }} /> Create a separate intake</label></div></div>}
-      {isBooked && <div className="prospectBookingRequirement">
-        <label><span className="lbl">Appointment ID</span><input className="field" value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} placeholder="Link the confirmed appointment" /></label>
-        {onBook && <button type="button" className="btn" onClick={onBook}>Create appointment</button>}
-      </div>}
+
+      {isConverted && <section className="prospectConversionPanel">
+        <div><b>1. Choose the destination</b><small>Create or link exactly one operational file.</small></div>
+        <div className="prospectConversionTargets" role="radiogroup" aria-label="Conversion destination">
+          <button type="button" role="radio" aria-checked={conversionTarget === "portfolio_application"} className={conversionTarget === "portfolio_application" ? "selected" : ""} onClick={() => selectTarget("portfolio_application")}><b>Portfolio application</b><small>Open a standard funding application in Portfolio.</small></button>
+          <button type="button" role="radio" aria-checked={conversionTarget === "dealer_ai_intake"} className={conversionTarget === "dealer_ai_intake" ? "selected" : ""} onClick={() => selectTarget("dealer_ai_intake")}><b>Dealer AI Intake</b><small>Open the dealer-specific AI Intake and evidence bucket.</small></button>
+        </div>
+        {conversionTarget && <>
+          <div className="prospectConversionStep"><b>2. Resolve matching files</b><small>{conversionCandidates.isLoading ? "Checking accessible records…" : candidates.length ? `${candidates.length} possible match${candidates.length === 1 ? "" : "es"} found. Choose explicitly.` : `No matching ${targetLabel(conversionTarget).toLowerCase()} found. Confirm to create one.`}</small></div>
+          {conversionCandidates.isError && <div className="note" role="alert">Candidate lookup failed. Retry before converting so duplicate handling stays explicit.</div>}
+          {candidates.length > 0 && <div className="prospectConversionChoices">
+            {candidates.map((candidate) => <label key={candidate.id} className={`prospectIntakeCandidate${candidateId === candidate.id ? " selected" : ""}`}><input type="radio" name="conversion-candidate" value={candidate.id} checked={candidateId === candidate.id} onChange={() => { setCandidateId(candidate.id); setConversionAction(candidate.archived ? "reactivate" : "link"); }} /><span><b>{candidate.display_name}</b><small>{candidate.email || candidate.phone || "No contact details"} · {candidate.status}{candidate.archived ? " · archived" : ""}</small>{candidate.match_reasons?.length ? <em>Matched by {candidate.match_reasons.join(", ")}</em> : null}</span></label>)}
+            <div className="prospectConversionActions"><label><input type="radio" name="conversion-action" checked={conversionAction === "link"} onChange={() => setConversionAction("link")} disabled={!candidateId || selectedCandidate?.archived === true} /> Link existing</label><label><input type="radio" name="conversion-action" checked={conversionAction === "reactivate"} onChange={() => setConversionAction("reactivate")} disabled={!candidateId || selectedCandidate?.archived !== true} /> Reactivate and link</label><label><input type="radio" name="conversion-action" checked={conversionAction === "create"} onChange={() => { setConversionAction("create"); setCandidateId(""); }} /> Create a separate record</label></div>
+          </div>}
+          {restrictedMatch && <div className="note" role="alert"><b>A possible matching file cannot be shown with your current access.</b><br />Conversion stopped to prevent an accidental duplicate. Ask an authorized user to resolve the existing file, or explicitly choose to create a separate record.<label className={`consent${conversionAction === "create" ? " on" : ""}`}><input type="checkbox" checked={conversionAction === "create"} onChange={(event) => { setConversionAction(event.target.checked ? "create" : "detect"); setCandidateId(""); }} /><span className="ctext"><span className="ctitle">Create a separate record</span>I understand this may create a separate destination file.</span></label></div>}
+          {needsCreateFields && <div className="prospectPortfolioFields">
+            <div className="prospectConversionStep"><b>3. Portfolio application details</b><small>These required facts create the secure Portfolio application; they are not copied into Marketing history.</small></div>
+            <div className="prospectFieldGrid">
+              <label><span className="lbl">Entity type</span><select className="field" required value={portfolio.entity_type} onChange={(event) => setPortfolio((value) => ({ ...value, entity_type: event.target.value }))}><option value="">Choose…</option><option value="Limited liability company">Limited liability company</option><option value="S corporation">S corporation</option><option value="C corporation">C corporation</option><option value="Partnership">Partnership</option><option value="Sole proprietorship">Sole proprietorship</option></select></label>
+              <label><span className="lbl">Requested amount</span><input className="field" type="number" inputMode="decimal" min="1" step="1000" required value={portfolio.requested_amount || ""} onChange={(event) => setPortfolio((value) => ({ ...value, requested_amount: Number(event.target.value) || 0 }))} /></label>
+              <label><span className="lbl">Funding purpose</span><select className="field" required value={portfolio.funding_purpose} onChange={(event) => setPortfolio((value) => ({ ...value, funding_purpose: event.target.value }))}><option value="">Choose…</option>{PURPOSES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+              <label><span className="lbl">Six-digit room PIN</span><input className="field" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{6}" maxLength={6} required value={portfolio.secure_room_pin} onChange={(event) => setPortfolio((value) => ({ ...value, secure_room_pin: event.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="6 digits" /></label>
+            </div>
+            <label><span className="lbl">Use of proceeds</span><textarea className="field" rows={3} required value={portfolio.use_of_proceeds_note} onChange={(event) => setPortfolio((value) => ({ ...value, use_of_proceeds_note: event.target.value }))} placeholder="Explain how the requested funds will be used." /></label>
+          </div>}
+        </>}
+      </section>}
+
+      {isBooked && <div className="prospectBookingRequirement"><label><span className="lbl">Appointment ID</span><input className="field" value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} placeholder="Link the confirmed appointment" /></label>{onBook && <button type="button" className="btn" onClick={onBook}>Create appointment</button>}</div>}
       {!isConverted && !isBooked && !isNotInterested && <label><span className="lbl">Optional action</span><select className="field" value={action} onChange={(event) => setAction(event.target.value)}><option value="">Stage change only</option><option value="draft_email">Create a reviewable email draft</option></select></label>}
       {!isConverted && !isNotInterested && <label><span className="lbl">Next follow-up</span><input className="field" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /></label>}
       <label><span className="lbl">Internal note</span><textarea className="field" rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional context for the activity timeline" /></label>
       {isNotInterested && <label className={`consent${confirmedDoNotContact ? " on" : ""}`}><input type="checkbox" checked={confirmedDoNotContact} onChange={(event) => setConfirmedDoNotContact(event.target.checked)} /><span className="ctext"><span className="ctitle">Confirm do-not-contact</span>Clear follow-up and stop future prospect outreach for this contact.</span></label>}
-      {move.isError && !conversionCandidates.length && <div className="note" role="alert">{move.error instanceof Error ? move.error.message : "The prospect could not be moved."}</div>}
-      <div className="prospectDialogActions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className={`btn ${isNotInterested ? "danger" : "pri"}`} disabled={!canMove || move.isPending} onClick={() => move.mutate()}>{move.isPending ? "Confirming…" : isConverted && conversionCandidates.length ? "Confirm AI Intake choice" : isConverted ? "Check and create AI Intake" : "Confirm move"}</button></div>
+      {move.isError && !(move.error instanceof ApiError && move.error.status === 409 && (detectedCandidates.length > 0 || restrictedMatch)) && <div className="note" role="alert">{move.error instanceof Error ? move.error.message : "The prospect could not be moved."}</div>}
+      <div className="prospectDialogActions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className={`btn ${isNotInterested ? "danger" : "pri"}`} disabled={!canMove || move.isPending} onClick={() => move.mutate()}>{move.isPending ? "Confirming…" : isConverted ? candidates.length ? `Confirm ${conversionAction === "create" ? "separate creation" : conversionAction}` : `Create ${conversionTarget ? targetLabel(conversionTarget) : "selected destination"}` : "Confirm move"}</button></div>
     </div>
   </Modal>;
 }
