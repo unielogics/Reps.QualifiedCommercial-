@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { ComposeChannel, InboxComposeRequest } from "@/lib/repWorkflows";
 import Drawer from "./Drawer";
+import { ContactIdentityPreflight, useContactIdentityPreflight } from "./ContactIdentityPreflight";
 
 type ThreadSeed = {
   dealer_id?: string | null;
@@ -37,6 +39,7 @@ export default function InboxComposeModal({
   requireMarketingSmsConsent?: boolean;
 }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
   const [name, setName] = useState(seed?.contact_name ?? "");
   const [company, setCompany] = useState(seed?.company ?? "");
@@ -48,6 +51,12 @@ export default function InboxComposeModal({
   const [body, setBody] = useState("");
   const [transactional, setTransactional] = useState(false);
   const [marketing, setMarketing] = useState(initialMarketingConsent);
+  const identityPreflight = useContactIdentityPreflight({
+    email,
+    phone,
+    enabled: !seed?.prospect_id,
+    reason: "Inbox contact creation was blocked by an existing assigned contact.",
+  });
 
   const channels: ComposeChannel[] = [
     ...(sendEmail ? (["email"] as const) : []),
@@ -59,7 +68,9 @@ export default function InboxComposeModal({
       (!sendEmail || subject.trim()) &&
       ((sendEmail && email.trim()) || (sendSms && phone.trim())) &&
       channels.length > 0 &&
-      (!sendSms || (requireMarketingSmsConsent ? marketing : transactional || marketing)),
+      (!sendSms || (requireMarketingSmsConsent ? marketing : transactional || marketing)) &&
+      !identityPreflight.blocked &&
+      !identityPreflight.pending,
   );
 
   const send = useMutation({
@@ -89,6 +100,9 @@ export default function InboxComposeModal({
       onSent?.(result.threads[0]?.id ?? null);
       onClose();
     },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) void identityPreflight.query.refetch();
+    },
   });
 
   return (
@@ -114,6 +128,12 @@ export default function InboxComposeModal({
               <input className="field" type="tel" value={phone} disabled={requireMarketingSmsConsent} onChange={(e) => setPhone(e.target.value)} />
             </div>
           </div>
+
+          {!seed?.prospect_id && <ContactIdentityPreflight
+            state={identityPreflight}
+            onOpenProspect={(prospectId) => { onClose(); router.push(`/marketing/prospects/${prospectId}`); }}
+            onOpenContact={(contactId) => { onClose(); router.push(`/marketing/${contactId}`); }}
+          />}
 
           <div>
             <label className="lbl">Send by</label>

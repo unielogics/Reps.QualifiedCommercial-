@@ -11,6 +11,7 @@ import BookingDrawer from "@/components/BookingDrawer";
 import AppointmentEditorDrawer from "@/components/AppointmentEditorDrawer";
 import AppointmentCrmWorkspace from "@/components/AppointmentCrmWorkspace";
 import AppointmentOutcomeCatalogDrawer from "@/components/AppointmentOutcomeCatalogDrawer";
+import BookingSettingsDrawer from "@/components/BookingSettingsDrawer";
 import { ExternalLink, Flag, FolderOpen, MoreVertical, RotateCcw, Settings2 } from "lucide-react";
 import {
   appointmentOutcomeLabel,
@@ -131,6 +132,7 @@ export default function RepCalendarPage() {
   const [activeAppointment, setActiveAppointment] = useState<{ row: Appointment; mode: "details" | "edit" | "reschedule" } | null>(null);
   const [crmAppointmentId, setCrmAppointmentId] = useState<string | null>(null);
   const [outcomeCatalogOpen, setOutcomeCatalogOpen] = useState(false);
+  const [bookingSettingsOpen, setBookingSettingsOpen] = useState(false);
   const [assignedRep, setAssignedRep] = useState("all");
   const [crmStatus, setCrmStatus] = useState("all");
   const [outcomeFilter, setOutcomeFilter] = useState("all");
@@ -270,11 +272,19 @@ export default function RepCalendarPage() {
       dismissedQueryAppointment.current = null;
       return;
     }
-    if (dismissedQueryAppointment.current === requested || activeAppointment?.row.id === requested || crmAppointmentId === requested || !appointments.data || !calendarCapabilities.isSuccess) return;
+    if (dismissedQueryAppointment.current === requested || activeAppointment?.row.id === requested || crmAppointmentId === requested || !calendarCapabilities.isSuccess) return;
+    // A Marketing prospect can link to an appointment outside the month that
+    // happens to be visible on Calendar. The CRM workspace loads by id, so do
+    // not make its deep link depend on the current month query containing the
+    // appointment first.
+    if (canManageCrm) {
+      setCrmAppointmentId(requested);
+      return;
+    }
+    if (!appointments.data) return;
     const row = appointments.data.find((item) => item.id === requested);
     if (row) {
-      if (canManageCrm) setCrmAppointmentId(row.id);
-      else setActiveAppointment({ row, mode: "details" });
+      setActiveAppointment({ row, mode: "details" });
       const date = new Date(row.starts_at);
       setMonth(new Date(date.getFullYear(), date.getMonth(), 1));
       setSelectedDate(startOfLocalDay(date));
@@ -330,10 +340,11 @@ export default function RepCalendarPage() {
         <button type="button" className="btn pri" onClick={() => setBookingOpen(true)}>
           Add appointment
         </button>
+        <button type="button" className="btn" onClick={() => setBookingSettingsOpen(true)}>
+          <Settings2 size={17} /> Booking settings
+        </button>
         {canManageOutcomeCatalog ? (
-          <button type="button" className="iconBtn calendarCatalogButton" aria-label="Configure shared outcomes" title="Configure shared outcomes" onClick={() => setOutcomeCatalogOpen(true)}>
-            <Settings2 size={18} />
-          </button>
+          <button type="button" className="btn calendarCatalogButton" aria-label="Configure shared outcomes" title="Configure shared outcomes" onClick={() => setOutcomeCatalogOpen(true)}><Flag size={16} /> Outcome settings</button>
         ) : null}
         <label className="chip" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={includeCancelled} onChange={(event) => setIncludeCancelled(event.target.checked)} />
@@ -490,6 +501,7 @@ export default function RepCalendarPage() {
       </div>
 
       {bookingOpen && <BookingDrawer onClose={() => setBookingOpen(false)} />}
+      {bookingSettingsOpen && <BookingSettingsDrawer onClose={() => setBookingSettingsOpen(false)} />}
       {crmAppointmentId && canManageCrm ? (
         <AppointmentCrmWorkspace
           appointmentId={crmAppointmentId}

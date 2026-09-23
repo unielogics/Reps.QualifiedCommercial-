@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CircleAlert, Mail, PenLine, ShieldCheck, Sparkles } from "lucide-react";
@@ -10,6 +10,9 @@ import type {
   DealerProspectCreateRequest,
   ProspectEmailDraft,
   ProspectEmailDraftCreateRequest,
+  ProspectDuplicateCheck,
+  ProspectReassignmentReceipt,
+  ProspectReassignmentRequest,
   ProspectSenderIdentity,
 } from "@/lib/prospects";
 import { useMe } from "@/lib/useMe";
@@ -30,12 +33,14 @@ export default function ProspectQuickAddModal({
   onCreated,
   onProspectSaved,
   onOpenExisting,
+  onOpenContact,
   initialValues,
 }: {
   onClose: () => void;
   onCreated: (prospect: DealerProspect) => void;
   onProspectSaved?: (prospect: DealerProspect) => void;
   onOpenExisting: (prospectId: string) => void;
+  onOpenContact?: (contactId: string) => void;
   initialValues?: { contact_id?: string | null; name?: string | null; dealer_name?: string | null; email?: string | null; phone?: string | null };
 }) {
   const { getToken } = useAuth();
@@ -57,6 +62,26 @@ export default function ProspectQuickAddModal({
   const [frozenEmailRequest, setFrozenEmailRequest] = useState<ProspectEmailDraftCreateRequest | null>(null);
   const [firstDraft, setFirstDraft] = useState<ProspectEmailDraft | null>(null);
   const [reviewDraft, setReviewDraft] = useState<ProspectEmailDraft | null>(null);
+  const [duplicateInput, setDuplicateInput] = useState({ email: email.trim(), phone: phone.trim() });
+  const reassignmentKey = useRef("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDuplicateInput({ email: email.trim(), phone: phone.trim() }), 350);
+    return () => window.clearTimeout(timer);
+  }, [email, phone]);
+
+  const duplicateCheck = useQuery({
+    queryKey: ["prospect-duplicate-check", duplicateInput.email.toLowerCase(), duplicateInput.phone, initialValues?.contact_id],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (duplicateInput.email) params.set("email", duplicateInput.email);
+      if (duplicateInput.phone) params.set("phone", duplicateInput.phone);
+      if (initialValues?.contact_id) params.set("contact_id", initialValues.contact_id);
+      return api<ProspectDuplicateCheck>(`/dealer-os/prospects/duplicate-check?${params}`, { authToken: (await getToken()) ?? undefined });
+    },
+    enabled: Boolean(duplicateInput.email || duplicateInput.phone) && !createdProspect,
+    staleTime: 15_000,
+  });
 
   const senderPreview = useQuery({
     queryKey: ["prospect-outreach", "sender-preview"],
@@ -95,7 +120,52 @@ export default function ProspectQuickAddModal({
     },
   });
 
-  const canCreate = Boolean(name.trim() && dealerName.trim() && email.trim() && phone.trim());
+  const restoreProspect = useMutation({
+    mutationFn: async ({ prospectId, version }: { prospectId: string; version: number }) => api<DealerProspect>(`/dealer-os/prospects/${prospectId}/restore`, {
+      method: "POST",
+      body: JSON.stringify({ expected_version: version }),
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onSuccess: (prospect) => onOpenExisting(prospect.id),
+  });
+
+  const requestReassignment = useMutation({
+    mutationFn: async () => {
+      if (!reassignmentKey.current) reassignmentKey.current = crypto.randomUUID();
+      const request: ProspectReassignmentRequest = {
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        idempotency_key: reassignmentKey.current,
+        reason: "Marketing prospect creation was blocked by an existing assigned contact.",
+      };
+      return api<ProspectReassignmentReceipt>("/dealer-os/prospects/reassignment-requests", {
+        method: "POST",
+        body: JSON.stringify(request),
+        authToken: (await getToken()) ?? undefined,
+      });
+    },
+  });
+
+  useEffect(() => {
+    reassignmentKey.current = "";
+    requestReassignment.reset();
+    restoreProspect.reset();
+    // Mutation reset functions are stable; identity changes intentionally
+    // start a new reassignment/restore decision.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email, phone]);
+
+  const duplicateBlocked = duplicateCheck.data?.blocked === true;
+  const duplicateInputIsCurrent = duplicateInput.email === email.trim() && duplicateInput.phone === phone.trim();
+  const canCreate = Boolean(
+    name.trim()
+    && dealerName.trim()
+    && email.trim()
+    && phone.trim()
+    && duplicateInputIsCurrent
+    && !duplicateBlocked
+    && !duplicateCheck.isFetching,
+  );
   const duplicateDetail = create.error instanceof ApiError && create.error.status === 409
     ? (create.error.body as { detail?: { code?: string; candidates?: Array<{ prospect_id?: string }>; assignment_required?: boolean } } | null)?.detail
     : null;
@@ -205,6 +275,18 @@ export default function ProspectQuickAddModal({
         </div>
         <label className="prospectQuickStartNote"><span className="lbl">First internal note <small>Optional</small></span><textarea className="field" rows={3} maxLength={4000} disabled={setupLocked} value={firstNote} onChange={(event) => setFirstNote(event.target.value)} placeholder="What happened on the call, what the dealer needs, and the next step." /><small>This is saved privately on the prospect. It is never sent to the dealer or the AI.</small></label>
       </section>
+
+      {duplicateCheck.isFetching && <div className="prospectDuplicatePreflight" role="status">Checking email and phone for an existing Marketing contact…</div>}
+      {duplicateCheck.data?.blocked && <div className="prospectDuplicateWarning" role="alert">
+        <b>{duplicateCheck.data.state === "identity_conflict" ? "Email and phone belong to different contacts." : duplicateCheck.data.state === "archived_match" ? "An archived Marketing contact already uses these details." : "This contact already exists."}</b>
+        <span>{duplicateCheck.data.message || "Open the existing contact, or change the conflicting email or phone before continuing."}</span>
+        {duplicateCheck.data.visible_matches.map((candidate) => candidate.prospect_id ? candidate.archived && candidate.version != null ? <button type="button" className="btn" key={`${candidate.prospect_id}:${candidate.matched_on.join("-")}`} disabled={restoreProspect.isPending} onClick={() => restoreProspect.mutate({ prospectId: candidate.prospect_id!, version: candidate.version! })}>{restoreProspect.isPending ? "Restoring…" : "Restore & open prospect"}</button> : <button type="button" className="btn" key={`${candidate.prospect_id}:${candidate.matched_on.join("-")}`} onClick={() => onOpenExisting(candidate.prospect_id!)}>Open active prospect</button> : candidate.contact_id && onOpenContact ? <button type="button" className="btn" key={`${candidate.contact_id}:${candidate.matched_on.join("-")}`} onClick={() => onOpenContact(candidate.contact_id!)}>{candidate.archived ? "Open archived contact" : "Open active contact"}</button> : null)}
+        {restoreProspect.isError && <small>The archived prospect could not be restored. {restoreProspect.error instanceof Error ? restoreProspect.error.message : "Refresh and try again."}</small>}
+        {duplicateCheck.data.assignment_required && !requestReassignment.isSuccess && <><small>A matching contact is assigned elsewhere. Its private details remain hidden.</small><button type="button" className="btn" disabled={requestReassignment.isPending} onClick={() => requestReassignment.mutate()}>{requestReassignment.isPending ? "Sending request…" : "Request reassignment"}</button></>}
+        {requestReassignment.isSuccess && <small role="status">Reassignment requested. A Super Admin has been notified; you can safely close this form.</small>}
+        {requestReassignment.isError && <small>The reassignment request could not be sent. {requestReassignment.error instanceof Error ? requestReassignment.error.message : "Try again."}</small>}
+      </div>}
+      {duplicateCheck.isError && <div className="note" role="status">Live duplicate preview is temporarily unavailable. Creation will still perform the authoritative duplicate check.</div>}
 
       <section className="prospectQuickStartSection prospectQuickStartEmail">
         <header><span>2</span><div><b>Prepare the first email</b><small>Personalize approved copy and choose exactly which dealer PDFs to include.</small></div><span className="cellchip c-ok"><Mail size={13} /> Ready from here</span></header>

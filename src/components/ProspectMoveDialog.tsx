@@ -68,9 +68,7 @@ export default function ProspectMoveDialog({
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [note, setNote] = useState("");
-  const [followUp, setFollowUp] = useState("");
   const [action, setAction] = useState("");
-  const [appointmentId, setAppointmentId] = useState("");
   const [confirmedDoNotContact, setConfirmedDoNotContact] = useState(false);
   const [conversionTarget, setConversionTarget] = useState<ProspectConversionTarget | "">("");
   const [conversionAction, setConversionAction] = useState<ProspectConversionAction>("detect");
@@ -108,7 +106,7 @@ export default function ProspectMoveDialog({
   };
 
   const move = useMutation({
-    mutationFn: async (): Promise<{ prospect: DealerProspect; emailDraft?: ProspectEmailDraft }> => {
+    mutationFn: async (): Promise<{ prospect: DealerProspect; emailDraftId?: string | null }> => {
       if (isConverted) {
         if (!conversionTarget) throw new Error("Choose where to create the funding file.");
         const result = await api<MoveResult>(`/dealer-os/prospects/${prospect.id}/convert`, {
@@ -131,22 +129,34 @@ export default function ProspectMoveDialog({
           stage_key: destination.key,
           expected_version: prospect.version,
           note: note.trim() || null,
-          next_follow_up_at: followUp ? new Date(followUp).toISOString() : null,
           action: action || null,
-          appointment_id: appointmentId.trim() || null,
           confirm_do_not_contact: isNotInterested ? confirmedDoNotContact : false,
         }),
         authToken: (await getToken()) ?? undefined,
       });
       const moved = result.prospect;
       if (action !== "draft_email") return { prospect: moved };
-      if (!result.email_draft_id) throw new Error("The stage changed, but no email draft reference was returned. Open Email activity to inspect the result.");
-      const emailDraft = await api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${result.email_draft_id}`, { authToken: (await getToken()) ?? undefined });
-      return { prospect: moved, emailDraft };
+      return { prospect: moved, emailDraftId: result.email_draft_id };
     },
     onSuccess: (result) => {
-      if (result.emailDraft) onEmailDraft?.(result.prospect, result.emailDraft);
+      // The stage transition is already committed at this point. Close the
+      // confirmation and render the authoritative stage immediately; opening
+      // the optional draft is a separate, recoverable UI step.
       onMoved(result.prospect);
+      if (result.emailDraftId === undefined) return;
+      if (!result.emailDraftId) {
+        onConflict?.("The stage moved successfully, but the email draft could not be opened because the server did not return its reference. Review it in Email activity.");
+        return;
+      }
+      const draftId = result.emailDraftId;
+      void (async () => {
+        try {
+          const emailDraft = await api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${draftId}`, { authToken: (await getToken()) ?? undefined });
+          onEmailDraft?.(result.prospect, emailDraft);
+        } catch (error) {
+          onConflict?.(`The stage moved successfully, but its email draft could not be opened. ${error instanceof Error ? error.message : "Review it in Email activity."}`);
+        }
+      })();
     },
     onError: (error) => {
       void qc.invalidateQueries({ queryKey: ["dealer-prospects"] });
@@ -176,13 +186,13 @@ export default function ProspectMoveDialog({
   const candidatesRequireChoice = isConverted && candidates.length > 0 && conversionAction === "detect";
   const restrictedMatchRequiresChoice = isConverted && restrictedMatch && conversionAction !== "create";
   const candidateChoiceComplete = conversionAction === "detect" || conversionAction === "create" || Boolean(candidateId);
-  const canMove = (!isBooked || Boolean(appointmentId.trim()))
+  const canMove = !isBooked
     && (!isNotInterested || confirmedDoNotContact)
     && (!isConverted || (Boolean(conversionTarget) && !conversionCandidates.isLoading && !candidatesRequireChoice && !restrictedMatchRequiresChoice && candidateChoiceComplete && portfolioComplete));
   const summary = isConverted
     ? "Choose one destination. Marketing history stays here; borrower records are created or linked only after this conversion succeeds."
     : isBooked
-      ? "A booked prospect must be linked to an appointment before the stage changes."
+      ? "Choose a time below. The appointment and Booked stage will be created together; there is no appointment ID to copy or link."
       : isNotInterested
         ? "The next follow-up will be cleared and prospect outreach will be disabled. No email will be sent."
         : "This changes the pipeline stage. No email is sent unless you explicitly choose one below.";
@@ -219,13 +229,12 @@ export default function ProspectMoveDialog({
         </>}
       </section>}
 
-      {isBooked && <div className="prospectBookingRequirement"><label><span className="lbl">Appointment ID</span><input className="field" value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} placeholder="Link the confirmed appointment" /></label>{onBook && <button type="button" className="btn" onClick={onBook}>Create appointment</button>}</div>}
+      {isBooked && <div className="prospectBookingRequirement"><span><b>Appointment required</b><small>{prospect.do_not_contact ? "Reactivate outreach before booking this contact." : "The dealer and contact information will be filled from this prospect."}</small></span>{onBook && <button type="button" className="btn pri" disabled={prospect.do_not_contact} onClick={onBook}>Choose appointment time</button>}</div>}
       {!isConverted && !isBooked && !isNotInterested && <label><span className="lbl">Optional action</span><select className="field" value={action} onChange={(event) => setAction(event.target.value)}><option value="">Stage change only</option><option value="draft_email">Create a reviewable email draft</option></select></label>}
-      {!isConverted && !isNotInterested && <label><span className="lbl">Next follow-up</span><input className="field" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /></label>}
       <label><span className="lbl">Internal note</span><textarea className="field" rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional context for the activity timeline" /></label>
       {isNotInterested && <label className={`consent${confirmedDoNotContact ? " on" : ""}`}><input type="checkbox" checked={confirmedDoNotContact} onChange={(event) => setConfirmedDoNotContact(event.target.checked)} /><span className="ctext"><span className="ctitle">Confirm do-not-contact</span>Clear follow-up and stop future prospect outreach for this contact.</span></label>}
       {move.isError && !(move.error instanceof ApiError && move.error.status === 409 && (detectedCandidates.length > 0 || restrictedMatch)) && <div className="note" role="alert">{move.error instanceof Error ? move.error.message : "The prospect could not be moved."}</div>}
-      <div className="prospectDialogActions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className={`btn ${isNotInterested ? "danger" : "pri"}`} disabled={!canMove || move.isPending} onClick={() => move.mutate()}>{move.isPending ? "Confirming…" : isConverted ? candidates.length ? `Confirm ${conversionAction === "create" ? "separate creation" : conversionAction}` : `Create ${conversionTarget ? targetLabel(conversionTarget) : "selected destination"}` : "Confirm move"}</button></div>
+      <div className="prospectDialogActions"><button type="button" className="btn" onClick={onClose}>Cancel</button>{!isBooked && <button type="button" className={`btn ${isNotInterested ? "danger" : "pri"}`} disabled={!canMove || move.isPending} onClick={() => move.mutate()}>{move.isPending ? "Confirming…" : isConverted ? candidates.length ? `Confirm ${conversionAction === "create" ? "separate creation" : conversionAction}` : `Create ${conversionTarget ? targetLabel(conversionTarget) : "selected destination"}` : "Confirm move"}</button>}</div>
     </div>
   </Modal>;
 }

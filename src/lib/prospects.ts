@@ -174,6 +174,7 @@ export type DealerProspect = {
   last_outcome_label?: string | null;
   call_attempt_count: number;
   next_follow_up_at?: string | null;
+  follow_up_state?: "none" | "upcoming" | "due" | "overdue";
   last_activity_at?: string | null;
   created_at?: string;
   updated_at: string;
@@ -183,6 +184,64 @@ export type DealerProspect = {
   conversion_target?: "portfolio_application" | "dealer_ai_intake" | null;
   converted_application_id?: string | null;
   converted_intake_id?: string | null;
+};
+
+export type ProspectDuplicateMatch = {
+  entity_type?: "prospect" | "contact";
+  prospect_id?: string | null;
+  contact_id?: string | null;
+  owner_user_id?: string | null;
+  archived: boolean;
+  version?: number | null;
+  matched_on: Array<"email" | "phone">;
+};
+
+export type ProspectReassignmentRequest = {
+  email?: string | null;
+  phone?: string | null;
+  idempotency_key: string;
+  reason?: string | null;
+};
+
+export type ProspectReassignmentReceipt = {
+  status: "accepted";
+  request_token: string;
+};
+
+export type ProspectDuplicateCheck = {
+  blocked: boolean;
+  state: "clear" | "active_match" | "archived_match" | "hidden_match" | "identity_conflict";
+  email_normalized?: string | null;
+  phone_normalized?: string | null;
+  visible_matches: ProspectDuplicateMatch[];
+  assignment_required: boolean;
+  can_restore: boolean;
+  message: string;
+};
+
+export type ProspectTimelineItem = {
+  id: string;
+  source: string;
+  source_id: string;
+  kind: string;
+  body?: string | null;
+  metadata?: Record<string, unknown> | null;
+  actor_user_id?: string | null;
+  actor_name?: string | null;
+  occurred_at: string;
+};
+
+export type ProspectTimelinePage = {
+  items: ProspectTimelineItem[];
+  next_cursor?: string | null;
+};
+
+export type ProspectFollowUpChoice = "next_business_day" | "two_business_days" | "custom";
+
+export type ProspectFollowUpSuggestion = {
+  scheduled_at: string;
+  timezone: string;
+  business_days: number;
 };
 
 export type ProspectActivity = {
@@ -293,6 +352,8 @@ export type ProspectPage = {
   offset: number;
   stages: ProspectStage[];
   outcomes: ProspectOutcome[];
+  server_now?: string;
+  follow_up_timezone?: string;
 };
 
 export type ProspectDetail = DealerProspect & {

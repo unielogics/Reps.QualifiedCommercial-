@@ -416,7 +416,6 @@ function Outcome({
   const [variant, setVariant] = useState<"dealer" | "real_estate" | "main_street" | "mca_refinance">("dealer");
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
-  const [notifyClient, setNotifyClient] = useState(false);
   const [applyBookingData, setApplyBookingData] = useState(false);
   const [documents, setDocuments] = useState<string[]>([]);
   const [confirmed, setConfirmed] = useState(false);
@@ -443,7 +442,10 @@ function Outcome({
         existing_file_id: existingFile?.id ?? null,
         variant,
         secure_room_pin: pin || null,
-        notify_client: notifyClient,
+        // Room delivery is intentionally a separate post-commit action. The
+        // outcome transaction must finish before any client communication can
+        // be accepted by a provider.
+        notify_client: false,
         apply_booking_data: applyBookingData,
         requested_document_keys: documents,
       }),
@@ -479,7 +481,7 @@ function Outcome({
               <>
                 <label><span className="lbl">File action *</span><select className="field" value={fileAction} onChange={(event) => { setFileAction(event.target.value as FileAction); setExistingFile(null); }}><option value="none">Choose an action</option>{workspace.draft_file && workspace.draft_file.lifecycle === "draft" ? <option value="promote_draft">Promote draft file{workspace.draft_file.case_ref ? ` ${workspace.draft_file.case_ref}` : ""}</option> : null}{workspace.application || workspace.funding_file ? <option value="update_linked">Update linked file</option> : null}<option value="link_existing">Link an existing file</option><option value="create_ai_intake">Create AI Intake</option>{workspace.capabilities.can_create_funding_loan ? <option value="create_funding_loan">Create Funding file</option> : null}</select></label>
                 {fileAction === "link_existing" ? <FilePicker appointmentId={workspace.appointment.id} value={existingFile} onChange={setExistingFile} /> : null}
-                {fileAction === "create_ai_intake" ? <div className="appointmentCrmFieldGrid"><label><span className="lbl">Intake type</span><select className="field" value={variant} onChange={(event) => setVariant(event.target.value as typeof variant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street</option><option value="mca_refinance">MCA refinance</option></select></label><label><span className="lbl">Six-digit room PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><label><span className="lbl">Confirm PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><CheckRow checked={notifyClient} onChange={setNotifyClient} label="Notify the client with room access instructions" /></div> : null}
+                {fileAction === "create_ai_intake" ? <div className="appointmentCrmFieldGrid"><label><span className="lbl">Intake type</span><select className="field" value={variant} onChange={(event) => setVariant(event.target.value as typeof variant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street</option><option value="mca_refinance">MCA refinance</option></select></label><label><span className="lbl">Six-digit room PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><label><span className="lbl">Confirm PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><div className="note"><b>Client delivery follows creation.</b><span style={{ display: "block", marginTop: 4 }}>Finish creating the intake, then send room access from the committed secure-room workflow.</span></div></div> : null}
                 {fileAction !== "none" ? <CheckRow checked={applyBookingData} onChange={setApplyBookingData} label="Apply the reviewed booking data to the destination file" /> : null}
               </>
             ) : null}

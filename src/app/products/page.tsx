@@ -5,11 +5,12 @@ import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Building2, CalendarDays, ChevronLeft, ChevronRight, Plus, Share2, Trash2, WandSparkles, X } from "lucide-react";
-import { api, apiBase } from "@/lib/api";
+import { api, apiBase, ApiError } from "@/lib/api";
 import BusinessAddressFields from "@/components/BusinessAddressFields";
 import { ProductIcon } from "@/components/ProductIcon";
 import ProductFinderTaxonomy, { type ProductFinderTaxonomyValue } from "@/components/ProductFinderTaxonomy";
 import ProductShareDialog from "@/components/ProductShareDialog";
+import { ContactIdentityPreflight, useContactIdentityPreflight } from "@/components/ContactIdentityPreflight";
 import TermScenarioTables, { type TermScenario } from "@/components/TermScenarioTables";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 
@@ -61,6 +62,12 @@ export default function ProductsPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [profile, setProfile] = useState<ProspectProfile>({ company_name: "", contact_name: "", email: "", phone: "", requested_amount: "", use_of_funds: "", ...EMPTY_TAXONOMY });
   const [session, setSession] = useState<{ id: string; dealer_id: string; contact_id: string } | null>(null);
+  const identityPreflight = useContactIdentityPreflight({
+    email: profile.email,
+    phone: profile.phone,
+    enabled: mode === "finder" && !session,
+    reason: "Product Finder contact creation was blocked by an existing assigned Marketing contact.",
+  });
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   const [result, setResult] = useState<ScreeningResult | null>(null);
@@ -89,7 +96,10 @@ export default function ProductsPage() {
   const createSession = useMutation({
     mutationFn: async () => api<{ id: string; dealer_id: string; contact_id: string; answers: Record<string, unknown> }>("/dealer-os/product-finder/sessions", { method: "POST", authToken: (await getToken()) ?? undefined, body: JSON.stringify({ ...profile, requested_amount: Number(profile.requested_amount), locale }) }),
     onSuccess: (data) => { setSession(data); setAnswers({ ...data.answers }); setMessage(""); },
-    onError: (error) => setMessage(error instanceof Error ? error.message : "Unable to start Product Finder."),
+    onError: (error) => {
+      setMessage(error instanceof Error ? error.message : "Unable to start Product Finder.");
+      if (error instanceof ApiError && error.status === 409) void identityPreflight.query.refetch();
+    },
   });
   const screen = useMutation({
     mutationFn: async (answerOverrides?: Record<string, unknown>) => {
@@ -125,7 +135,7 @@ export default function ProductsPage() {
   });
   const activeQuestionIndex = visibleQuestions.findIndex((question) => answers[question.key] === undefined || answers[question.key] === "");
   const realEstateActive = answers.real_estate_involved === true || answers.owned_real_estate_available === true;
-  const finderReady = Boolean(profile.company_name.trim() && profile.contact_name.trim() && requestedAmount && profile.use_of_funds.trim().length >= 3 && profile.activity_entry_id);
+  const finderReady = Boolean(profile.company_name.trim() && profile.contact_name.trim() && requestedAmount && profile.use_of_funds.trim().length >= 3 && profile.activity_entry_id && !identityPreflight.pending && !identityPreflight.blocked);
   const viableDirect = result?.evaluated_programs.some((program) => program.decision_type !== "advisory" && program.status !== "blocked");
   const activeTaxonomy = { ...EMPTY_TAXONOMY, ...answers } as ProductFinderTaxonomyValue;
 
@@ -153,7 +163,7 @@ export default function ProductsPage() {
     </> : <section className="finderWorkspace mt">
       <aside className="finderIntro"><span className="finderOrb"><WandSparkles size={21} /></span><span className="eyebrow">Guided screening</span><h3>{t.finder}</h3><p>Screen the primary owner, canonical NAICS activity, bank behavior, debt exposure, and stated collateral without changing the formal application.</p><div className="finderTrust"><b>Self-reported</b><span>Exact EZ/Micro gates remain separate from advisory alternatives.</span></div></aside>
       <div className="finderMain">
-        {!session ? <div className="finderForm"><h3>{t.details}</h3><div className="fieldGrid"><label><span>Business</span><input className="field" value={profile.company_name} onChange={(event) => setProfile({ ...profile, company_name: event.target.value })} /></label><label><span>Primary contact</span><input className="field" value={profile.contact_name} onChange={(event) => setProfile({ ...profile, contact_name: event.target.value })} /></label><label><span>Email</span><input className="field" type="email" value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} /></label><label><span>Phone</span><input className="field" value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} /></label><label><span>Requested amount</span><input className="field" inputMode="numeric" value={profile.requested_amount} onChange={(event) => setProfile({ ...profile, requested_amount: event.target.value.replace(/[^0-9.]/g, "") })} /></label><ProductFinderTaxonomy locale={locale} value={profile} onChange={(taxonomy) => setProfile((current) => ({ ...current, ...taxonomy }))} /><label className="full"><span>Detailed use of funds</span><textarea className="field" rows={4} value={profile.use_of_funds} onChange={(event) => setProfile({ ...profile, use_of_funds: event.target.value })} /></label></div><button className="btn pri finderPrimary" disabled={!finderReady || createSession.isPending} onClick={() => createSession.mutate()}>{createSession.isPending ? "Creating…" : t.next}</button></div>
+        {!session ? <div className="finderForm"><h3>{t.details}</h3><div className="fieldGrid"><label><span>Business</span><input className="field" value={profile.company_name} onChange={(event) => setProfile({ ...profile, company_name: event.target.value })} /></label><label><span>Primary contact</span><input className="field" value={profile.contact_name} onChange={(event) => setProfile({ ...profile, contact_name: event.target.value })} /></label><label><span>Email</span><input className="field" type="email" value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} /></label><label><span>Phone</span><input className="field" value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} /></label><label><span>Requested amount</span><input className="field" inputMode="numeric" value={profile.requested_amount} onChange={(event) => setProfile({ ...profile, requested_amount: event.target.value.replace(/[^0-9.]/g, "") })} /></label><ProductFinderTaxonomy locale={locale} value={profile} onChange={(taxonomy) => setProfile((current) => ({ ...current, ...taxonomy }))} /><label className="full"><span>Detailed use of funds</span><textarea className="field" rows={4} value={profile.use_of_funds} onChange={(event) => setProfile({ ...profile, use_of_funds: event.target.value })} /></label></div><ContactIdentityPreflight state={identityPreflight} onOpenProspect={(prospectId) => router.push(`/marketing/prospects/${prospectId}`)} onOpenContact={(contactId) => router.push(`/marketing/${contactId}`)} /><button className="btn pri finderPrimary" disabled={!finderReady || createSession.isPending} onClick={() => createSession.mutate()}>{createSession.isPending ? "Creating…" : t.next}</button></div>
         : <div className="finderConversation"><div className="finderFact"><b>{profile.company_name}</b><span>{money(Number(profile.requested_amount))} · {activeTaxonomy.naics_code} · {activeTaxonomy.naics_label}</span></div>
           <ProductFinderTaxonomy locale={locale} value={activeTaxonomy} onChange={(taxonomy) => { const next = { ...answers, ...taxonomy }; setProfile((current) => ({ ...current, ...taxonomy })); setAnswers(next); if (taxonomy.activity_entry_id && result) screen.mutate(next); else setResult(null); }} />
           {visibleQuestions.map((question, index) => { const value = answers[question.key]; const active = index === activeQuestionIndex; const answered = value !== undefined && value !== ""; if (!active && !answered) return null; return <div className={`finderQuestion ${active ? "active" : "answered"}`} key={question.key}><span className="questionNumber">{answered ? "✓" : index + 1}</span><div><b>{question.label}</b>{question.kind === "boolean" ? <div className="seg mt"><button className={value === true ? "on" : ""} onClick={() => setAnswers({ ...answers, [question.key]: true })}>Yes</button><button className={value === false ? "on" : ""} onClick={() => setAnswers({ ...answers, [question.key]: false })}>No</button></div> : question.kind === "select" ? <select className="field mt" value={String(value ?? "")} onChange={(event) => setAnswers({ ...answers, [question.key]: event.target.value })}><option value="">Select</option>{(question.options ?? []).map((option) => <option key={option} value={option}>{optionLabels[option]?.[locale] ?? option.replaceAll("_", " ")}</option>)}</select> : <input className="field mt" inputMode={question.kind === "number" || question.kind === "money" ? "decimal" : undefined} value={String(value ?? "")} onChange={(event) => setAnswers({ ...answers, [question.key]: question.kind === "number" || question.kind === "money" ? event.target.value === "" ? "" : Number(event.target.value) : event.target.value })} />}</div></div>; })}

@@ -4,31 +4,43 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, CalendarDays, ExternalLink, Mail, MessageSquareText, Phone, Plus, Send, StickyNote } from "lucide-react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bot, CalendarDays, ExternalLink, Mail, MessageSquareText, Plus, StickyNote } from "lucide-react";
 import { api } from "@/lib/api";
 import {
-  DEFAULT_PROSPECT_OUTCOMES,
-  DEFAULT_PROSPECT_STAGES,
   displayDate,
   initials,
   type ProspectDetail,
   type ProspectEmailDraft,
+  type ProspectFollowUpChoice,
+  type ProspectFollowUpSuggestion,
   type ProspectOutcome,
   type ProspectStage,
+  type ProspectTimelinePage,
 } from "@/lib/prospects";
 import BookingDrawer from "@/components/BookingDrawer";
 import InboxComposeModal from "@/components/InboxComposeModal";
 import ProspectEmailComposer from "@/components/ProspectEmailComposer";
 import ProspectMoveDialog from "@/components/ProspectMoveDialog";
+import MarketingCloseLink from "@/components/MarketingCloseLink";
+import ProspectCallAction from "@/components/ProspectCallAction";
+import FollowUpCountdown from "@/components/FollowUpCountdown";
 
 type OutcomeResult = ProspectDetail | { prospect: ProspectDetail; email_action?: string | null; workflow_action?: string | null; email_draft_id?: string | null };
 type DraftList = { items: ProspectEmailDraft[] };
-type ProspectReply = { id: string; draft_id?: string | null; provider?: string | null; provider_message_id?: string | null; from_email: string; subject?: string | null; body: string; received_at: string; created_at: string };
-type ReplyList = { items: ProspectReply[] };
 const FUNDING_APP_URL = process.env.NEXT_PUBLIC_FUNDING_APP_URL ?? process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
 
 function humanize(value: string): string { return value.replaceAll("_", " ").replace(/\b\w/g, (part) => part.toUpperCase()); }
+
+function displayDateInTimezone(value: string, timeZone: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone }).format(date);
+  } catch {
+    return date.toLocaleString();
+  }
+}
 
 function isActiveOutreachDraft(draft: ProspectEmailDraft): boolean {
   const delivery = String(draft.delivery_status ?? "").toLowerCase();
@@ -48,7 +60,8 @@ export default function ProspectDetailPage() {
   const [outcomeKey, setOutcomeKey] = useState("");
   const [outcomeNote, setOutcomeNote] = useState("");
   const [followUp, setFollowUp] = useState("");
-  const [outcomeAppointmentId, setOutcomeAppointmentId] = useState("");
+  const [followUpChoice, setFollowUpChoice] = useState<ProspectFollowUpChoice>("next_business_day");
+  const [bookingOutcomeKey, setBookingOutcomeKey] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [outcomeDraftError, setOutcomeDraftError] = useState<string | null>(null);
   const [moveConflict, setMoveConflict] = useState<string | null>(null);
@@ -61,26 +74,51 @@ export default function ProspectDetailPage() {
   const stageQuery = useQuery({ queryKey: ["prospect-stages"], queryFn: async () => api<ProspectStage[]>("/dealer-os/prospect-stages", { authToken: (await getToken()) ?? undefined }) });
   const outcomeQuery = useQuery({ queryKey: ["prospect-outcomes"], queryFn: async () => api<ProspectOutcome[]>("/dealer-os/prospect-outcomes", { authToken: (await getToken()) ?? undefined }) });
   const draftQuery = useQuery({ queryKey: ["prospect-email-drafts", id], queryFn: async () => api<DraftList>(`/dealer-os/prospects/${id}/email-drafts`, { authToken: (await getToken()) ?? undefined }) });
-  const repliesQuery = useQuery({ queryKey: ["prospect-replies", id], queryFn: async () => api<ReplyList>(`/dealer-os/prospects/${id}/replies`, { authToken: (await getToken()) ?? undefined }), refetchInterval: 15_000 });
+  const timelineQuery = useInfiniteQuery({
+    queryKey: ["prospect-timeline", id],
+    initialPageParam: "",
+    queryFn: async ({ pageParam }) => api<ProspectTimelinePage>(`/dealer-os/prospects/${id}/timeline?limit=100${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`, { authToken: (await getToken()) ?? undefined }),
+    getNextPageParam: (page) => page.next_cursor || undefined,
+    refetchInterval: 15_000,
+  });
   const row = detail.data;
-  const stages = useMemo(() => (stageQuery.data?.length ? stageQuery.data : DEFAULT_PROSPECT_STAGES).filter((item) => item.is_active !== false).sort((a, b) => a.position - b.position), [stageQuery.data]);
-  const outcomes = useMemo(() => (outcomeQuery.data?.length ? outcomeQuery.data : DEFAULT_PROSPECT_OUTCOMES).filter((item) => item.is_active !== false).sort((a, b) => a.position - b.position), [outcomeQuery.data]);
+  const stages = useMemo(() => (stageQuery.data ?? []).filter((item) => item.is_active !== false).sort((a, b) => a.position - b.position), [stageQuery.data]);
+  const outcomes = useMemo(() => (outcomeQuery.data ?? []).filter((item) => item.is_active !== false).sort((a, b) => a.position - b.position), [outcomeQuery.data]);
+  const stageCatalogUnavailable = stageQuery.isError || (stageQuery.isSuccess && !stages.length);
+  const outcomeCatalogUnavailable = outcomeQuery.isError || (outcomeQuery.isSuccess && !outcomes.length);
   const selectedOutcome = outcomes.find((item) => item.key === outcomeKey);
   const outcomeRequiresAppointment = Boolean(selectedOutcome?.requires_appointment || selectedOutcome?.action_config?.requires_appointment);
-  const refresh = () => { void qc.invalidateQueries({ queryKey: ["dealer-prospect", id] }); void qc.invalidateQueries({ queryKey: ["dealer-prospects"] }); void qc.invalidateQueries({ queryKey: ["prospect-email-drafts", id] }); void qc.invalidateQueries({ queryKey: ["prospect-replies", id] }); };
+  const outcomeBooksAppointment = Boolean(outcomeRequiresAppointment || selectedOutcome?.action_config?.workflow_action === "book_appointment" || ["booked", "wants_to_book"].includes(outcomeKey));
+  const outcomeNeedsFollowUp = Boolean(selectedOutcome?.requires_follow_up || selectedOutcome?.action_config?.requires_follow_up);
+  const suggestedFollowUpChoice: ProspectFollowUpChoice = row?.stage_key === "new" ? "next_business_day" : "two_business_days";
+  const firmFollowUpClock = useQuery({
+    queryKey: ["prospect-follow-up-suggestion", id, "next_business_day"],
+    queryFn: async () => api<ProspectFollowUpSuggestion>(`/dealer-os/prospects/${id}/follow-up-suggestion?choice=next_business_day`, { authToken: (await getToken()) ?? undefined }),
+    enabled: Boolean(row),
+    staleTime: 5 * 60_000,
+  });
+  const followUpSuggestion = useQuery({
+    queryKey: ["prospect-follow-up-suggestion", id, followUpChoice],
+    queryFn: async () => api<ProspectFollowUpSuggestion>(`/dealer-os/prospects/${id}/follow-up-suggestion?choice=${followUpChoice}`, { authToken: (await getToken()) ?? undefined }),
+    enabled: Boolean(row && outcomeNeedsFollowUp && followUpChoice !== "custom"),
+  });
+  const refresh = () => { void qc.invalidateQueries({ queryKey: ["dealer-prospect", id] }); void qc.invalidateQueries({ queryKey: ["dealer-prospects"] }); void qc.invalidateQueries({ queryKey: ["prospect-email-drafts", id] }); void qc.invalidateQueries({ queryKey: ["prospect-timeline", id] }); };
 
   const applyOutcome = useMutation({
     mutationFn: async () => api<OutcomeResult>(`/dealer-os/prospects/${id}/outcomes`, {
       method: "POST",
-      body: JSON.stringify({ outcome_key: outcomeKey, note: outcomeNote.trim() || null, next_follow_up_at: followUp ? new Date(followUp).toISOString() : null, appointment_id: outcomeAppointmentId.trim() || null, expected_version: row?.version }),
+      // datetime-local has no zone by design. Send the wall-clock value so the
+      // server can interpret it in the firm's booking timezone rather than the
+      // employee browser's timezone.
+      body: JSON.stringify({ outcome_key: outcomeKey, note: outcomeNote.trim() || null, follow_up_choice: outcomeNeedsFollowUp ? followUpChoice : null, next_follow_up_at: outcomeNeedsFollowUp && followUpChoice === "custom" && followUp ? followUp : null, expected_version: row?.version }),
       authToken: (await getToken()) ?? undefined,
     }),
     onSuccess: async (result) => {
       const envelope = "prospect" in result ? result : null;
       qc.setQueryData(["dealer-prospect", id], envelope?.prospect ?? result);
-      refresh(); setOutcomeKey(""); setOutcomeNote(""); setFollowUp(""); setOutcomeAppointmentId("");
+      refresh(); setOutcomeKey(""); setOutcomeNote(""); setFollowUp(""); setFollowUpChoice("next_business_day");
       setOutcomeDraftError(null);
-      if (envelope?.workflow_action === "book_appointment") setBooking(true);
+      if (envelope?.workflow_action === "book_appointment") { setBookingOutcomeKey(outcomeKey); setBooking(true); }
       if (envelope?.email_draft_id) {
         try {
           const created = await api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${envelope.email_draft_id}`, { authToken: (await getToken()) ?? undefined });
@@ -96,11 +134,6 @@ export default function ProspectDetailPage() {
     mutationFn: async () => api(`/dealer-os/prospects/${id}/activities`, { method: "POST", body: JSON.stringify({ kind: "internal_note", body: note.trim() }), authToken: (await getToken()) ?? undefined }),
     onSuccess: () => { setNote(""); refresh(); },
   });
-  const completeBookedMove = useMutation({
-    mutationFn: async (appointmentId: string) => api<ProspectDetail>(`/dealer-os/prospects/${id}/move-stage`, { method: "POST", body: JSON.stringify({ stage_key: "booked", expected_version: row?.version, appointment_id: appointmentId, action: "book_appointment" }), authToken: (await getToken()) ?? undefined }),
-    onSuccess: (updated) => { qc.setQueryData(["dealer-prospect", id], updated); refresh(); },
-    onError: refresh,
-  });
   const undoActivity = useMutation({
     mutationFn: async (activityId: string) => api<ProspectDetail>(`/dealer-os/prospects/${id}/activities/${activityId}/undo`, { method: "POST", body: JSON.stringify({ expected_version: row?.version }), authToken: (await getToken()) ?? undefined }),
     onSuccess: (updated) => { qc.setQueryData(["dealer-prospect", id], updated); refresh(); },
@@ -109,6 +142,29 @@ export default function ProspectDetailPage() {
 
   const emailDrafts = draftQuery.data?.items ?? row?.email_drafts ?? [];
   const activeDraft = emailDrafts.find(isActiveOutreachDraft);
+  const timelineItems = useMemo(() => {
+    const candidates = timelineQuery.data?.pages.flatMap((page) => page.items) ?? (row?.activities ?? []).map((activity) => ({
+      id: activity.id,
+      source: "prospect_activity",
+      source_id: activity.id,
+      kind: activity.kind,
+      body: activity.body,
+      metadata: activity.metadata,
+      actor_name: activity.actor_name,
+      occurred_at: activity.created_at,
+    }));
+    const seen = new Set<string>();
+    return candidates.filter((activity) => {
+      // Timeline records expose a canonical id per event. A single
+      // appointment intentionally has separate scheduled, delivery, and
+      // lifecycle events with the same source record id; collapsing on
+      // source/source_id silently hid those distinct audit entries.
+      const canonicalId = activity.id;
+      if (seen.has(canonicalId)) return false;
+      seen.add(canonicalId);
+      return true;
+    });
+  }, [row?.activities, timelineQuery.data?.pages]);
 
   useEffect(() => {
     if (params.get("compose") !== "email") {
@@ -123,57 +179,66 @@ export default function ProspectDetailPage() {
   if (detail.isLoading) return <div className="empty">Loading dealer prospect…</div>;
   if (detail.isError || !row) return <div className="note" role="alert">{detail.error instanceof Error ? detail.error.message : "Dealer prospect unavailable."}</div>;
   const seed = { prospect_id: row.id, contact_name: row.name, company: row.dealer_name, contact_email: row.email, contact_phone: row.phone };
+  const hasActiveBooking = row.stage_key === "booked" && Boolean(row.appointment_id);
 
   return <div className="prospectDetailPage">
     <header className="contactHero prospectHero">
+      <MarketingCloseLink label="Close prospect and return to Marketing" />
       <div><Link href="/marketing" className="backLink">← Marketing pipeline</Link><div className="contactIdentity"><div className="contactAvatar large">{initials(row.name)}</div><div><span className="eyebrow">Marketing prospect</span><h2>{row.dealer_name}</h2><p>{row.name} · {row.owner_name || "Unassigned"}</p></div></div></div>
       <div className="prospectHeroStatus"><span className="prospectStageBadge">{row.stage_label ?? humanize(row.stage_key)}</span><span className="sub">Version {row.version}</span></div>
-      <div className="contactQuick"><button type="button" className="btn" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Mail size={16} /> Email</button><a className="btn pri" href={`tel:${row.phone}`}><Phone size={16} /> Call</a></div>
+      <div className="contactQuick"><button type="button" className="btn" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Mail size={16} /> Email</button><ProspectCallAction phone={row.phone} prospectId={row.id} disabled={row.do_not_contact} onInitiated={refresh} /></div>
     </header>
 
     <div className="prospectActionBar">
       <button type="button" className="btn pri" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Bot size={17} /> {activeDraft ? "Resume active email" : "Draft dealer email"}</button>
       <button type="button" className="btn" disabled={row.do_not_contact || !row.marketing_sms_consent} title={!row.marketing_sms_consent ? "Record marketing SMS consent before texting this prospect." : undefined} onClick={() => setComposeMode("sms")}><MessageSquareText size={16} /> Text</button>
-      <button type="button" className="btn" onClick={() => setBooking(true)}><CalendarDays size={16} /> Book appointment</button>
-      {!row.converted_intake_id && !row.converted_application_id && <button type="button" className="btn" onClick={() => setMoveStage(stages.find((stage) => stage.key === "converted") ?? null)}><Plus size={16} /> Convert prospect</button>}
+      {hasActiveBooking
+        ? <Link className="btn" href={`/calendar?appointment=${row.appointment_id}`}><CalendarDays size={16} /> Manage appointment</Link>
+        : <button type="button" className="btn" disabled={row.do_not_contact || stageQuery.isLoading || stageCatalogUnavailable} title={row.do_not_contact ? "Reactivate outreach before booking this contact." : stageCatalogUnavailable ? "Stage configuration must be restored before booking." : undefined} onClick={() => setBooking(true)}><CalendarDays size={16} /> Book appointment</button>}
+      {!row.converted_intake_id && !row.converted_application_id && <button type="button" className="btn" disabled={stageQuery.isLoading || stageCatalogUnavailable} title={stageCatalogUnavailable ? "Stage configuration must be restored before conversion." : undefined} onClick={() => setMoveStage(stages.find((stage) => stage.key === "converted") ?? null)}><Plus size={16} /> Convert prospect</button>}
       {row.converted_application_id && <Link className="btn" href={`/applications/${row.converted_application_id}`}>Open Portfolio application <ExternalLink size={15} /></Link>}
       {row.converted_intake_id && <a className="btn" target="_blank" rel="noreferrer" href={`${FUNDING_APP_URL}/admin/ai-underwriter-leads?lead=${row.converted_intake_id}&view=underwriting`}>Open AI Intake <ExternalLink size={15} /></a>}
       <Link className="btn" href={emailDrafts[0] ? `/inbox?view=marketing&draft_id=${emailDrafts[0].id}` : `/inbox?view=marketing&q=${encodeURIComponent(row.dealer_name)}`}><Mail size={16} /> Email activity</Link>
-      <label className="prospectInlineMove"><span className="lbl">Move stage</span><select className="field" value="" onChange={(event) => setMoveStage(stages.find((stage) => stage.key === event.target.value) ?? null)}><option value="">Choose…</option>{stages.filter((stage) => stage.key !== row.stage_key).map((stage) => <option value={stage.key} key={stage.key}>{stage.label}</option>)}</select></label>
+      <label className="prospectInlineMove"><span className="lbl">Move stage</span><select className="field" value="" disabled={stageQuery.isLoading || stageCatalogUnavailable} onChange={(event) => setMoveStage(stages.find((stage) => stage.key === event.target.value) ?? null)}><option value="">{stageQuery.isLoading ? "Loading…" : stageCatalogUnavailable ? "Unavailable" : "Choose…"}</option>{stages.filter((stage) => stage.key !== row.stage_key).map((stage) => <option value={stage.key} key={stage.key}>{stage.label}</option>)}</select></label>
     </div>
     {row.do_not_contact && <div className="prospectDoNotContact">Prospect outreach is disabled for this contact.</div>}
+    {stageCatalogUnavailable && <div className="note mt" role="alert"><b>Authoritative stage configuration is unavailable.</b><span style={{ display: "block", marginTop: 4 }}>Stage movement and conversion are paused; no built-in fallback stages are being substituted.</span><button type="button" className="btn mt" disabled={stageQuery.isFetching} onClick={() => void stageQuery.refetch()}>{stageQuery.isFetching ? "Retrying…" : "Retry stages"}</button></div>}
     {moveConflict && <div className="note mt" role="alert">{moveConflict}</div>}
-    {completeBookedMove.isError && <div className="note mt" role="alert">The appointment was booked, but the prospect could not move to Booked. {completeBookedMove.error instanceof Error ? completeBookedMove.error.message : "Refresh and link the appointment from this page."}</div>}
 
     <div className="prospectDetailGrid mt"><main>
       <section className="panel prospectDetailSection"><div className="panel-h"><b>Call outcome</b><span className="sp" /><span className="sub">{row.call_attempt_count} attempts</span></div><div className="panel-b prospectOutcomeForm">
-        <label><span className="lbl">Outcome</span><select className="field" value={outcomeKey} onChange={(event) => setOutcomeKey(event.target.value)}><option value="">Select what happened…</option>{outcomes.map((outcome) => <option key={outcome.key} value={outcome.key}>{outcome.label}</option>)}</select></label>
-        {selectedOutcome?.requires_follow_up && <label><span className="lbl">Callback date and time</span><input className="field" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /></label>}
-        {outcomeRequiresAppointment && <label><span className="lbl">Appointment ID</span><input className="field" value={outcomeAppointmentId} onChange={(event) => setOutcomeAppointmentId(event.target.value)} placeholder="Link the confirmed appointment" /></label>}
+        {outcomeQuery.isLoading || stageQuery.isLoading ? <div className="empty compact" role="status">Loading authoritative workflow configuration…</div> : outcomeCatalogUnavailable || stageCatalogUnavailable ? <div className="note" role="alert"><b>Call outcome configuration is unavailable.</b><span style={{ display: "block", marginTop: 4 }}>No fallback automation will be applied. Retry the authoritative stages and outcomes before recording an outcome.</span><button type="button" className="btn mt" disabled={outcomeQuery.isFetching || stageQuery.isFetching} onClick={() => { void outcomeQuery.refetch(); void stageQuery.refetch(); }}>{outcomeQuery.isFetching || stageQuery.isFetching ? "Retrying…" : "Retry workflow configuration"}</button></div> : <>
+        <fieldset className="prospectOutcomeChoices"><legend className="lbl">What happened?</legend>{outcomes.map((outcome) => { const selected = outcome.key === outcomeKey; return <button type="button" role="radio" aria-checked={selected} className={selected ? "selected" : ""} key={outcome.key} onClick={() => { setOutcomeKey(outcome.key); setFollowUp(""); setFollowUpChoice(suggestedFollowUpChoice); }}><b>{outcome.label}</b><small>{outcome.action_config?.workflow_action === "book_appointment" || outcome.requires_appointment ? "Choose a time and book this prospect" : outcome.requires_follow_up || outcome.action_config?.requires_follow_up ? "Schedules the next follow-up" : outcome.creates_email_draft ? "Creates a reviewable email draft" : outcome.action_config?.set_do_not_contact ? "Stops future outreach" : "Records this call outcome"}</small></button>; })}</fieldset>
+        {outcomeNeedsFollowUp && <section className="prospectFollowUpPicker"><span className="lbl">Next follow-up</span><div className="prospectFollowUpChoices" role="radiogroup" aria-label="Follow-up timing"><button type="button" role="radio" aria-checked={followUpChoice === "next_business_day"} className={followUpChoice === "next_business_day" ? "selected" : ""} onClick={() => setFollowUpChoice("next_business_day")}>Next business day</button><button type="button" role="radio" aria-checked={followUpChoice === "two_business_days"} className={followUpChoice === "two_business_days" ? "selected" : ""} onClick={() => setFollowUpChoice("two_business_days")}>+2 business days</button><button type="button" role="radio" aria-checked={followUpChoice === "custom"} className={followUpChoice === "custom" ? "selected" : ""} onClick={() => setFollowUpChoice("custom")}>Custom</button></div>{followUpChoice === "custom" ? <label><span className="lbl">Date and time · 10 AM–6 PM</span><input className="field" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /></label> : <div className="prospectFollowUpSuggestion">{followUpSuggestion.isLoading ? "Finding the next business-time block…" : followUpSuggestion.data ? <><b>{displayDateInTimezone(followUpSuggestion.data.scheduled_at, followUpSuggestion.data.timezone)}</b><span>{followUpSuggestion.data.timezone}</span></> : "The server will choose the next 10:00 AM block."}</div>}</section>}
         <label><span className="lbl">Internal outcome note</span><textarea className="field" rows={3} value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="What did the dealer say?" /></label>
+        {outcomeBooksAppointment && <div className="prospectEffectSummary"><b>Appointment required</b><span>The dealer details are already linked. Applying this outcome opens the shared QC calendar; nothing changes if you cancel.</span></div>}
         {selectedOutcome?.creates_email_draft && <div className="prospectEffectSummary"><b>Email review follows</b><span>This outcome creates an approved-template draft. You can edit or approve it before the 60-second automatic send.</span></div>}
         {applyOutcome.isError && <div className="note" role="alert">{applyOutcome.error instanceof Error ? applyOutcome.error.message : "The outcome could not be saved."}</div>}
         {outcomeDraftError && <div className="note" role="alert">{outcomeDraftError}</div>}
-        <button type="button" className="btn pri" disabled={!outcomeKey || (selectedOutcome?.requires_follow_up && !followUp) || (outcomeRequiresAppointment && !outcomeAppointmentId.trim()) || applyOutcome.isPending} onClick={() => applyOutcome.mutate()}>{applyOutcome.isPending ? "Applying…" : "Apply outcome"}</button>
+        {outcomeBooksAppointment && hasActiveBooking
+          ? <Link className="btn pri prospectApplyOutcome" href={`/calendar?appointment=${row.appointment_id}`}><CalendarDays size={16} /> Manage booked appointment</Link>
+          : <button type="button" className="btn pri prospectApplyOutcome" disabled={!outcomeKey || (outcomeBooksAppointment && row.do_not_contact) || (outcomeNeedsFollowUp && followUpChoice === "custom" && !followUp) || applyOutcome.isPending} title={outcomeBooksAppointment && row.do_not_contact ? "Reactivate outreach before booking this contact." : undefined} onClick={() => { if (outcomeBooksAppointment) { setBookingOutcomeKey(outcomeKey); setBooking(true); } else applyOutcome.mutate(); }}>{applyOutcome.isPending ? "Applying…" : outcomeBooksAppointment ? "Choose time & book" : "Apply outcome"}</button>}
+        </>}
       </div></section>
 
-      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Activity timeline</b><span className="sp" /><span className="cellchip c-mut">{row.activities.length}</span></div><div className="panel-b prospectTimeline">
+      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Activity timeline</b><span className="sp" /><span className="cellchip c-mut">{timelineItems.length}</span></div><div className="panel-b prospectTimeline">
         <form className="prospectNoteComposer" onSubmit={(event) => { event.preventDefault(); if (note.trim()) addNote.mutate(); }}><StickyNote size={17} /><textarea className="field" rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add an internal note…" /><button className="btn" type="submit" disabled={!note.trim() || addNote.isPending}><Plus size={16} /> Add note</button></form>
         {addNote.isError && <div className="note" role="alert">{addNote.error instanceof Error ? addNote.error.message : "The note could not be saved."}</div>}
         {undoActivity.isError && <div className="note" role="alert">{undoActivity.error instanceof Error ? undoActivity.error.message : "That activity can no longer be undone."}</div>}
-        {row.activities.map((activity) => <article key={activity.id} className="prospectTimelineItem"><span className="prospectTimelineDot" /><div><header><b>{humanize(activity.kind)}</b><span><time>{displayDate(activity.created_at, true)}</time>{activity.metadata?.reversible === true && <button type="button" className="btn sm" disabled={undoActivity.isPending} onClick={() => undoActivity.mutate(activity.id)}>Undo</button>}</span></header>{activity.body && <p>{activity.body}</p>}<small>{activity.actor_name || "System"}</small></div></article>)}
-        {!row.activities.length && <div className="empty compact">No prospect activity yet.</div>}
+        {timelineQuery.isError && <div className="note" role="alert">Live delivery and message history could not be loaded. Showing the saved prospect activity instead.</div>}
+        {timelineItems.map((activity) => <article key={activity.id} className={`prospectTimelineItem source-${activity.source}`}><span className="prospectTimelineDot" /><div><header><b>{humanize(activity.kind)}</b><span><time>{displayDate(activity.occurred_at, true)}</time>{["prospect", "prospect_activity"].includes(activity.source) && activity.metadata?.reversible === true && <button type="button" className="btn sm" disabled={undoActivity.isPending} onClick={() => undoActivity.mutate(activity.source_id)}>Undo</button>}</span></header>{activity.body && <p>{activity.body}</p>}<small>{activity.actor_name || "System"} · {activity.source === "prospect" ? "Marketing" : humanize(activity.source)}</small></div></article>)}
+        {!timelineItems.length && <div className="empty compact">No prospect activity yet.</div>}
+        {timelineQuery.hasNextPage && <button type="button" className="btn" disabled={timelineQuery.isFetchingNextPage} onClick={() => void timelineQuery.fetchNextPage()}>{timelineQuery.isFetchingNextPage ? "Loading older activity…" : "Load older activity"}</button>}
       </div></section>
     </main><aside>
-      <section className="panel prospectDetailSection"><div className="panel-h"><b>Contact</b></div><div className="panel-b prospectContactFacts"><div><span>Email</span><b>{row.email}</b></div><div><span>Phone</span><a href={`tel:${row.phone}`}>{row.phone}</a></div><div><span>Next follow-up</span><b>{displayDate(row.next_follow_up_at, true)}</b></div><div><span>Last activity</span><b>{displayDate(row.last_activity_at ?? row.updated_at, true)}</b></div></div></section>
-      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Email delivery</b><span className="sp" /><span className="cellchip c-mut">{emailDrafts.length}</span></div><div className="panel-b prospectDraftHistory">{emailDrafts.map((draft) => <button type="button" key={draft.id} onClick={() => setComposerDraft(draft)}><span><b>{draft.subject}</b><small>{displayDate(draft.sent_at ?? draft.created_at, true)}</small></span><span className={`prospectDraftStatus status-${draft.status}`}>{humanize(draft.status)}</span></button>)}{draftQuery.isLoading && <div className="empty compact">Loading email history…</div>}{!draftQuery.isLoading && !emailDrafts.length && <div className="empty compact">No dealer outreach drafted.</div>}</div></section>
-      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Dealer replies</b><span className="sp" /><span className="cellchip c-mut">{repliesQuery.data?.items.length ?? 0}</span></div><div className="panel-b prospectReplies">{repliesQuery.isLoading && <div className="empty compact">Loading replies…</div>}{repliesQuery.isError && <div className="note" role="alert">{repliesQuery.error instanceof Error ? repliesQuery.error.message : "Replies could not be loaded."}</div>}{(repliesQuery.data?.items ?? []).map((reply) => <article key={reply.id}><header><b>{reply.subject || "Dealer reply"}</b><time>{displayDate(reply.received_at, true)}</time></header><small>From {reply.from_email}</small><p>{reply.body}</p></article>)}{!repliesQuery.isLoading && !repliesQuery.isError && !(repliesQuery.data?.items ?? []).length && <div className="empty compact">No replies received yet.</div>}</div></section>
+       <section className="panel prospectDetailSection"><div className="panel-h"><b>Contact</b></div><div className="panel-b prospectContactFacts"><div><span>Email</span><b>{row.email}</b></div><div><span>Phone</span><a href={`tel:${row.phone}`}>{row.phone}</a></div><div><span>Next follow-up</span><FollowUpCountdown at={row.next_follow_up_at} state={row.follow_up_state} timeZone={firmFollowUpClock.data?.timezone} /></div><div><span>Last activity</span><b>{displayDate(row.last_activity_at ?? row.updated_at, true)}</b></div></div></section>
+      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Communication history</b><span className="sp" /><span className="cellchip c-mut">{emailDrafts.length} emails</span></div><div className="panel-b"><p className="sub" style={{ marginTop: 0 }}>Email delivery, replies, text messages, calls, and appointments now appear in the unified timeline.</p><Link className="btn" href={emailDrafts[0] ? `/inbox?view=marketing&draft_id=${emailDrafts[0].id}` : `/inbox?view=marketing&q=${encodeURIComponent(row.dealer_name)}`}><Mail size={16} /> Open Marketing email log</Link></div></section>
       <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Current state</b></div><div className="panel-b prospectContactFacts"><div><span>Stage</span><b>{row.stage_label ?? humanize(row.stage_key)}</b></div><div><span>Last outcome</span><b>{row.last_outcome_label || "No call logged"}</b></div><div><span>Created</span><b>{displayDate(row.created_at)}</b></div><div><span>SMS marketing consent</span><b>{row.marketing_sms_consent ? "Recorded" : "Not recorded"}</b></div></div></section>
     </aside></div>
 
     {composerDraft !== undefined && <ProspectEmailComposer prospect={row} initialDraft={composerDraft} onClose={() => setComposerDraft(undefined)} />}
     {composeMode && <InboxComposeModal onClose={() => setComposeMode(null)} seed={seed} initialChannel={composeMode} initialMarketingConsent={row.marketing_sms_consent === true} requireMarketingSmsConsent />}
-    {booking && <BookingDrawer onClose={() => { setBooking(false); refresh(); }} onBooked={(appointment) => completeBookedMove.mutate(appointment.id)} initialName={row.name} initialEmail={row.email} initialPhone={row.phone} initialKind="program_intro" />}
+    {booking && <BookingDrawer prospect={row} triggerOutcomeKey={bookingOutcomeKey} initialNotes={bookingOutcomeKey ? outcomeNote : null} onClose={() => { setBooking(false); setBookingOutcomeKey(null); refresh(); }} onBooked={(_appointment, updated) => { if (updated) qc.setQueryData(["dealer-prospect", id], updated); setOutcomeKey(""); setOutcomeNote(""); setFollowUp(""); setFollowUpChoice("next_business_day"); refresh(); }} initialCompany={row.dealer_name} initialName={row.name} initialEmail={row.email} initialPhone={row.phone} initialKind="program_intro" />}
     {moveStage && <ProspectMoveDialog prospect={row} stages={stages} destination={moveStage} onClose={() => setMoveStage(null)} onConflict={setMoveConflict} onBook={() => { setMoveStage(null); setBooking(true); }} onEmailDraft={(_moved, draft) => setComposerDraft(draft)} onMoved={() => { setMoveStage(null); refresh(); }} />}
   </div>;
 }

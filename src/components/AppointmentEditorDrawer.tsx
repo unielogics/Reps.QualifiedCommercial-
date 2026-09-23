@@ -61,7 +61,6 @@ export default function AppointmentEditorDrawer({
   const [program, setProgram] = useState(appointment.program_name ?? GENERAL_PROGRAM_NAME);
   const [amount, setAmount] = useState(appointment.requested_amount ?? "");
   const [notes, setNotes] = useState(appointment.notes ?? "");
-  const [joinUrl, setJoinUrl] = useState(appointment.join_url ?? "");
   const [confirmOutcomeReopen, setConfirmOutcomeReopen] = useState(false);
   const [address, setAddress] = useState<AddressParts>({
     address: appointment.full_address ?? "",
@@ -69,6 +68,7 @@ export default function AppointmentEditorDrawer({
     state: "",
     zip: "",
   });
+  const prospectIdentityLocked = Boolean(appointment.prospect_id);
 
   useEffect(() => setEditing(mode !== "details"), [mode]);
 
@@ -83,19 +83,26 @@ export default function AppointmentEditorDrawer({
       body: JSON.stringify({
         title: title.trim(),
         kind,
-        starts_at: new Date(startsAt).toISOString(),
+        // datetime-local is a wall-clock value. The API interprets this in
+        // the explicitly submitted appointment timezone so a traveling agent
+        // cannot shift a New York meeting to their browser's local zone.
+        starts_at: startsAt,
         timezone: timezone.trim() || appointment.timezone,
         duration_min: Number(duration),
-        invitee_name: name.trim(),
-        invitee_email: email.trim() || null,
-        invitee_phone: phone.trim() || null,
-        company: company.trim() || null,
+        // A Marketing prospect owns its canonical identity. Appointment edits
+        // may reschedule or update meeting context, but must not create a
+        // second identity-writing path that bypasses duplicate resolution.
+        ...(prospectIdentityLocked ? {} : {
+          invitee_name: name.trim(),
+          invitee_email: email.trim() || null,
+          invitee_phone: phone.trim() || null,
+          company: company.trim() || null,
+        }),
         program_key: programKey,
         program_name: program.trim() || null,
         requested_amount: amount.trim() || null,
         full_address: joinAddress(address),
         notes: notes.trim() || null,
-        join_url: joinUrl.trim() || null,
         reopen_outcome: outcomeWillReopen ? confirmOutcomeReopen : false,
       }),
       authToken: (await getToken()) ?? undefined,
@@ -184,13 +191,14 @@ export default function AppointmentEditorDrawer({
             <div className="panel-h">Client and file context</div>
             <div className="panel-b" style={{ display: "grid", gap: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-                <label><span className="lbl">Client name</span><input className="field" value={name} onChange={(e) => setName(e.target.value)} /></label>
-                <label><span className="lbl">Email</span><input className="field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-                <label><span className="lbl">Phone</span><input className="field" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
-                <label><span className="lbl">Company</span><input className="field" value={company} onChange={(e) => setCompany(e.target.value)} /></label>
+                <label><span className="lbl">Client name</span><input className="field" value={name} readOnly={prospectIdentityLocked} onChange={(e) => setName(e.target.value)} /></label>
+                <label><span className="lbl">Email</span><input className="field" type="email" value={email} readOnly={prospectIdentityLocked} onChange={(e) => setEmail(e.target.value)} /></label>
+                <label><span className="lbl">Phone</span><input className="field" type="tel" value={phone} readOnly={prospectIdentityLocked} onChange={(e) => setPhone(e.target.value)} /></label>
+                <label><span className="lbl">Company</span><input className="field" value={company} readOnly={prospectIdentityLocked} onChange={(e) => setCompany(e.target.value)} /></label>
                 <label><span className="lbl">Program</span><ProgramSelect programKey={programKey} programName={program} onChange={(selection) => { setProgramKey(selection.key); setProgram(selection.name); }} /></label>
                 <label><span className="lbl">Requested amount</span><input className="field" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
               </div>
+              {prospectIdentityLocked && <div className="note"><b>Marketing identity is locked.</b><span style={{ display: "block", marginTop: 4 }}>Update the contact from its Marketing prospect so duplicate checks and every linked appointment stay consistent.</span></div>}
               <BusinessAddressFields
                 value={address}
                 onChange={setAddress}
@@ -200,7 +208,7 @@ export default function AppointmentEditorDrawer({
                 helperText="Select a verified result or use the manual address fields."
               />
               <label><span className="lbl">Notes</span><textarea className="field" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
-              <label><span className="lbl">Join link</span><input className="field" type="url" value={joinUrl} onChange={(e) => setJoinUrl(e.target.value)} /></label>
+              {appointment.meeting_mode === "video" && <div className="note"><b>Google Meet is provider managed.</b><span style={{ display: "block", marginTop: 4 }}>{appointment.join_url ? "The current link stays attached to the Google event and cannot be edited here." : "A link will appear after the shared Google Calendar finishes synchronization."}</span></div>}
             </div>
           </div>
           {update.isError && <div className="note">{errorText(update.error)}</div>}

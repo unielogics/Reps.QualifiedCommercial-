@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, Mail, MessageSquare, UserPlus, X } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { ContactIdentityPreflight, useContactIdentityPreflight } from "./ContactIdentityPreflight";
 
 type Contact = { id: string; name: string; company: string | null; email: string | null; phone?: string | null };
 type ContactPage = { items: Contact[]; total: number };
@@ -23,12 +25,19 @@ export default function ProductShareDialog({
   sessionId?: string | null;
 }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const [recipientMode, setRecipientMode] = useState<"existing" | "new">("existing");
   const [contactId, setContactId] = useState("");
   const [channel, setChannel] = useState<"email" | "sms">("email");
   const [recipient, setRecipient] = useState({ first_name: "", last_name: "", email: "", phone: "" });
   const [smsConsent, setSmsConsent] = useState(false);
   const [statusText, setStatusText] = useState("");
+  const identityPreflight = useContactIdentityPreflight({
+    email: recipient.email,
+    phone: recipient.phone,
+    enabled: open && recipientMode === "new",
+    reason: "Product presentation sharing was blocked by an existing assigned contact.",
+  });
 
   const contacts = useQuery({
     queryKey: ["contacts", "product-sharing"],
@@ -57,7 +66,9 @@ export default function ProductShareDialog({
   const canSend = programKeys.length > 0
     && (recipientMode === "existing" ? Boolean(contactId) : newRecipientComplete)
     && channelAvailable
-    && (channel !== "sms" || smsConsent);
+    && (channel !== "sms" || smsConsent)
+    && !identityPreflight.blocked
+    && !identityPreflight.pending;
 
   const send = useMutation({
     mutationFn: async () => api<{ delivery_status: string; delivery_detail?: string }>("/dealer-os/product-presentations", {
@@ -77,7 +88,10 @@ export default function ProductShareDialog({
         ? locale === "es" ? "Presentacion enviada." : "Presentation sent."
         : result.delivery_detail || result.delivery_status,
     ),
-    onError: (error) => setStatusText(error instanceof Error ? error.message : "Delivery failed"),
+    onError: (error) => {
+      setStatusText(error instanceof Error ? error.message : "Delivery failed");
+      if (error instanceof ApiError && error.status === 409 && recipientMode === "new") void identityPreflight.query.refetch();
+    },
   });
 
   if (!open) return null;
@@ -98,12 +112,19 @@ export default function ProductShareDialog({
           {recipientMode === "existing" ? (
             <label><span>Contact</span><select className="field" value={contactId} onChange={(event) => setContactId(event.target.value)}><option value="">Select contact</option>{contacts.data?.items.map((contact) => <option value={contact.id} key={contact.id}>{contact.name}{contact.company ? ` - ${contact.company}` : ""}</option>)}</select></label>
           ) : (
-            <div className="shareRecipientGrid">
-              <label><span>First name</span><input className="field" value={recipient.first_name} onChange={(event) => setRecipient({ ...recipient, first_name: event.target.value })} /></label>
-              <label><span>Last name</span><input className="field" value={recipient.last_name} onChange={(event) => setRecipient({ ...recipient, last_name: event.target.value })} /></label>
-              <label><span>Email</span><input className="field" type="email" value={recipient.email} onChange={(event) => setRecipient({ ...recipient, email: event.target.value })} /></label>
-              <label><span>Phone</span><input className="field" inputMode="tel" value={recipient.phone} onChange={(event) => setRecipient({ ...recipient, phone: event.target.value })} /></label>
-            </div>
+            <>
+              <div className="shareRecipientGrid">
+                <label><span>First name</span><input className="field" value={recipient.first_name} onChange={(event) => setRecipient({ ...recipient, first_name: event.target.value })} /></label>
+                <label><span>Last name</span><input className="field" value={recipient.last_name} onChange={(event) => setRecipient({ ...recipient, last_name: event.target.value })} /></label>
+                <label><span>Email</span><input className="field" type="email" value={recipient.email} onChange={(event) => setRecipient({ ...recipient, email: event.target.value })} /></label>
+                <label><span>Phone</span><input className="field" inputMode="tel" value={recipient.phone} onChange={(event) => setRecipient({ ...recipient, phone: event.target.value })} /></label>
+              </div>
+              <ContactIdentityPreflight
+                state={identityPreflight}
+                onOpenProspect={(prospectId) => { onClose(); router.push(`/marketing/prospects/${prospectId}`); }}
+                onOpenContact={(existingContactId) => { onClose(); router.push(`/marketing/${existingContactId}`); }}
+              />
+            </>
           )}
           <div className="shareChannels">
             <button type="button" className={channel === "email" ? "selected" : ""} onClick={() => setChannel("email")}><Mail size={18} /><span><b>Email PDF</b><small>Attached to a reusable Inbox thread</small></span></button>

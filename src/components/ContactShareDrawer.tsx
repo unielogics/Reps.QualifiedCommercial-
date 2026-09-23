@@ -2,10 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { ProgramPdfAttachment } from "@/lib/repWorkflows";
 import Drawer from "./Drawer";
+import { ContactIdentityPreflight, useContactIdentityPreflight } from "./ContactIdentityPreflight";
 
 type FileRow = {
   id: string;
@@ -31,6 +33,7 @@ export default function ContactShareDrawer({
   initialPhone?: string | null;
 }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
   const [dealerId, setDealerId] = useState(initialDealerId ?? "");
   const [name, setName] = useState(initialName ?? "");
@@ -43,6 +46,15 @@ export default function ContactShareDrawer({
   const [transactional, setTransactional] = useState(false);
   const [marketing, setMarketing] = useState(false);
   const [notes, setNotes] = useState("");
+  const usesKnownContact = Boolean(initialEmail?.trim() || initialPhone?.trim())
+    && email.trim() === (initialEmail ?? "").trim()
+    && phone.trim() === (initialPhone ?? "").trim();
+  const identityPreflight = useContactIdentityPreflight({
+    email,
+    phone,
+    enabled: !usesKnownContact,
+    reason: "Contact-card sharing was blocked by an existing assigned contact.",
+  });
 
   const files = useQuery({
     queryKey: ["files"],
@@ -88,12 +100,17 @@ export default function ContactShareDrawer({
       void qc.invalidateQueries({ queryKey: ["inbox-threads"] });
       onClose();
     },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409 && !usesKnownContact) void identityPreflight.query.refetch();
+    },
   });
   const canSend = Boolean(
     name.trim() &&
       ((sendEmail && email.trim()) || (sendSms && phone.trim())) &&
       (sendEmail || sendSms) &&
-      (!wantsSms || transactional || marketing),
+      (!wantsSms || transactional || marketing) &&
+      !identityPreflight.blocked &&
+      !identityPreflight.pending,
   );
 
   return (
@@ -137,6 +154,12 @@ export default function ContactShareDrawer({
               <input className="field" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={selected?.phone ?? ""} />
             </div>
           </div>
+
+          {!usesKnownContact && <ContactIdentityPreflight
+            state={identityPreflight}
+            onOpenProspect={(prospectId) => { onClose(); router.push(`/marketing/prospects/${prospectId}`); }}
+            onOpenContact={(contactId) => { onClose(); router.push(`/marketing/${contactId}`); }}
+          />}
 
           <div>
             <label className="lbl">Send by</label>

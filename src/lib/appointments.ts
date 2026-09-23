@@ -8,6 +8,7 @@ export type AppointmentCrmStatus = "scheduled" | "confirmed" | "completed" | "fo
 export type RepAppointment = {
   id: string;
   dealer_id: string | null;
+  prospect_id: string | null;
   owner_user_id: string | null;
   owner_name: string | null;
   calendar_event_id: string | null;

@@ -350,6 +350,7 @@ export default function InboxPage() {
           initialName={bookingSeed?.contact_name ?? null}
           initialEmail={bookingSeed?.contact_email ?? null}
           initialPhone={bookingSeed?.contact_phone ?? null}
+          initialKnownContact={bookingContext === "thread"}
           onClose={() => setBookingContext(null)}
         />
       )}
