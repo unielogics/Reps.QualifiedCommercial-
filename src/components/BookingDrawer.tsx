@@ -205,6 +205,16 @@ export default function BookingDrawer({
       router.push(`/marketing/prospects/${restored.id}`);
     },
   });
+  const restoreContact = useMutation({
+    mutationFn: async (contactId: string) => api<{ restored: boolean; contact_id: string }>(`/dealer-os/contacts/${contactId}/restore`, {
+      method: "POST",
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onSuccess: (restored) => {
+      onClose();
+      router.push(`/marketing/${restored.contact_id}`);
+    },
+  });
   const requestReassignment = useMutation({
     mutationFn: async () => {
       if (!reassignmentKey.current) reassignmentKey.current = crypto.randomUUID();
@@ -225,6 +235,7 @@ export default function BookingDrawer({
     reassignmentKey.current = "";
     requestReassignment.reset();
     restoreProspect.reset();
+    restoreContact.reset();
     // Mutation reset functions are stable. A changed identity is a new
     // restore/reassignment decision rather than a retry of the old one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -589,12 +600,19 @@ export default function BookingDrawer({
               {duplicateCheck.data.visible_matches.map((candidate) => {
                 const key = `${candidate.prospect_id || candidate.contact_id}:${candidate.matched_on.join("-")}`;
                 if (candidate.prospect_id && candidate.archived && candidate.version != null) {
-                  return <button type="button" className="btn" key={key} disabled={restoreProspect.isPending} onClick={() => restoreProspect.mutate({ prospectId: candidate.prospect_id!, version: candidate.version! })}>{restoreProspect.isPending ? "Restoring…" : "Restore & open prospect"}</button>;
+                  return candidate.can_restore
+                    ? <button type="button" className="btn" key={key} disabled={restoreProspect.isPending} onClick={() => restoreProspect.mutate({ prospectId: candidate.prospect_id!, version: candidate.version! })}>{restoreProspect.isPending ? "Restoring…" : "Restore & open prospect"}</button>
+                    : <small key={key}>Ask the prospect owner or a team administrator to restore this record.</small>;
                 }
                 if (candidate.prospect_id) {
                   return <button type="button" className="btn" key={key} onClick={() => { onClose(); router.push(`/marketing/prospects/${candidate.prospect_id}`); }}>Open active prospect</button>;
                 }
                 if (candidate.contact_id) {
+                  if (candidate.archived) {
+                    return candidate.can_restore
+                      ? <button type="button" className="btn" key={key} disabled={restoreContact.isPending} onClick={() => restoreContact.mutate(candidate.contact_id!)}>{restoreContact.isPending ? "Restoring…" : "Restore & open contact"}</button>
+                      : <small key={key}>Ask the contact owner or a team administrator to restore this record.</small>;
+                  }
                   return <button type="button" className="btn" key={key} onClick={() => { onClose(); router.push(`/marketing/${candidate.contact_id}`); }}>Open existing contact</button>;
                 }
                 return null;
@@ -606,6 +624,7 @@ export default function BookingDrawer({
               {requestReassignment.isSuccess ? <small>Reassignment requested. An administrator can review it without creating a duplicate.</small> : null}
               {requestReassignment.isError ? <small>The reassignment request could not be sent. {requestReassignment.error instanceof Error ? requestReassignment.error.message : "Try again."}</small> : null}
               {restoreProspect.isError ? <small>The archived prospect could not be restored. {restoreProspect.error instanceof Error ? restoreProspect.error.message : "Refresh and try again."}</small> : null}
+              {restoreContact.isError ? <small>The archived contact could not be restored. {restoreContact.error instanceof Error ? restoreContact.error.message : "Refresh and try again."}</small> : null}
             </div>
           ) : null}
           {sourceMode === "lead" && duplicateCheck.isError && duplicateInputIsCurrent ? (

@@ -192,6 +192,7 @@ export type ProspectDuplicateMatch = {
   contact_id?: string | null;
   owner_user_id?: string | null;
   archived: boolean;
+  can_restore?: boolean;
   version?: number | null;
   matched_on: Array<"email" | "phone">;
 };

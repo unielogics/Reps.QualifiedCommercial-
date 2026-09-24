@@ -54,6 +54,13 @@ export function useContactIdentityPreflight({ email, phone, enabled = true, cont
     }),
   });
 
+  const restoreContact = useMutation({
+    mutationFn: async (restoreContactId: string) => api<{ restored: boolean; contact_id: string }>(`/dealer-os/contacts/${restoreContactId}/restore`, {
+      method: "POST",
+      authToken: (await getToken()) ?? undefined,
+    }),
+  });
+
   const requestReassignment = useMutation({
     mutationFn: async () => {
       if (!reassignmentKey.current) reassignmentKey.current = crypto.randomUUID();
@@ -75,13 +82,14 @@ export function useContactIdentityPreflight({ email, phone, enabled = true, cont
     reassignmentKey.current = "";
     requestReassignment.reset();
     restore.reset();
+    restoreContact.reset();
     // A changed identity is a new decision; mutation reset functions are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email, phone]);
 
   const pending = enabled && hasIdentity && (!identityIsCurrent || query.isFetching);
   const blocked = enabled && identityIsCurrent && query.data?.blocked === true;
-  return { query, restore, requestReassignment, identityIsCurrent, pending, blocked };
+  return { query, restore, restoreContact, requestReassignment, identityIsCurrent, pending, blocked };
 }
 
 type State = ReturnType<typeof useContactIdentityPreflight>;
@@ -95,7 +103,7 @@ export function ContactIdentityPreflight({
   onOpenProspect: (prospectId: string) => void;
   onOpenContact: (contactId: string) => void;
 }) {
-  const { query, restore, requestReassignment, identityIsCurrent } = state;
+  const { query, restore, restoreContact, requestReassignment, identityIsCurrent } = state;
   if (query.isFetching && identityIsCurrent) {
     return <div className="prospectDuplicatePreflight" role="status">Checking email and phone for an existing contact…</div>;
   }
@@ -117,13 +125,21 @@ export function ContactIdentityPreflight({
     {result.visible_matches.map((candidate) => {
       const key = `${candidate.prospect_id || candidate.contact_id}:${candidate.matched_on.join("-")}`;
       if (candidate.prospect_id && candidate.archived && candidate.version != null) {
-        return <button type="button" className="btn" key={key} disabled={restore.isPending} onClick={() => restore.mutate({ prospectId: candidate.prospect_id!, version: candidate.version! }, { onSuccess: (prospect) => onOpenProspect(prospect.id) })}>{restore.isPending ? "Restoring…" : "Restore & open prospect"}</button>;
+        return candidate.can_restore
+          ? <button type="button" className="btn" key={key} disabled={restore.isPending} onClick={() => restore.mutate({ prospectId: candidate.prospect_id!, version: candidate.version! }, { onSuccess: (prospect) => onOpenProspect(prospect.id) })}>{restore.isPending ? "Restoring…" : "Restore & open prospect"}</button>
+          : <small key={key}>Ask the prospect owner or a team administrator to restore this record.</small>;
       }
       if (candidate.prospect_id) return <button type="button" className="btn" key={key} onClick={() => onOpenProspect(candidate.prospect_id!)}>Open active prospect</button>;
-      if (candidate.contact_id) return <button type="button" className="btn" key={key} onClick={() => onOpenContact(candidate.contact_id!)}>{candidate.archived ? "Open archived contact" : "Open existing contact"}</button>;
+      if (candidate.contact_id && candidate.archived) {
+        return candidate.can_restore
+          ? <button type="button" className="btn" key={key} disabled={restoreContact.isPending} onClick={() => restoreContact.mutate(candidate.contact_id!, { onSuccess: () => onOpenContact(candidate.contact_id!) })}>{restoreContact.isPending ? "Restoring…" : "Restore & open contact"}</button>
+          : <small key={key}>Ask the contact owner or a team administrator to restore this record.</small>;
+      }
+      if (candidate.contact_id) return <button type="button" className="btn" key={key} onClick={() => onOpenContact(candidate.contact_id!)}>Open existing contact</button>;
       return null;
     })}
     {restore.isError && <small>The archived prospect could not be restored. {restore.error instanceof Error ? restore.error.message : "Refresh and try again."}</small>}
+    {restoreContact.isError && <small>The archived contact could not be restored. {restoreContact.error instanceof Error ? restoreContact.error.message : "Refresh and try again."}</small>}
     {result.assignment_required && !requestReassignment.isSuccess && <><small>A matching contact is assigned elsewhere. Private details remain hidden.</small><button type="button" className="btn" disabled={requestReassignment.isPending} onClick={() => requestReassignment.mutate()}>{requestReassignment.isPending ? "Sending request…" : "Request reassignment"}</button></>}
     {requestReassignment.isSuccess && <small role="status">Reassignment requested. A Super Admin can review it without creating a duplicate.</small>}
     {requestReassignment.isError && <small>The reassignment request could not be sent. {requestReassignment.error instanceof Error ? requestReassignment.error.message : "Try again."}</small>}
