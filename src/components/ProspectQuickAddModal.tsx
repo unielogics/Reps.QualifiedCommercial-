@@ -129,6 +129,14 @@ export default function ProspectQuickAddModal({
     onSuccess: (prospect) => onOpenExisting(prospect.id),
   });
 
+  const restoreContact = useMutation({
+    mutationFn: async (contactId: string) => api<{ restored: boolean; contact_id: string }>(`/dealer-os/contacts/${contactId}/restore`, {
+      method: "POST",
+      authToken: (await getToken()) ?? undefined,
+    }),
+    onSuccess: (result) => onOpenContact?.(result.contact_id),
+  });
+
   const requestReassignment = useMutation({
     mutationFn: async () => {
       if (!reassignmentKey.current) reassignmentKey.current = crypto.randomUUID();
@@ -150,6 +158,7 @@ export default function ProspectQuickAddModal({
     reassignmentKey.current = "";
     requestReassignment.reset();
     restoreProspect.reset();
+    restoreContact.reset();
     // Mutation reset functions are stable; identity changes intentionally
     // start a new reassignment/restore decision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,8 +289,9 @@ export default function ProspectQuickAddModal({
       {duplicateCheck.data?.blocked && <div className="prospectDuplicateWarning" role="alert">
         <b>{duplicateCheck.data.state === "identity_conflict" ? "Email and phone belong to different contacts." : duplicateCheck.data.state === "archived_match" ? "An archived Marketing contact already uses these details." : "This contact already exists."}</b>
         <span>{duplicateCheck.data.message || "Open the existing contact, or change the conflicting email or phone before continuing."}</span>
-        {duplicateCheck.data.visible_matches.map((candidate) => candidate.prospect_id ? candidate.archived && candidate.version != null ? <button type="button" className="btn" key={`${candidate.prospect_id}:${candidate.matched_on.join("-")}`} disabled={restoreProspect.isPending} onClick={() => restoreProspect.mutate({ prospectId: candidate.prospect_id!, version: candidate.version! })}>{restoreProspect.isPending ? "Restoring…" : "Restore & open prospect"}</button> : <button type="button" className="btn" key={`${candidate.prospect_id}:${candidate.matched_on.join("-")}`} onClick={() => onOpenExisting(candidate.prospect_id!)}>Open active prospect</button> : candidate.contact_id && onOpenContact ? <button type="button" className="btn" key={`${candidate.contact_id}:${candidate.matched_on.join("-")}`} onClick={() => onOpenContact(candidate.contact_id!)}>{candidate.archived ? "Open archived contact" : "Open active contact"}</button> : null)}
+        {duplicateCheck.data.visible_matches.map((candidate) => candidate.prospect_id ? candidate.archived && candidate.version != null ? <button type="button" className="btn" key={`${candidate.prospect_id}:${candidate.matched_on.join("-")}`} disabled={restoreProspect.isPending} onClick={() => restoreProspect.mutate({ prospectId: candidate.prospect_id!, version: candidate.version! })}>{restoreProspect.isPending ? "Restoring…" : "Restore & open prospect"}</button> : <button type="button" className="btn" key={`${candidate.prospect_id}:${candidate.matched_on.join("-")}`} onClick={() => onOpenExisting(candidate.prospect_id!)}>Open active prospect</button> : candidate.contact_id && onOpenContact ? candidate.archived ? <button type="button" className="btn" key={`${candidate.contact_id}:${candidate.matched_on.join("-")}`} disabled={restoreContact.isPending} onClick={() => restoreContact.mutate(candidate.contact_id!)}>{restoreContact.isPending ? "Restoring…" : "Restore & open contact"}</button> : <button type="button" className="btn" key={`${candidate.contact_id}:${candidate.matched_on.join("-")}`} onClick={() => onOpenContact(candidate.contact_id!)}>Open active contact</button> : null)}
         {restoreProspect.isError && <small>The archived prospect could not be restored. {restoreProspect.error instanceof Error ? restoreProspect.error.message : "Refresh and try again."}</small>}
+        {restoreContact.isError && <small>The archived contact could not be restored. {restoreContact.error instanceof Error ? restoreContact.error.message : "Refresh and try again."}</small>}
         {duplicateCheck.data.assignment_required && !requestReassignment.isSuccess && <><small>A matching contact is assigned elsewhere. Its private details remain hidden.</small><button type="button" className="btn" disabled={requestReassignment.isPending} onClick={() => requestReassignment.mutate()}>{requestReassignment.isPending ? "Sending request…" : "Request reassignment"}</button></>}
         {requestReassignment.isSuccess && <small role="status">Reassignment requested. A Super Admin has been notified; you can safely close this form.</small>}
         {requestReassignment.isError && <small>The reassignment request could not be sent. {requestReassignment.error instanceof Error ? requestReassignment.error.message : "Try again."}</small>}

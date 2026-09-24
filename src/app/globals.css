@@ -1462,6 +1462,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .contactIdentity h2 { margin: 3px 0; }
 .contactIdentity p { margin: 0; color: var(--muted); }
 .contactQuick { display: flex; gap: 8px; margin-left: auto; }
+.contactTableActions { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.contactArchiveDialog { display: grid; gap: 14px; }
+.contactArchiveDialog > p { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.55; }
+.contactArchiveWarning { display: flex; align-items: flex-start; gap: 11px; padding: 13px; border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--line)); border-radius: 9px; background: var(--danger-tint); color: var(--danger); }
+.contactArchiveWarning > svg { flex: 0 0 auto; margin-top: 1px; }
+.contactArchiveWarning > span { display: grid; gap: 4px; }
+.contactArchiveWarning small { color: var(--ink2); line-height: 1.45; }
 .contactColumns { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, .8fr); gap: 16px; }
 .contactSection { padding: 0; overflow: hidden; }
 .panelTitle { min-height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; border-bottom: 1px solid var(--line); }

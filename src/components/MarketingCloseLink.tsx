@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 
-function safeMarketingReturn(value: string | null): string {
+export function safeMarketingReturn(value: string | null): string {
   if (!value) return "/marketing";
   if (value !== "/marketing" && !value.startsWith("/marketing?")) return "/marketing";
   return value;
