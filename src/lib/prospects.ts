@@ -37,7 +37,8 @@ export type ProspectOutcome = {
   action_config?: ProspectOutcomeActionConfig;
 };
 
-export type ProspectDraftPurpose = "dealer_information" | "missed_call" | "callback_confirmation" | "booking" | "general";
+export type ProspectDraftPurpose = "dealer_information" | "missed_call" | "callback_confirmation" | "client_will_call_back" | "booking" | "general";
+export type ProspectCcScope = "this_email" | "this_and_future";
 export type ProspectGenerationReason = "ai_generated" | "ai_disabled" | "ai_access_blocked" | "ai_provider_error" | "ai_output_rejected" | "ai_usage_record_failed" | "approved_fallback" | "fallback_reason_not_recorded";
 export type ProspectInstructionDisposition = "none" | "submitted_to_ai" | "not_applied_fallback" | "unknown";
 
@@ -84,6 +85,8 @@ export type ProspectEmailDraftCreateRequest = {
   private_note?: string | null;
   verified_conversation_context?: string | null;
   ai_instructions?: string | null;
+  cc_emails?: string[];
+  cc_scope?: ProspectCcScope;
   subject?: string | null;
   body?: string | null;
   include_collateral: boolean;
@@ -181,6 +184,7 @@ export type DealerProspect = {
   version: number;
   do_not_contact?: boolean;
   marketing_sms_consent?: boolean;
+  default_cc_emails?: string[];
   conversion_target?: "portfolio_application" | "dealer_ai_intake" | null;
   converted_application_id?: string | null;
   converted_intake_id?: string | null;
@@ -259,6 +263,7 @@ export type ProspectEmailDraft = ProspectSenderIdentity & {
   prospect_id?: string;
   compose_mode?: "ai" | "manual";
   to_email?: string;
+  cc_emails?: string[];
   from_email?: string;
   reply_to?: string;
   subject: string;

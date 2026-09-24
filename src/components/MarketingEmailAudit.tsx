@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { useQuery } from "@tanstack/react-query";
-import { Download, ExternalLink, FileText, MailCheck, Search } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ban, Download, ExternalLink, FileText, MailCheck, Search } from "lucide-react";
 import { api, apiBlob } from "@/lib/api";
 import { displayDate, type ProspectAccessList, type ProspectEmailAttachment, type ProspectEmailDraft } from "@/lib/prospects";
 import { useMe } from "@/lib/useMe";
 import Modal from "./Modal";
+import ProspectEmailVoidAction from "./ProspectEmailVoidAction";
 
 type DraftPage = { items: ProspectEmailDraft[]; total: number; limit: number; offset: number };
 type DeliveryPresentation = {
@@ -48,6 +49,7 @@ export default function MarketingEmailAudit() {
   const router = useRouter();
   const params = useSearchParams();
   const me = useMe();
+  const qc = useQueryClient();
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [draftStatus, setDraftStatus] = useState("");
@@ -195,8 +197,12 @@ export default function MarketingEmailAudit() {
               <div><span>Triggered by</span><b>{selected.triggering_agent_name || "System"}</b><small>{selected.triggering_agent_email || ""}</small></div>
               <div><span>Sender</span><b>{selected.sender_from_name || selected.sender_display_name || "Qualified Commercial Dealer Desk"}</b><small>{selected.from_email || selected.envelope_from_email || "Unavailable"}</small></div>
               <div><span>Reply-To</span><b>{selected.reply_to || selected.reply_contact_email || "Unavailable"}</b></div>
+              <div><span>CC recipients</span><b>{(selected.cc_emails ?? []).length ? (selected.cc_emails ?? []).join(", ") : "None"}</b></div>
             </div>
             {selected.prospect_id && <Link className="btn sm marketingProspectLink" href={`/marketing/prospects/${selected.prospect_id}`}>Open Marketing prospect <ExternalLink size={14} /></Link>}
+            {["pending_review", "editing"].includes(selected.status) && <ProspectEmailVoidAction source="marketing_audit" showCountdown draft={selected} onDraftChange={(updated) => { qc.setQueryData(["marketing-email-audit-detail", selected.id], updated); void qc.invalidateQueries({ queryKey: ["marketing-email-audit"] }); }} />}
+            {selected.status === "sending" && <div className="note" role="alert"><b>Delivery already started and cannot be recalled.</b><span style={{ display: "block", marginTop: 4 }}>The provider handoff has begun; the delivery record is refreshing.</span></div>}
+            {selected.status === "cancelled" && <div className="prospectVoidedNotice" role="status"><Ban size={18} /><span><b>Voided before send</b><small>This email will not be delivered.</small></span></div>}
             <div className="marketingEmailCopy"><span className="lbl">Subject</span><div>{selected.subject}</div><span className="lbl">Exact plain-text body sent or queued</span><pre>{selected.body}</pre></div>
             <div className="marketingEmailAttachments"><div><b>Attachment snapshots</b><small>These exact versions remain available even if the Marketing collateral is later retired.</small></div>{(selected.attachments ?? []).map((asset) => <div className="marketingEmailAttachment" key={asset.id}><FileText size={17} /><span><b>{filename(asset)}</b><small>Version {asset.version}{asset.size_bytes ? ` · ${(asset.size_bytes / 1024 / 1024).toFixed(2)} MB` : ""}</small></span><button type="button" className="btn sm" disabled={attachmentBusy === `${asset.id}:inline`} onClick={() => void openAttachment(selected.id, asset, "inline")}>Preview</button><button type="button" className="btn sm" aria-label={`Download ${filename(asset)}`} disabled={attachmentBusy === `${asset.id}:attachment`} onClick={() => void openAttachment(selected.id, asset, "attachment")}><Download size={14} /> Download</button></div>)}{!(selected.attachments ?? []).length && <span className="sub">No PDF snapshots were attached.</span>}{attachmentError && <div className="note" role="alert">{attachmentError}</div>}</div>
             <div className="marketingEmailAuditGrid">

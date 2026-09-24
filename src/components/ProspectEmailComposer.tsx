@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, Clock3, FileText, PenLine, ShieldCheck, Sparkles } from "lucide-react";
+import { Ban, CircleAlert, Clock3, FileText, PenLine, ShieldCheck, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { prospectGenerationReasonLabel } from "@/lib/prospects";
-import type { DealerProspect, ProspectEmailDraft, ProspectEmailDraftCreateRequest, ProspectSenderIdentity } from "@/lib/prospects";
+import type { DealerProspect, ProspectCcScope, ProspectEmailDraft, ProspectEmailDraftCreateRequest, ProspectSenderIdentity } from "@/lib/prospects";
 import { useMe } from "@/lib/useMe";
 import Drawer from "./Drawer";
 import ProspectCollateralSelector, { type ProspectCollateralSelection } from "./ProspectCollateralSelector";
+import ProspectCcControl from "./ProspectCcControl";
+import ProspectEmailVoidAction from "./ProspectEmailVoidAction";
 import ProspectSenderIdentityCard from "./ProspectSenderIdentityCard";
 
 const WEBSITE = "https://qualifiedcommercial.com/industries/auto";
@@ -39,6 +41,10 @@ export default function ProspectEmailComposer({
   const [privateNote, setPrivateNote] = useState("");
   const [verifiedContext, setVerifiedContext] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [ccEmails, setCcEmails] = useState<string[]>(initialDraft ? initialDraft.cc_emails ?? [] : prospect.default_cc_emails ?? []);
+  const [ccScope, setCcScope] = useState<ProspectCcScope>("this_email");
+  const [ccValid, setCcValid] = useState(true);
+  const [ccDirty, setCcDirty] = useState(false);
   const [collateralSelection, setCollateralSelection] = useState<ProspectCollateralSelection>({ includeAll: true, selectedIds: [], sendWithoutPdfs: false });
   const [collateralReady, setCollateralReady] = useState(false);
   const [generationKey, setGenerationKey] = useState(() => crypto.randomUUID());
@@ -80,11 +86,12 @@ export default function ProspectEmailComposer({
     setDraft(current);
     setRemaining(current.countdown_seconds ?? secondsUntil(current.send_after));
     if (!editing) { setSubject(current.subject); setBody(current.editable_body ?? current.body); }
+    if (!ccDirty) setCcEmails(current.cc_emails ?? []);
     if (["sent", "failed", "blocked", "cancelled"].includes(current.status)) refresh();
     // refresh is intentionally omitted: it is stable in behavior but recreated
     // on render, and including it would retrigger this synchronization loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.id, editing, liveDraft.data]);
+  }, [ccDirty, draft?.id, editing, liveDraft.data]);
 
   useEffect(() => {
     if (draft?.status !== "pending_review" || !draft.send_after) return;
@@ -107,6 +114,8 @@ export default function ProspectEmailComposer({
       setBody(created.editable_body ?? created.body);
       setComposeMode(created.compose_mode ?? composeMode);
       setEditing(created.status === "editing");
+      setCcEmails(created.cc_emails ?? []);
+      setCcDirty(false);
       setRemaining(secondsUntil(created.send_after));
       refresh();
     },
@@ -119,6 +128,8 @@ export default function ProspectEmailComposer({
       private_note: privateNote.trim() || null,
       verified_conversation_context: composeMode === "ai" ? verifiedContext.trim().replace(/\s+/g, " ") || null : null,
       ai_instructions: composeMode === "ai" ? instructions.trim() || null : null,
+      cc_emails: ccEmails,
+      cc_scope: ccScope,
       subject: composeMode === "manual" ? subject.trim() : null,
       body: composeMode === "manual" ? body.trim() : null,
       purpose: "dealer_information" as const,
@@ -151,6 +162,10 @@ export default function ProspectEmailComposer({
     setPrivateNote("");
     setVerifiedContext("");
     setInstructions("");
+    setCcEmails(prospect.default_cc_emails ?? []);
+    setCcScope("this_email");
+    setCcValid(true);
+    setCcDirty(false);
     setCollateralSelection({ includeAll: true, selectedIds: [], sendWithoutPdfs: false });
     setCollateralReady(false);
     setSubmittedGeneration(null);
@@ -174,10 +189,15 @@ export default function ProspectEmailComposer({
     mutationFn: async () => {
       if (!draft) throw new Error("Create a draft first.");
       let expectedVersion = draft.version ?? 1;
-      if (editing) {
+      if (editing || ccDirty) {
         const saved = await api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${draft.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ expected_version: draft.version ?? 1, subject: subject.trim(), body: body.trim() }),
+          body: JSON.stringify({
+            expected_version: draft.version ?? 1,
+            ...(editing ? { subject: subject.trim(), body: body.trim() } : {}),
+            cc_emails: ccEmails,
+            cc_scope: ccScope,
+          }),
           authToken: (await getToken()) ?? undefined,
         });
         expectedVersion = saved.version ?? expectedVersion;
@@ -188,19 +208,19 @@ export default function ProspectEmailComposer({
         authToken: (await getToken()) ?? undefined,
       });
     },
-    onSuccess: (updated) => { setDraft(updated); setEditing(false); refresh(); },
+    onSuccess: (updated) => { setDraft(updated); setCcEmails(updated.cc_emails ?? []); setCcDirty(false); setEditing(updated.status === "editing"); refresh(); },
   });
 
-  const cancel = useMutation({
+  const saveCc = useMutation({
     mutationFn: async () => {
-      if (!draft) return null;
-      return api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${draft.id}/cancel`, {
-        method: "POST",
-        body: JSON.stringify({ expected_version: draft.version ?? 1 }),
+      if (!draft) throw new Error("Create a draft first.");
+      return api<ProspectEmailDraft>(`/dealer-os/prospect-email-drafts/${draft.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ expected_version: draft.version ?? 1, cc_emails: ccEmails, cc_scope: ccScope }),
         authToken: (await getToken()) ?? undefined,
       });
     },
-    onSuccess: (updated) => { if (updated) setDraft(updated); refresh(); },
+    onSuccess: (updated) => { setDraft(updated); setCcEmails(updated.cc_emails ?? []); setCcDirty(false); setEditing(updated.status === "editing"); refresh(); },
   });
   const useSecureBundle = useMutation({
     mutationFn: async () => {
@@ -214,8 +234,8 @@ export default function ProspectEmailComposer({
     onSuccess: (updated) => { setDraft(updated); setSubject(updated.subject); setBody(updated.editable_body ?? updated.body); setRemaining(updated.countdown_seconds ?? secondsUntil(updated.send_after)); setEditing(false); refresh(); },
   });
 
-  const error = generate.error || stopForEdit.error || approve.error || cancel.error || useSecureBundle.error || liveDraft.error || (!draft && senderPreview.error);
-  const busy = generate.isPending || stopForEdit.isPending || approve.isPending || cancel.isPending || useSecureBundle.isPending;
+  const error = generate.error || stopForEdit.error || approve.error || saveCc.error || useSecureBundle.error || liveDraft.error || (!draft && senderPreview.error);
+  const busy = generate.isPending || stopForEdit.isPending || approve.isPending || saveCc.isPending || useSecureBundle.isPending;
   const unresolvedGeneration = Boolean(generate.isError && submittedGeneration && !draft);
   const generationFieldsLocked = generate.isPending || unresolvedGeneration;
   const manualReady = composeMode === "manual" ? Boolean(subject.trim() && body.trim()) : true;
@@ -266,15 +286,30 @@ export default function ProspectEmailComposer({
               <label><span className="lbl">Subject</span><input className="field" maxLength={220} value={subject} disabled={generationFieldsLocked} onChange={(event) => setSubject(event.target.value)} placeholder={`A note for ${prospect.dealer_name}`} /></label>
               <label><span className="lbl">Message</span><textarea className="field prospectEmailBody" rows={12} value={body} disabled={generationFieldsLocked} onChange={(event) => setBody(event.target.value)} placeholder="Write the message in your own words. QC adds the locked signature, disclosures, reply guidance, and unsubscribe controls." /><small className="prospectFieldHelp">Manual messages are validated against firm policy and require explicit approval. They never start an automatic countdown.</small></label>
             </>}
+            <ProspectCcControl value={ccEmails} primaryEmail={prospect.email} disabled={generationFieldsLocked} onValidityChange={setCcValid} onChange={setCcEmails} />
+            <div className="prospectCcScope" role="radiogroup" aria-label="CC recipient scope">
+              <button type="button" role="radio" aria-checked={ccScope === "this_email"} className={ccScope === "this_email" ? "selected" : ""} disabled={generationFieldsLocked} onClick={() => setCcScope("this_email")}><b>This email only</b><small>Do not change future drafts</small></button>
+              <button type="button" role="radio" aria-checked={ccScope === "this_and_future"} className={ccScope === "this_and_future" ? "selected" : ""} disabled={generationFieldsLocked} onClick={() => setCcScope("this_and_future")}><b>This and future emails</b><small>Replace this prospect&apos;s saved CC list</small></button>
+            </div>
+            {Boolean(prospect.default_cc_emails?.length) && <button type="button" className="btn sm danger prospectClearSavedCc" disabled={generationFieldsLocked} onClick={() => { setCcEmails([]); setCcScope("this_and_future"); }}>Clear saved CCs with this draft</button>}
             <ProspectSenderIdentityCard identity={senderIdentity} fallbackName={me.name} fallbackEmail={me.email} />
             <ProspectCollateralSelector value={collateralSelection} disabled={generationFieldsLocked} onChange={setCollateralSelection} onReadyChange={setCollateralReady} />
             <div className="prospectGuardrail"><ShieldCheck size={18} /><span><b>Approved content stays authoritative</b><small>The AI cannot change program facts, promises, website link, signature, compliance footer, or collateral.</small></span></div>
             {unresolvedGeneration && <div className="prospectTestUncertain" role="alert"><CircleAlert size={19} /><span><b>Draft creation did not return a resolved result.</b><small>{generate.error instanceof Error ? generate.error.message : "The network or API request did not complete."} The exact inputs and idempotency key are frozen. Retry the same request first. Starting separately uses a new key and could duplicate a draft if the first request reached the server; check the prospect activity or shared outbox before doing so.</small></span></div>}
-            <div className="prospectDialogActions">{unresolvedGeneration && <button type="button" className="btn" disabled={generate.isPending} onClick={startSeparateGeneration}>I checked activity — start a separate draft</button>}<button type="button" className="btn pri" disabled={generate.isPending || !manualReady || (!unresolvedGeneration && (senderPreview.isLoading || senderPreview.isError || !collateralReady))} onClick={submitGeneration}>{generate.isPending ? (composeMode === "manual" ? "Preparing…" : "Drafting…") : unresolvedGeneration ? "Retry the exact same draft request" : senderPreview.isLoading ? "Loading sender identity…" : composeMode === "manual" ? "Prepare manual email for approval" : "Generate draft and start 60-second review"}</button></div>
+            <div className="prospectDialogActions">{unresolvedGeneration && <button type="button" className="btn" disabled={generate.isPending} onClick={startSeparateGeneration}>I checked activity — start a separate draft</button>}<button type="button" className="btn pri" disabled={generate.isPending || !ccValid || !manualReady || (!unresolvedGeneration && (senderPreview.isLoading || senderPreview.isError || !collateralReady))} onClick={submitGeneration}>{generate.isPending ? (composeMode === "manual" ? "Preparing…" : "Drafting…") : unresolvedGeneration ? "Retry the exact same draft request" : senderPreview.isLoading ? "Loading sender identity…" : composeMode === "manual" ? "Prepare manual email for approval" : "Generate draft and start 60-second review"}</button></div>
           </>}
           {draft && <>
             <ProspectSenderIdentityCard identity={senderIdentity} fallbackName={me.name} fallbackEmail={me.email} />
             {draft.compose_mode === "manual" ? <div className="prospectGenerationStatus manual" role="status"><PenLine size={20} /><span><b>Written manually</b><small>No AI drafted this message and no automatic countdown is active. Review the exact copy, then approve it explicitly.</small></span></div> : draft.draft_source && <div className={`prospectGenerationStatus ${draft.draft_source === "ai" ? "ai" : "fallback"}`} role="status">{draft.draft_source === "ai" ? <Sparkles size={20} /> : <ShieldCheck size={20} />}<span><b>{draft.draft_source === "ai" ? "AI draft used" : "Deterministic safe fallback — AI was not used"}</b><small>{draft.draft_source === "ai" ? "AI prepared the personalized wording under QC's safeguards. Verified conversation context was inserted deterministically, and programs and claims remained centrally controlled." : "QC's fixed approved template prepared this draft. Verified conversation context was still inserted deterministically; AI tone and format instructions did not shape the copy."}</small>{generationReason && <small><b>Reason:</b> {generationReason}</small>}{submittedVerifiedContext && <small className="prospectVerifiedContext"><b>Verified context included exactly:</b> {submittedVerifiedContext}</small>}{toneInstructionsSubmitted && <small className="prospectInstructionApplied">Tone and format instructions were submitted to AI. Exact wording may vary.</small>}{toneInstructionsNotApplied && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>Tone instructions were not applied.</b> Verified conversation context remains included deterministically.</span></small>}{toneInstructionStatusUnknown && <small className="prospectInstructionWarning"><CircleAlert size={14} /><span><b>AI instruction handling is unknown for this earlier draft.</b> Verified conversation context remains deterministic.</span></small>}</span></div>}
+            <ProspectCcControl value={ccEmails} primaryEmail={prospect.email} disabled={!(["pending_review", "editing"].includes(draft.status)) || busy} onValidityChange={setCcValid} onChange={(next) => { setCcEmails(next); setCcDirty(true); }} />
+            {["pending_review", "editing"].includes(draft.status) && <>
+              <div className="prospectCcScope" role="radiogroup" aria-label="CC recipient scope">
+                <button type="button" role="radio" aria-checked={ccScope === "this_email"} className={ccScope === "this_email" ? "selected" : ""} disabled={busy} onClick={() => { setCcScope("this_email"); setCcDirty(true); }}><b>This email only</b><small>Do not change future drafts</small></button>
+                <button type="button" role="radio" aria-checked={ccScope === "this_and_future"} className={ccScope === "this_and_future" ? "selected" : ""} disabled={busy} onClick={() => { setCcScope("this_and_future"); setCcDirty(true); }}><b>This and future emails</b><small>Replace this prospect&apos;s saved CC list</small></button>
+              </div>
+              {Boolean(prospect.default_cc_emails?.length) && <button type="button" className="btn sm danger prospectClearSavedCc" disabled={busy} onClick={() => { setCcEmails([]); setCcScope("this_and_future"); setCcDirty(true); }}>Clear saved CCs</button>}
+            </>}
+            {ccDirty && ["pending_review", "editing"].includes(draft.status) && <div className="prospectCcSave"><span>CC changes are not saved yet.</span><button type="button" className="btn sm" disabled={busy || !ccValid} onClick={() => saveCc.mutate()}>{saveCc.isPending ? "Saving…" : "Save CC recipients"}</button></div>}
             <label><span className="lbl">Subject</span><input className="field" value={subject} readOnly={!editing} onChange={(event) => setSubject(event.target.value)} /></label>
             <label><span className="lbl">Message</span><textarea className="field prospectEmailBody" rows={15} value={body} readOnly={!editing} onChange={(event) => setBody(event.target.value)} /></label>
             {draft.locked_footer_text && <div className="prospectLockedFooter"><span className="lbl">Locked signature and compliance footer</span><pre>{draft.locked_footer_text}</pre><small>This section is added by the system and cannot be edited or removed.</small></div>}
@@ -283,17 +318,18 @@ export default function ProspectEmailComposer({
             {draft.secure_bundle_link_required && <div className="prospectSecureBundle"><span><b>Attachment bundle is too large</b><small>Use one secure seven-day ZIP link for the complete approved bundle. Nothing will be silently omitted.</small></span><button type="button" className="btn" disabled={busy} onClick={() => useSecureBundle.mutate()}>{useSecureBundle.isPending ? "Preparing secure link…" : "Use secure bundle link"}</button></div>}
             {draft.delivery_mode === "secure_link" && <div className="prospectSuccess">Complete collateral will be delivered through a secure bundle link{draft.secure_bundle_expires_at ? ` expiring ${new Date(draft.secure_bundle_expires_at).toLocaleString()}` : ""}.</div>}
             {draft.status === "pending_review" && <div className="prospectCountdown"><Clock3 size={20} /><span><b>{remaining > 0 ? `${remaining} seconds to review` : "Handing off to the delivery queue"}</b><small>The countdown continues if this window or browser closes.</small></span></div>}
+            {(draft.status === "pending_review" || draft.status === "editing") && <ProspectEmailVoidAction source="composer" draft={draft} onDraftChange={(updated) => { setDraft(updated); setCcEmails(updated.cc_emails ?? []); setCcDirty(false); setEditing(updated.status === "editing"); refresh(); }} />}
+            {draft.status === "sending" && <div className="note" role="alert"><b>Delivery already started and cannot be recalled.</b><span style={{ display: "block", marginTop: 4 }}>The provider handoff has begun; this draft can no longer be voided.</span></div>}
             {(draft.status === "pending_review" || draft.status === "editing") && <div className="prospectDialogActions">
-              <button type="button" className="btn" disabled={busy} onClick={() => cancel.mutate()}>Cancel send</button>
               {!editing && <button type="button" className="btn" disabled={busy} onClick={() => stopForEdit.mutate()}>Edit</button>}
-              <button type="button" className="btn pri" disabled={busy || !subject.trim() || !body.trim()} onClick={() => approve.mutate()}>{approve.isPending ? "Sending…" : editing ? "Approve edited email" : "Approve and send now"}</button>
+              <button type="button" className="btn pri" disabled={busy || !ccValid || !subject.trim() || !body.trim()} onClick={() => approve.mutate()}>{approve.isPending ? "Sending…" : editing ? "Approve edited email" : "Approve and send now"}</button>
             </div>}
             {draft.status === "sent" && normalizedDelivery === "delivered" && <div className="prospectSuccess">Delivery confirmed{draft.delivered_at ? ` · ${new Date(draft.delivered_at).toLocaleString()}` : ""}.{draft.opened_at ? ` Opened ${new Date(draft.opened_at).toLocaleString()} (secondary event).` : ""}</div>}
             {draft.status === "sent" && normalizedDelivery === "provider_accepted" && <div className="prospectDeliveryPending">Provider accepted the email{draft.sent_at ? ` · ${new Date(draft.sent_at).toLocaleString()}` : ""}. Delivery is not yet confirmed.</div>}
             {(draft.status === "sent" || draft.status === "sending") && (!normalizedDelivery || normalizedDelivery === "unavailable") && <div className="note">A confirmed delivery record is unavailable. Do not treat this email as delivered or retry it automatically.</div>}
             {(normalizedDelivery === "bounced" || normalizedDelivery === "complaint") && <div className="note" role="alert">{normalizedDelivery === "bounced" ? "The recipient server bounced this email." : "The provider recorded a complaint for this email."}</div>}
             {draft.status === "sent" && normalizedDelivery === "failed" && <div className="note" role="alert">Provider delivery failed after the draft left the Marketing queue.</div>}
-            {draft.status === "cancelled" && <div className="note">This email was cancelled before delivery.</div>}
+            {draft.status === "cancelled" && <div className="prospectVoidedNotice"><Ban size={18} /><span><b>Voided before send</b><small>This email will not be delivered. Create a separate new draft if outreach is still needed.</small></span></div>}
             {(draft.status === "failed" || draft.status === "blocked") && <div className="note" role="alert">{draft.error || (draft.status === "blocked" ? "Delivery is blocked. Review suppression and collateral requirements before retrying." : "Delivery failed. Review the prospect and try again.")}</div>}
             {terminalDraft && <div className="prospectDialogActions"><button type="button" className="btn pri" onClick={startFollowUp}>Create a new follow-up email</button></div>}
           </>}
