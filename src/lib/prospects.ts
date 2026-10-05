@@ -1,3 +1,5 @@
+import type { FundingIntent, LeadType } from "@/lib/leadTypes";
+
 export type ProspectStage = {
   id?: string;
   key: string;
@@ -8,7 +10,7 @@ export type ProspectStage = {
 };
 
 export type ProspectStageStrategy = "advance_follow_up";
-export type ProspectEmailAction = "dealer_information_pack" | "missed_call" | "callback_confirmation" | "booking_link";
+export type ProspectEmailAction = "information_pack" | "dealer_information_pack" | "missed_call" | "callback_confirmation" | "booking_link";
 export type ProspectWorkflowAction = "book_appointment";
 
 export type ProspectOutcomeActionConfig = {
@@ -37,7 +39,7 @@ export type ProspectOutcome = {
   action_config?: ProspectOutcomeActionConfig;
 };
 
-export type ProspectDraftPurpose = "dealer_information" | "missed_call" | "callback_confirmation" | "client_will_call_back" | "booking" | "general";
+export type ProspectDraftPurpose = "information" | "dealer_information" | "missed_call" | "callback_confirmation" | "client_will_call_back" | "booking" | "general";
 export type ProspectCcScope = "this_email" | "this_and_future";
 export type ProspectGenerationReason = "ai_generated" | "ai_disabled" | "ai_access_blocked" | "ai_provider_error" | "ai_output_rejected" | "ai_usage_record_failed" | "approved_fallback" | "fallback_reason_not_recorded";
 export type ProspectInstructionDisposition = "none" | "submitted_to_ai" | "not_applied_fallback" | "unknown";
@@ -72,11 +74,39 @@ export type ProspectTestEmailRequest = {
   purpose: ProspectDraftPurpose;
   sample_contact_name: string;
   sample_dealer_name: string;
+  sample_business_name?: string;
+  lead_type?: LeadType;
+  funding_intent?: FundingIntent | null;
   verified_conversation_context?: string | null;
   ai_instructions?: string | null;
   include_collateral: boolean;
   collateral_asset_ids: string[];
+  collateral_bundle_id?: string | null;
+  collateral_bundle_version?: number | null;
 };
+
+export type ProspectOutreachPurposeTemplate = {
+  subject: string;
+  body: string;
+};
+
+export type ProspectOutreachProfile = {
+  id?: string | null;
+  lead_type: LeadType;
+  version: number;
+  status: "active" | "retired";
+  display_name: string;
+  desk_name: string;
+  audience_label: string;
+  audience_plural: string;
+  website_url: string;
+  drafting_guidance: string;
+  purpose_templates: Record<string, ProspectOutreachPurposeTemplate>;
+  created_by_user_id?: string | null;
+  created_at?: string | null;
+};
+
+export type ProspectOutreachProfileList = { items: ProspectOutreachProfile[] };
 
 export type ProspectEmailDraftCreateRequest = {
   idempotency_key: string;
@@ -91,12 +121,17 @@ export type ProspectEmailDraftCreateRequest = {
   body?: string | null;
   include_collateral: boolean;
   collateral_asset_ids: string[];
+  collateral_bundle_id?: string | null;
+  collateral_bundle_version?: number | null;
 };
 
 export type DealerProspectCreateRequest = {
   contact_id?: string | null;
   contact_name: string;
   dealer_name: string;
+  business_name?: string;
+  lead_type: LeadType;
+  funding_intent?: FundingIntent | null;
   email: string;
   phone: string;
   source: "quick_add";
@@ -117,6 +152,9 @@ export type ProspectSenderIdentity = {
 export type MarketingCollateralAsset = {
   id: string;
   assignment?: string;
+  lead_type?: LeadType;
+  purposes?: ProspectDraftPurpose[];
+  included_by_default?: boolean;
   logical_key?: string;
   name: string;
   file_name: string;
@@ -144,11 +182,50 @@ export type ProspectCollateralOption = {
   file_name: string;
   version: number;
   sort_order: number;
+  lead_type?: LeadType;
+  purposes?: ProspectDraftPurpose[];
+  included_by_default?: boolean;
+  inclusion_mode?: "default" | "optional";
   size_bytes: number;
   preview_url?: string | null;
 };
 
-export type ProspectCollateralOptionList = { items: ProspectCollateralOption[] };
+export type ProspectCollateralOptionList = {
+  items: ProspectCollateralOption[];
+  bundle_id?: string | null;
+  bundle_version?: number | null;
+};
+
+export type MarketingCollateralBundleItem = {
+  id: string;
+  asset_id: string;
+  inclusion_mode: "default" | "optional";
+  sort_order: number;
+  asset_name: string;
+  asset_version: number;
+  file_name: string;
+  size_bytes: number;
+  sha256: string;
+};
+
+export type MarketingCollateralBundle = {
+  id: string;
+  lead_type: LeadType;
+  purpose: ProspectDraftPurpose;
+  name: string;
+  version: number;
+  revision: number;
+  status: "draft" | "published" | "retired";
+  items: MarketingCollateralBundleItem[];
+  created_by_user_id?: string | null;
+  published_by_user_id?: string | null;
+  retired_by_user_id?: string | null;
+  published_at?: string | null;
+  retired_at?: string | null;
+  created_at: string;
+};
+
+export type MarketingCollateralBundleList = { items: MarketingCollateralBundle[] };
 
 export type ProspectTestEmailResponse = ProspectSenderIdentity & {
   ok: boolean;
@@ -167,6 +244,9 @@ export type DealerProspect = {
   contact_id?: string | null;
   name: string;
   dealer_name: string;
+  business_name?: string | null;
+  lead_type: LeadType;
+  funding_intent?: FundingIntent | null;
   email: string;
   phone: string;
   owner_user_id?: string | null;
@@ -278,6 +358,15 @@ export type ProspectEmailDraft = ProspectSenderIdentity & {
   contact_email?: string | null;
   contact_phone?: string | null;
   dealer_name?: string | null;
+  business_name?: string | null;
+  lead_type?: LeadType;
+  outreach_profile_key?: string | null;
+  outreach_profile_version?: number | null;
+  outreach_profile_hash?: string | null;
+  outreach_profile_snapshot?: Record<string, unknown> | null;
+  approved_website_url?: string | null;
+  collateral_bundle_id?: string | null;
+  collateral_bundle_version?: number | null;
   owner_user_id?: string | null;
   owner_name?: string | null;
   owner_email?: string | null;
@@ -336,6 +425,8 @@ export type ProspectConversionCandidate = {
   created_at?: string | null;
   match_reasons?: string[];
   route?: string | null;
+  lead_type?: LeadType | null;
+  funding_intent?: FundingIntent | null;
 };
 export type ProspectConversionCandidates = {
   target: ProspectConversionTarget;

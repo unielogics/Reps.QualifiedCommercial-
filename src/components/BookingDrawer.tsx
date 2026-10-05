@@ -16,6 +16,13 @@ import type {
 import BusinessAddressFields from "./BusinessAddressFields";
 import Drawer from "./Drawer";
 import ProgramSelect, { GENERAL_PROGRAM_KEY, GENERAL_PROGRAM_NAME } from "./ProgramSelect";
+import LeadTypePicker from "./LeadTypePicker";
+import {
+  FUNDING_INTENTS,
+  leadTypeDefinition,
+  type FundingIntent,
+  type LeadType,
+} from "@/lib/leadTypes";
 
 type FileRow = {
   id: string;
@@ -29,6 +36,8 @@ type FileRow = {
   zip?: string | null;
   funding_goal?: number | string | null;
   funding_purpose?: string | null;
+  lead_type?: LeadType | null;
+  funding_intent?: FundingIntent | null;
 };
 
 type Slot = { starts_at: string; label: string; date_label: string };
@@ -129,7 +138,9 @@ export default function BookingDrawer({
   const [startsAt, setStartsAt] = useState("");
   const [dayIndex, setDayIndex] = useState(0);
   const [inviteeName, setInviteeName] = useState(initialName ?? "");
-  const [company, setCompany] = useState(initialCompany ?? prospect?.dealer_name ?? "");
+  const [company, setCompany] = useState(initialCompany ?? prospect?.business_name ?? prospect?.dealer_name ?? "");
+  const [leadType, setLeadType] = useState<LeadType | null>(prospect?.lead_type ?? null);
+  const [fundingIntent, setFundingIntent] = useState<FundingIntent | "">(prospect?.funding_intent ?? "");
   const [inviteeEmail, setInviteeEmail] = useState(initialEmail ?? "");
   const [inviteePhone, setInviteePhone] = useState(initialPhone ?? "");
   const [notes, setNotes] = useState(initialNotes ?? "");
@@ -182,11 +193,12 @@ export default function BookingDrawer({
   }, [inviteeEmail, inviteePhone]);
 
   const duplicateCheck = useQuery({
-    queryKey: ["prospect-duplicate-check", "calendar-new-lead", duplicateInput.email.toLowerCase(), duplicateInput.phone],
+    queryKey: ["prospect-duplicate-check", "calendar-new-lead", duplicateInput.email.toLowerCase(), duplicateInput.phone, leadType],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (duplicateInput.email) params.set("email", duplicateInput.email);
       if (duplicateInput.phone) params.set("phone", duplicateInput.phone);
+      if (leadType) params.set("lead_type", leadType);
       return api<ProspectDuplicateCheck>(`/dealer-os/prospects/duplicate-check?${params}`, {
         authToken: (await getToken()) ?? undefined,
       });
@@ -305,6 +317,8 @@ export default function BookingDrawer({
         method: "POST",
         body: JSON.stringify({
           kind,
+          lead_type: leadType,
+          funding_intent: fundingIntent || null,
           creation_idempotency_key: idempotencyKey,
           starts_at: startsAt,
           company: sourceMode === "lead" ? company.trim() : company.trim() || selected?.name || null,
@@ -389,6 +403,8 @@ export default function BookingDrawer({
     selectedSlot &&
       inviteeName.trim() &&
       (!needsCompany || company.trim()) &&
+      (sourceMode !== "file" || Boolean(dealerId)) &&
+      (sourceMode !== "lead" || leadType) &&
       (inviteeEmail.trim() || inviteePhone.trim()) &&
       !duplicateBlocked &&
       !duplicatePending &&
@@ -408,7 +424,7 @@ export default function BookingDrawer({
           <div className="panel-b" style={{ display: "grid", gap: 14 }}>
             <p className="sub" style={{ margin: 0 }}>
               {prospect
-                ? `${booked.invitee_name} is booked and ${prospect.dealer_name} has moved to Booked. ${booked.meeting_mode === "video" ? "Google Calendar, Meet, and confirmations" : "Google Calendar and confirmations"} continue from the durable delivery queue.`
+                ? `${booked.invitee_name} is booked and ${prospect.business_name || prospect.dealer_name} has moved to Booked. ${booked.meeting_mode === "video" ? "Google Calendar, Meet, and confirmations" : "Google Calendar and confirmations"} continue from the durable delivery queue.`
                 : `${booked.invitee_name} is booked. A draft file${booked.precall?.case_ref ? ` (${booked.precall.case_ref})` : ""} and a secure room were opened for this call; the confirmation carries the room link and the “Before your call” checklist (owners → bank → soft credit).`}
             </p>
             {bookingDelivery && <div className={`bookingDeliveryState ${bookingDelivery.state}`} role="status"><b>{bookingDelivery.state === "meet_ready" ? "Google Meet ready" : bookingDelivery.state === "action_required" ? "Booking saved · action required" : "Booking saved · delivery queued"}</b><span>{bookingDelivery.error || (bookingDelivery.state === "queued" ? "The appointment is secure. This panel can be closed while delivery finishes." : "Google and delivery status are recorded on the appointment.")}</span></div>}
@@ -475,6 +491,8 @@ export default function BookingDrawer({
                 onClick={() => {
                   setSourceMode("lead");
                   setDealerId("");
+                  setLeadType(null);
+                  setFundingIntent("");
                 }}
               >
                 New lead
@@ -493,6 +511,8 @@ export default function BookingDrawer({
                   setDealerId(next);
                   const file = (files.data ?? []).find((f) => f.id === next);
                   if (file) {
+                    if (file.lead_type) setLeadType(file.lead_type);
+                    setFundingIntent(file.funding_intent ?? "");
                     if (!inviteeName.trim()) setInviteeName(file.name);
                     if (!inviteeEmail.trim() && file.email) setInviteeEmail(file.email);
                     if (!inviteePhone.trim() && file.phone) setInviteePhone(file.phone);
@@ -527,7 +547,20 @@ export default function BookingDrawer({
               </span>
             </div>
           ) : (
-            <div>
+            <div style={{ display: "grid", gap: 14 }}>
+              {!prospect && <LeadTypePicker value={leadType} onChange={setLeadType} compact />}
+              {!prospect && <label>
+                <span className="lbl">Funding need <small>optional</small></span>
+                <select
+                  className="field"
+                  value={fundingIntent}
+                  onChange={(event) => setFundingIntent(event.target.value as FundingIntent | "")}
+                >
+                  <option value="">Not selected yet</option>
+                  {FUNDING_INTENTS.map((intent) => <option key={intent.key} value={intent.key}>{intent.label}</option>)}
+                </select>
+                <small className="sub">This describes what the client is seeking; it does not change their business type.</small>
+              </label>}
               <label className="lbl">Business name</label>
               <input
                 className="field"
@@ -541,9 +574,9 @@ export default function BookingDrawer({
           )}
 
           {prospect ? <div className="bookingProspectLinkage" role="status">
-            <span><small>Marketing file</small><b>{prospect.dealer_name}</b></span>
+            <span><small>Marketing file</small><b>{prospect.business_name || prospect.dealer_name}</b></span>
             <span><small>Assigned agent</small><b>{prospect.owner_name || "Unassigned"}</b></span>
-            <span><small>Appointment type</small><b>Dealer appointment</b></span>
+            <span><small>Business type</small><b>{leadTypeDefinition(prospect.lead_type).label}</b></span>
           </div> : <div>
             <label className="lbl">Type</label>
             <div className="seg" style={{ marginTop: 6 }}>
@@ -564,7 +597,7 @@ export default function BookingDrawer({
             </div>
             {availabilityInfo?.google_meet_enabled === false && <span className="sub" style={{ display: "block", marginTop: 5 }}>Google Meet is disabled in the shared calendar settings. Choose phone or in person.</span>}
           </div>
-          {meetingMode === "in_person" && <label><span className="lbl">Meeting location</span><input className="field" required value={meetingLocation} onChange={(event) => setMeetingLocation(event.target.value)} placeholder="Office, dealership, or full address" /></label>}
+          {meetingMode === "in_person" && <label><span className="lbl">Meeting location</span><input className="field" required value={meetingLocation} onChange={(event) => setMeetingLocation(event.target.value)} placeholder="Office, business, property, or full address" /></label>}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
             <div>

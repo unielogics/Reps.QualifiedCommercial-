@@ -20,6 +20,8 @@ import Modal from "./Modal";
 import ProspectCollateralSelector, { type ProspectCollateralSelection } from "./ProspectCollateralSelector";
 import ProspectEmailComposer from "./ProspectEmailComposer";
 import ProspectSenderIdentityCard from "./ProspectSenderIdentityCard";
+import LeadTypePicker from "./LeadTypePicker";
+import { FUNDING_INTENTS, leadTypeDefinition, type FundingIntent, type LeadType } from "@/lib/leadTypes";
 
 type CreateIntent = "prospect_only" | "first_email";
 type CreateVariables = {
@@ -41,13 +43,15 @@ export default function ProspectQuickAddModal({
   onProspectSaved?: (prospect: DealerProspect) => void;
   onOpenExisting: (prospectId: string) => void;
   onOpenContact?: (contactId: string) => void;
-  initialValues?: { contact_id?: string | null; name?: string | null; dealer_name?: string | null; email?: string | null; phone?: string | null };
+  initialValues?: { contact_id?: string | null; name?: string | null; dealer_name?: string | null; business_name?: string | null; email?: string | null; phone?: string | null; lead_type?: LeadType | null; funding_intent?: FundingIntent | null };
 }) {
   const { getToken } = useAuth();
   const me = useMe();
   const formRef = useRef<HTMLFormElement>(null);
   const [name, setName] = useState(initialValues?.name ?? "");
-  const [dealerName, setDealerName] = useState(initialValues?.dealer_name ?? "");
+  const [dealerName, setDealerName] = useState(initialValues?.business_name ?? initialValues?.dealer_name ?? "");
+  const [leadType, setLeadType] = useState<LeadType | null>(initialValues?.lead_type ?? null);
+  const [fundingIntent, setFundingIntent] = useState<FundingIntent | "">(initialValues?.funding_intent ?? "");
   const [email, setEmail] = useState(initialValues?.email ?? "");
   const [phone, setPhone] = useState(initialValues?.phone ?? "");
   const [firstNote, setFirstNote] = useState("");
@@ -62,21 +66,33 @@ export default function ProspectQuickAddModal({
   const [frozenEmailRequest, setFrozenEmailRequest] = useState<ProspectEmailDraftCreateRequest | null>(null);
   const [firstDraft, setFirstDraft] = useState<ProspectEmailDraft | null>(null);
   const [reviewDraft, setReviewDraft] = useState<ProspectEmailDraft | null>(null);
-  const [duplicateInput, setDuplicateInput] = useState({ email: email.trim(), phone: phone.trim() });
+  const [duplicateInput, setDuplicateInput] = useState({
+    email: email.trim(),
+    phone: phone.trim(),
+    businessName: dealerName.trim(),
+    leadType,
+  });
   const reassignmentKey = useRef("");
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDuplicateInput({ email: email.trim(), phone: phone.trim() }), 350);
+    const timer = window.setTimeout(() => setDuplicateInput({
+      email: email.trim(),
+      phone: phone.trim(),
+      businessName: dealerName.trim(),
+      leadType,
+    }), 350);
     return () => window.clearTimeout(timer);
-  }, [email, phone]);
+  }, [dealerName, email, leadType, phone]);
 
   const duplicateCheck = useQuery({
-    queryKey: ["prospect-duplicate-check", duplicateInput.email.toLowerCase(), duplicateInput.phone, initialValues?.contact_id],
+    queryKey: ["prospect-duplicate-check", duplicateInput.email.toLowerCase(), duplicateInput.phone, duplicateInput.businessName.toLowerCase(), initialValues?.contact_id, duplicateInput.leadType],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (duplicateInput.email) params.set("email", duplicateInput.email);
       if (duplicateInput.phone) params.set("phone", duplicateInput.phone);
+      if (duplicateInput.businessName) params.set("business_name", duplicateInput.businessName);
       if (initialValues?.contact_id) params.set("contact_id", initialValues.contact_id);
+      if (duplicateInput.leadType) params.set("lead_type", duplicateInput.leadType);
       return api<ProspectDuplicateCheck>(`/dealer-os/prospects/duplicate-check?${params}`, { authToken: (await getToken()) ?? undefined });
     },
     enabled: Boolean(duplicateInput.email || duplicateInput.phone) && !createdProspect,
@@ -165,9 +181,13 @@ export default function ProspectQuickAddModal({
   }, [email, phone]);
 
   const duplicateBlocked = duplicateCheck.data?.blocked === true;
-  const duplicateInputIsCurrent = duplicateInput.email === email.trim() && duplicateInput.phone === phone.trim();
+  const duplicateInputIsCurrent = duplicateInput.email === email.trim()
+    && duplicateInput.phone === phone.trim()
+    && duplicateInput.businessName === dealerName.trim()
+    && duplicateInput.leadType === leadType;
   const canCreate = Boolean(
-    name.trim()
+    leadType
+    && name.trim()
     && dealerName.trim()
     && email.trim()
     && phone.trim()
@@ -184,9 +204,11 @@ export default function ProspectQuickAddModal({
   const draftFailureIsResolved = createDraft.error instanceof ApiError && createDraft.error.status >= 400 && createDraft.error.status < 500;
   const reviewIsSending = reviewDraft != null && ["pending_review", "queued", "sending"].includes(reviewDraft.status);
   const setupDirty = name !== (initialValues?.name ?? "")
-    || dealerName !== (initialValues?.dealer_name ?? "")
+    || dealerName !== (initialValues?.business_name ?? initialValues?.dealer_name ?? "")
     || email !== (initialValues?.email ?? "")
     || phone !== (initialValues?.phone ?? "")
+    || leadType !== (initialValues?.lead_type ?? null)
+    || fundingIntent !== (initialValues?.funding_intent ?? "")
     || Boolean(firstNote || verifiedContext || instructions || manualSubject || manualBody)
     || composeMode !== "ai"
     || !collateralSelection.includeAll
@@ -197,6 +219,9 @@ export default function ProspectQuickAddModal({
     contact_id: initialValues?.contact_id ?? null,
     contact_name: name.trim(),
     dealer_name: dealerName.trim(),
+    business_name: dealerName.trim(),
+    lead_type: leadType!,
+    funding_intent: fundingIntent || null,
     email: email.trim(),
     phone: phone.trim(),
     source: "quick_add",
@@ -206,7 +231,7 @@ export default function ProspectQuickAddModal({
   const emailRequest = (): ProspectEmailDraftCreateRequest => ({
     idempotency_key: crypto.randomUUID(),
     compose_mode: composeMode,
-    purpose: "dealer_information",
+    purpose: "information",
     private_note: null,
     verified_conversation_context: composeMode === "ai" ? verifiedContext.trim().replace(/\s+/g, " ") || null : null,
     ai_instructions: composeMode === "ai" ? instructions.trim() || null : null,
@@ -214,6 +239,8 @@ export default function ProspectQuickAddModal({
     body: composeMode === "manual" ? manualBody.trim() : null,
     include_collateral: collateralSelection.includeAll,
     collateral_asset_ids: collateralSelection.selectedIds,
+    collateral_bundle_id: collateralSelection.bundleId ?? null,
+    collateral_bundle_version: collateralSelection.bundleVersion ?? null,
   });
 
   const addProspectOnly = () => {
@@ -262,27 +289,30 @@ export default function ProspectQuickAddModal({
   };
 
   if (createdProspect && firstDraft) {
-    return <Modal title="Review first dealer email" width={960} onClose={requestReviewClose}>
+    return <Modal title="Review first outreach email" width={960} onClose={requestReviewClose}>
       <div className="prospectQuickStartReview">
-        <div className="prospectQuickStartSaved" role="status"><ShieldCheck size={19} /><span><b>{createdProspect.dealer_name} was added to the Marketing pipeline.</b><small>{firstNote.trim() ? "The first internal note is saved. " : ""}{firstDraft.compose_mode === "manual" ? "Review and explicitly approve the manual email below; there is no automatic countdown." : "Review the email below; closing this window does not stop its server-side countdown."}</small></span></div>
+        <div className="prospectQuickStartSaved" role="status"><ShieldCheck size={19} /><span><b>{createdProspect.business_name || createdProspect.dealer_name} was added to the Marketing pipeline.</b><small>{firstNote.trim() ? "The first internal note is saved. " : ""}{firstDraft.compose_mode === "manual" ? "Review and explicitly approve the manual email below; there is no automatic countdown." : "Review the email below; closing this window does not stop its server-side countdown."}</small></span></div>
         <ProspectEmailComposer prospect={createdProspect} initialDraft={firstDraft} onClose={requestReviewClose} onDraftChange={setReviewDraft} embedded />
         <div className="prospectDialogActions"><button type="button" className="btn" onClick={requestReviewClose}>{reviewIsSending ? "Keep sending & open prospect" : "Open prospect"}</button></div>
       </div>
     </Modal>;
   }
 
-  return <Modal title={createdProspect ? "Finish first dealer email" : "Add dealer prospect"} width={960} onClose={requestSetupClose}>
+  const selectedType = leadTypeDefinition(leadType);
+  return <Modal title={createdProspect ? "Finish first outreach email" : "Add Marketing prospect"} width={960} onClose={requestSetupClose}>
     <form ref={formRef} className="prospectQuickAdd" onSubmit={(event) => event.preventDefault()}>
-      <p className="sub">Add the dealer and start the first outreach from one place. Possible duplicates are checked before any email is prepared.</p>
+      <p className="sub">Classify the business, add the contact, and prepare type-appropriate outreach from one place. Possible duplicates are checked before any email is prepared.</p>
       <section className="prospectQuickStartSection">
-        <header><span>1</span><div><b>Prospect details</b><small>The four details collected during the call.</small></div></header>
+        <header><span>1</span><div><b>Business type and prospect details</b><small>Type controls the approved language, products, website, PDFs, and intake route.</small></div></header>
+        <LeadTypePicker value={leadType} onChange={setLeadType} disabled={setupLocked} compact />
         <div className="prospectFieldGrid">
-          <label><span className="lbl">Contact name</span><input className="field" autoFocus autoComplete="name" required disabled={setupLocked} value={name} onChange={(event) => setName(event.target.value)} /></label>
-          <label><span className="lbl">Dealer name</span><input className="field" autoComplete="organization" required disabled={setupLocked} value={dealerName} onChange={(event) => setDealerName(event.target.value)} /></label>
+          <label><span className="lbl">Contact name</span><input className="field" autoComplete="name" required disabled={setupLocked} value={name} onChange={(event) => setName(event.target.value)} /></label>
+          <label><span className="lbl">Business name</span><input className="field" autoComplete="organization" required disabled={setupLocked} value={dealerName} onChange={(event) => setDealerName(event.target.value)} /></label>
           <label><span className="lbl">Email</span><input className="field" type="email" autoComplete="email" required disabled={setupLocked} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
           <label><span className="lbl">Phone number</span><input className="field" type="tel" autoComplete="tel" required disabled={setupLocked} value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
+          <label><span className="lbl">Funding need <small>Optional</small></span><select className="field" disabled={setupLocked} value={fundingIntent} onChange={(event) => setFundingIntent(event.target.value as FundingIntent | "")}><option value="">Not selected yet</option>{FUNDING_INTENTS.map((intent) => <option key={intent.key} value={intent.key}>{intent.label}</option>)}</select></label>
         </div>
-        <label className="prospectQuickStartNote"><span className="lbl">First internal note <small>Optional</small></span><textarea className="field" rows={3} maxLength={4000} disabled={setupLocked} value={firstNote} onChange={(event) => setFirstNote(event.target.value)} placeholder="What happened on the call, what the dealer needs, and the next step." /><small>This is saved privately on the prospect. It is never sent to the dealer or the AI.</small></label>
+        <label className="prospectQuickStartNote"><span className="lbl">First internal note <small>Optional</small></span><textarea className="field" rows={3} maxLength={4000} disabled={setupLocked} value={firstNote} onChange={(event) => setFirstNote(event.target.value)} placeholder="What happened on the call, what the client needs, and the next step." /><small>This is saved privately on the prospect. It is never sent to the recipient or the AI.</small></label>
       </section>
 
       {duplicateCheck.isFetching && <div className="prospectDuplicatePreflight" role="status">Checking email and phone for an existing Marketing contact…</div>}
@@ -314,22 +344,22 @@ export default function ProspectQuickAddModal({
       {duplicateCheck.isError && <div className="note" role="status">Live duplicate preview is temporarily unavailable. Creation will still perform the authoritative duplicate check.</div>}
 
       <section className="prospectQuickStartSection prospectQuickStartEmail">
-        <header><span>2</span><div><b>Prepare the first email</b><small>Personalize approved copy and choose exactly which dealer PDFs to include.</small></div><span className="cellchip c-ok"><Mail size={13} /> Ready from here</span></header>
-        <div className="prospectQuickStartRecipient"><small>To</small><b>{name.trim() || "Contact name"} · {dealerName.trim() || "Dealer name"}</b><span>{email.trim() || "Email address"}</span></div>
+        <header><span>2</span><div><b>Prepare the first email</b><small>Personalize the approved {selectedType.shortLabel} copy and choose matching PDFs.</small></div><span className="cellchip c-ok"><Mail size={13} /> Ready from here</span></header>
+        <div className="prospectQuickStartRecipient"><small>To</small><b>{name.trim() || "Contact name"} · {dealerName.trim() || "Business name"}</b><span>{email.trim() || "Email address"}</span></div>
         <div className="prospectComposeMode" role="tablist" aria-label="First email drafting method"><button type="button" role="tab" aria-selected={composeMode === "ai"} className={composeMode === "ai" ? "on" : ""} disabled={setupLocked} onClick={() => setComposeMode("ai")}><Sparkles size={16} /> AI-assisted</button><button type="button" role="tab" aria-selected={composeMode === "manual"} className={composeMode === "manual" ? "on" : ""} disabled={setupLocked} onClick={() => setComposeMode("manual")}><PenLine size={16} /> Write manually</button></div>
         {composeMode === "ai" ? <>
-          <label><span className="lbl">Verified conversation context <small>Optional</small></span><textarea className="field" rows={3} maxLength={500} disabled={setupLocked} value={verifiedContext} onChange={(event) => setVerifiedContext(event.target.value)} placeholder="We spoke earlier today at 10:00 AM about renovating your facility." /><small>Only enter facts you can verify. This context may appear in the dealer&apos;s email.</small></label>
+          <label><span className="lbl">Verified conversation context <small>Optional</small></span><textarea className="field" rows={3} maxLength={500} disabled={setupLocked} value={verifiedContext} onChange={(event) => setVerifiedContext(event.target.value)} placeholder="We spoke earlier today at 10:00 AM about renovating your facility." /><small>Only enter facts you can verify. This context may appear in the client&apos;s email.</small></label>
           <label><span className="lbl">AI tone and format instructions <small>Optional</small></span><textarea className="field" rows={3} maxLength={1500} disabled={setupLocked} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Keep it concise and use bullets instead of long paragraphs." /><small>Controls wording and structure only; approved products, claims, links, and compliance language stay locked.</small></label>
         </> : <>
-          <label><span className="lbl">Subject</span><input className="field" maxLength={220} required disabled={setupLocked} value={manualSubject} onChange={(event) => setManualSubject(event.target.value)} placeholder={`A note for ${dealerName.trim() || "your dealership"}`} /></label>
+          <label><span className="lbl">Subject</span><input className="field" maxLength={220} required disabled={setupLocked} value={manualSubject} onChange={(event) => setManualSubject(event.target.value)} placeholder={`A note for ${dealerName.trim() || `your ${selectedType.businessNoun}`}`} /></label>
           <label><span className="lbl">Message</span><textarea className="field prospectEmailBody" rows={10} required disabled={setupLocked} value={manualBody} onChange={(event) => setManualBody(event.target.value)} placeholder="Write the message in your own words. QC adds the locked signature, disclosures, reply guidance, and unsubscribe controls." /><small>Manual copy is validated against firm policy and waits for your explicit approval; it never auto-sends.</small></label>
         </>}
         <ProspectSenderIdentityCard identity={senderPreview.data} fallbackName={me.name} fallbackEmail={me.email} />
         {senderPreview.isError && <div className="note" role="alert">The verified sender identity could not be loaded. You can add the prospect without email, or retry when sender settings are available.</div>}
-        <ProspectCollateralSelector value={collateralSelection} disabled={setupLocked} onChange={setCollateralSelection} onReadyChange={setCollateralReady} />
+        <ProspectCollateralSelector value={collateralSelection} leadType={leadType} purpose="information" disabled={setupLocked} onChange={setCollateralSelection} onReadyChange={setCollateralReady} />
       </section>
 
-      {duplicates.length > 0 && <div className="prospectDuplicateWarning" role="alert"><b>This dealer/contact already exists.</b><span>No email was created. Open the existing prospect instead of creating a duplicate.</span>{duplicates.map((candidate) => candidate.prospect_id && <button type="button" className="btn" key={candidate.prospect_id} onClick={() => onOpenExisting(candidate.prospect_id!)}>Open existing prospect</button>)}</div>}
+      {duplicates.length > 0 && <div className="prospectDuplicateWarning" role="alert"><b>This business/contact already exists.</b><span>No email was created. Open the existing prospect instead of creating a duplicate.</span>{duplicates.map((candidate) => candidate.prospect_id && <button type="button" className="btn" key={candidate.prospect_id} onClick={() => onOpenExisting(candidate.prospect_id!)}>Open existing prospect</button>)}</div>}
       {duplicateDetail?.assignment_required && <div className="note" role="alert">A matching prospect belongs to another agent. No email was created. Ask a team administrator to assign it to you.</div>}
       {create.isError && !duplicateDetail && <div className="note" role="alert">No email was created. {create.error instanceof Error ? create.error.message : "The prospect could not be created."}</div>}
       {createdProspect && createDraft.isError && <div className="prospectTestUncertain" role="alert"><CircleAlert size={19} /><span><b>{draftFailureIsResolved ? "Prospect saved; email not scheduled." : "Prospect saved; email status unresolved."}</b><small>{createDraft.error instanceof Error ? createDraft.error.message : "The draft request did not complete."} {draftFailureIsResolved ? "The server rejected this draft before scheduling it." : "A network failure may have hidden the server result. Do not start a different draft."} The prospect will not be created again. Retrying uses the exact same request and idempotency key.</small></span></div>}

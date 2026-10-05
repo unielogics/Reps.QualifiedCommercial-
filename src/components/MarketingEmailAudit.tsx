@@ -11,6 +11,7 @@ import { displayDate, type ProspectAccessList, type ProspectEmailAttachment, typ
 import { useMe } from "@/lib/useMe";
 import Modal from "./Modal";
 import ProspectEmailVoidAction from "./ProspectEmailVoidAction";
+import { LEAD_TYPES, leadTypeLabel, type LeadType } from "@/lib/leadTypes";
 
 type DraftPage = { items: ProspectEmailDraft[]; total: number; limit: number; offset: number };
 type DeliveryPresentation = {
@@ -56,6 +57,7 @@ export default function MarketingEmailAudit() {
   const [deliveryStatus, setDeliveryStatus] = useState("");
   const [source, setSource] = useState<"" | "ai" | "manual">("");
   const [ownerId, setOwnerId] = useState("");
+  const [leadType, setLeadType] = useState<LeadType | "">("");
   const [offset, setOffset] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(params.get("draft_id"));
   const [attachmentBusy, setAttachmentBusy] = useState<string | null>(null);
@@ -85,8 +87,9 @@ export default function MarketingEmailAudit() {
     if (deliveryStatus) next.set("delivery_status", deliveryStatus);
     if (source) next.set("source", source);
     if (ownerId) next.set("owner_user_id", ownerId);
+    if (leadType) next.set("lead_type", leadType);
     return next.toString();
-  }, [deliveryStatus, draftStatus, offset, ownerId, query, source]);
+  }, [deliveryStatus, draftStatus, leadType, offset, ownerId, query, source]);
 
   const list = useQuery({
     queryKey: ["marketing-email-audit", queryString],
@@ -164,7 +167,8 @@ export default function MarketingEmailAudit() {
 
   return <><div className="marketingEmailAudit">
     <div className={`prospectToolbar marketingEmailFilters${me.isTeam ? " withOwner" : ""}`}>
-      <label className="marketingEmailSearch"><Search size={17} /><input className="field" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search dealer, contact, recipient, subject, or agent" /></label>
+      <label className="marketingEmailSearch"><Search size={17} /><input className="field" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search business, contact, recipient, subject, or agent" /></label>
+      <select className="field" aria-label="Business type" value={leadType} onChange={(event) => { setLeadType(event.target.value as LeadType | ""); setOffset(0); }}><option value="">All business types</option>{LEAD_TYPES.map((type) => <option value={type.key} key={type.key}>{type.label}</option>)}</select>
       <select className="field" aria-label="Draft state" value={draftStatus} onChange={(event) => { setDraftStatus(event.target.value); setOffset(0); }}><option value="">All draft states</option><option value="pending_review">Reviewing</option><option value="editing">Editing</option><option value="sending">Sending</option><option value="sent">Sent</option><option value="blocked">Blocked</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select>
       <select className="field" aria-label="Delivery state" value={deliveryStatus} onChange={(event) => { setDeliveryStatus(event.target.value); setOffset(0); }}><option value="">All delivery states</option><option value="provider_accepted">Provider accepted—awaiting confirmation</option><option value="delivered">Delivered</option><option value="bounced">Bounced</option><option value="complaint">Complaint</option><option value="failed">Failed</option><option value="blocked">Blocked</option><option value="cancelled">Cancelled</option><option value="unavailable">Delivery record unavailable</option></select>
       <select className="field" aria-label="Drafting source" value={source} onChange={(event) => { setSource(event.target.value as "" | "ai" | "manual"); setOffset(0); }}><option value="">AI and manual</option><option value="ai">AI-assisted</option><option value="manual">Manual</option></select>
@@ -177,7 +181,7 @@ export default function MarketingEmailAudit() {
         <div className="marketingEmailRows">
           {list.isLoading && <div className="empty compact">Loading Marketing email history…</div>}
           {list.isError && <div className="note" role="alert">{list.error instanceof Error ? list.error.message : "Marketing email history could not be loaded."}</div>}
-          {rows.map((draft) => { const state = marketingDeliveryPresentation(draft); return <button type="button" key={draft.id} className={`marketingEmailRow${selectedId === draft.id ? " selected" : ""}`} onClick={() => selectDraft(draft.id)}><span className="marketingEmailRowTop"><b>{draft.dealer_name || draft.prospect_name || "Dealer prospect"}</b><time>{displayDate(draft.sent_at ?? draft.created_at, true)}</time></span><strong>{draft.subject || "Untitled email"}</strong><small>{draft.contact_name || draft.to_email || "Recipient unavailable"} · {draft.owner_name || "Unassigned"}</small><span className="marketingEmailRowMeta"><span className={`marketingDeliveryState tone-${state.tone}`}>{state.label}</span><span className="cellchip c-mut">{draft.compose_mode === "manual" ? "Manual" : "AI-assisted"}</span></span></button>; })}
+          {rows.map((draft) => { const state = marketingDeliveryPresentation(draft); return <button type="button" key={draft.id} className={`marketingEmailRow${selectedId === draft.id ? " selected" : ""}`} onClick={() => selectDraft(draft.id)}><span className="marketingEmailRowTop"><b>{draft.business_name || draft.dealer_name || draft.prospect_name || "Marketing prospect"}</b><time>{displayDate(draft.sent_at ?? draft.created_at, true)}</time></span><strong>{draft.subject || "Untitled email"}</strong><small>{draft.contact_name || draft.to_email || "Recipient unavailable"} · {draft.owner_name || "Unassigned"}</small><span className="marketingEmailRowMeta"><span className={`leadTypeBadge type-${draft.lead_type || "legacy"}`}>{draft.lead_type ? leadTypeLabel(draft.lead_type) : "Legacy type unavailable"}</span><span className={`marketingDeliveryState tone-${state.tone}`}>{state.label}</span><span className="cellchip c-mut">{draft.compose_mode === "manual" ? "Manual" : "AI-assisted"}</span></span></button>; })}
           {!list.isLoading && !list.isError && !rows.length && <div className="empty compact">No Marketing emails match these filters.</div>}
         </div>
         <div className="paginationRow"><span className="sub">{list.data?.total ? `${offset + 1}-${Math.min(offset + limit, list.data.total)} of ${list.data.total}` : "0 emails"}</span><div className="row"><button type="button" className="btn sm" disabled={page === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</button><span className="sub num">{page + 1} / {pageCount}</span><button type="button" className="btn sm" disabled={page + 1 >= pageCount} onClick={() => setOffset(offset + limit)}>Next</button></div></div>
@@ -191,13 +195,16 @@ export default function MarketingEmailAudit() {
           <div className="panel-h marketingEmailDetailHead"><span><small>Exact audited message</small><b>{selected.subject}</b></span>{selectedState && <span className={`marketingDeliveryState tone-${selectedState.tone}`}><MailCheck size={14} /> {selectedState.label}</span>}</div>
           <div className="panel-b marketingEmailDetailBody">
             <div className="marketingEmailIdentityGrid">
-              <div><span>Dealer</span><b>{selected.dealer_name || selected.prospect_name || "Unavailable"}</b>{selected.prospect_archived_at && <small>Archived prospect</small>}</div>
+              <div><span>Business</span><b>{selected.business_name || selected.dealer_name || selected.prospect_name || "Unavailable"}</b><small>{selected.lead_type ? leadTypeLabel(selected.lead_type) : "Legacy type unavailable"}{selected.prospect_archived_at ? " · Archived prospect" : ""}</small></div>
               <div><span>Contact / recipient</span><b>{selected.contact_name || "Unavailable"}</b><small>{selected.to_email || "Recipient unavailable"}</small></div>
               <div><span>Current owner</span><b>{selected.owner_name || "Unassigned"}</b></div>
               <div><span>Triggered by</span><b>{selected.triggering_agent_name || "System"}</b><small>{selected.triggering_agent_email || ""}</small></div>
-              <div><span>Sender</span><b>{selected.sender_from_name || selected.sender_display_name || "Qualified Commercial Dealer Desk"}</b><small>{selected.from_email || selected.envelope_from_email || "Unavailable"}</small></div>
+              <div><span>Sender</span><b>{selected.sender_from_name || selected.sender_display_name || "Qualified Commercial Marketing Desk"}</b><small>{selected.from_email || selected.envelope_from_email || "Unavailable"}</small></div>
               <div><span>Reply-To</span><b>{selected.reply_to || selected.reply_contact_email || "Unavailable"}</b></div>
               <div><span>CC recipients</span><b>{(selected.cc_emails ?? []).length ? (selected.cc_emails ?? []).join(", ") : "None"}</b></div>
+              <div><span>Outreach profile snapshot</span><b>{selected.lead_type ? leadTypeLabel(selected.lead_type) : "Legacy type unavailable"}{selected.outreach_profile_version ? ` · v${selected.outreach_profile_version}` : ""}</b><small>{selected.outreach_profile_key || "Legacy profile key unavailable"}{selected.outreach_profile_hash ? ` · ${selected.outreach_profile_hash.slice(0, 12)}…` : ""}</small></div>
+              <div><span>Collateral bundle snapshot</span><b>{selected.collateral_bundle_version ? `Published v${selected.collateral_bundle_version}` : "No bundle snapshot"}</b><small>{selected.collateral_bundle_id || "Sent without a recorded bundle"}</small></div>
+              <div><span>Approved website</span>{selected.approved_website_url ? <a href={selected.approved_website_url} target="_blank" rel="noreferrer">{selected.approved_website_url}</a> : <b>Not recorded on this historical draft</b>}</div>
             </div>
             {selected.prospect_id && <Link className="btn sm marketingProspectLink" href={`/marketing/prospects/${selected.prospect_id}`}>Open Marketing prospect <ExternalLink size={14} /></Link>}
             {["pending_review", "editing"].includes(selected.status) && <ProspectEmailVoidAction source="marketing_audit" showCountdown draft={selected} onDraftChange={(updated) => { qc.setQueryData(["marketing-email-audit-detail", selected.id], updated); void qc.invalidateQueries({ queryKey: ["marketing-email-audit"] }); }} />}

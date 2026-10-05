@@ -1,4 +1,5 @@
 import type { InlineImage } from "@/lib/inlineImages";
+import type { FundingIntent, LeadType } from "@/lib/leadTypes";
 
 export type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "done";
 export type AppointmentOutcome = "not_converted" | "did_not_show" | "converted";
@@ -9,6 +10,8 @@ export type RepAppointment = {
   id: string;
   dealer_id: string | null;
   prospect_id: string | null;
+  lead_type: LeadType | null;
+  funding_intent: FundingIntent | null;
   owner_user_id: string | null;
   owner_name: string | null;
   calendar_event_id: string | null;

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Bot, CalendarDays, ExternalLink, Mail, MessageSquareText, Plus, StickyNote } from "lucide-react";
+import { Ban, Bot, CalendarDays, ExternalLink, Mail, MessageSquareText, PencilLine, Plus, StickyNote } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   displayDate,
@@ -28,6 +28,8 @@ import ProspectCallAction from "@/components/ProspectCallAction";
 import FollowUpCountdown from "@/components/FollowUpCountdown";
 import ProspectCcControl from "@/components/ProspectCcControl";
 import ProspectEmailVoidAction from "@/components/ProspectEmailVoidAction";
+import ProspectReclassifyDialog from "@/components/ProspectReclassifyDialog";
+import { leadTypeDefinition } from "@/lib/leadTypes";
 
 type OutcomeResult = ProspectDetail | { prospect: ProspectDetail; email_action?: string | null; workflow_action?: string | null; email_draft_id?: string | null; email_disposition?: "none" | "pending_review" | "skipped" };
 type DraftList = { items: ProspectEmailDraft[] };
@@ -65,6 +67,7 @@ export default function ProspectDetailPage() {
   const [composeMode, setComposeMode] = useState<"sms" | null>(null);
   const [booking, setBooking] = useState(false);
   const [moveStage, setMoveStage] = useState<ProspectStage | null>(null);
+  const [editingClassification, setEditingClassification] = useState(false);
   const [outcomeKey, setOutcomeKey] = useState("");
   const [outcomeNote, setOutcomeNote] = useState("");
   const [outcomeAiInstructions, setOutcomeAiInstructions] = useState("");
@@ -213,21 +216,23 @@ export default function ProspectDetailPage() {
     setComposerDraft(activeDraft ?? null);
   }, [activeDraft, draftQuery.isLoading, id, params]);
 
-  if (detail.isLoading) return <div className="empty">Loading dealer prospect…</div>;
-  if (detail.isError || !row) return <div className="note" role="alert">{detail.error instanceof Error ? detail.error.message : "Dealer prospect unavailable."}</div>;
-  const seed = { prospect_id: row.id, contact_name: row.name, company: row.dealer_name, contact_email: row.email, contact_phone: row.phone };
+  if (detail.isLoading) return <div className="empty">Loading Marketing prospect…</div>;
+  if (detail.isError || !row) return <div className="note" role="alert">{detail.error instanceof Error ? detail.error.message : "Marketing prospect unavailable."}</div>;
+  const typeDefinition = leadTypeDefinition(row.lead_type);
+  const businessName = row.business_name || row.dealer_name;
+  const seed = { prospect_id: row.id, contact_name: row.name, company: businessName, contact_email: row.email, contact_phone: row.phone };
   const hasActiveBooking = row.stage_key === "booked" && Boolean(row.appointment_id);
 
   return <div className="prospectDetailPage">
     <header className="contactHero prospectHero">
       <MarketingCloseLink label="Close prospect and return to Marketing" />
-      <div><Link href="/marketing" className="backLink">← Marketing pipeline</Link><div className="contactIdentity"><div className="contactAvatar large">{initials(row.name)}</div><div><span className="eyebrow">Marketing prospect</span><h2>{row.dealer_name}</h2><p>{row.name} · {row.owner_name || "Unassigned"}</p></div></div></div>
+      <div><Link href="/marketing" className="backLink">← Marketing pipeline</Link><div className="contactIdentity"><div className="contactAvatar large">{initials(row.name)}</div><div><span className="eyebrow">Marketing prospect</span><h2>{businessName}</h2><p><span className={`leadTypeBadge type-${row.lead_type || "dealer"}`}>{typeDefinition.label}</span> {row.name} · {row.owner_name || "Unassigned"}</p></div></div></div>
       <div className="prospectHeroStatus"><span className="prospectStageBadge">{row.stage_label ?? humanize(row.stage_key)}</span><span className="sub">Version {row.version}</span></div>
       <div className="contactQuick"><button type="button" className="btn" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Mail size={16} /> Email</button><ProspectCallAction phone={row.phone} prospectId={row.id} disabled={row.do_not_contact} onInitiated={refresh} /></div>
     </header>
 
     <div className="prospectActionBar">
-      <button type="button" className="btn pri" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Bot size={17} /> {activeDraft ? "Resume active email" : "Draft dealer email"}</button>
+      <button type="button" className="btn pri" disabled={row.do_not_contact} onClick={() => setComposerDraft(activeDraft ?? null)}><Bot size={17} /> {activeDraft ? "Resume active email" : `Draft ${typeDefinition.shortLabel} email`}</button>
       <button type="button" className="btn" disabled={row.do_not_contact || !row.marketing_sms_consent} title={!row.marketing_sms_consent ? "Record marketing SMS consent before texting this prospect." : undefined} onClick={() => setComposeMode("sms")}><MessageSquareText size={16} /> Text</button>
       {hasActiveBooking
         ? <Link className="btn" href={`/calendar?appointment=${row.appointment_id}`}><CalendarDays size={16} /> Manage appointment</Link>
@@ -235,10 +240,11 @@ export default function ProspectDetailPage() {
       {!row.converted_intake_id && !row.converted_application_id && <button type="button" className="btn" disabled={stageQuery.isLoading || stageCatalogUnavailable} title={stageCatalogUnavailable ? "Stage configuration must be restored before conversion." : undefined} onClick={() => setMoveStage(stages.find((stage) => stage.key === "converted") ?? null)}><Plus size={16} /> Convert prospect</button>}
       {row.converted_application_id && <Link className="btn" href={`/applications/${row.converted_application_id}`}>Open Portfolio application <ExternalLink size={15} /></Link>}
       {row.converted_intake_id && <a className="btn" target="_blank" rel="noreferrer" href={`${FUNDING_APP_URL}/admin/ai-underwriter-leads?lead=${row.converted_intake_id}&view=underwriting`}>Open AI Intake <ExternalLink size={15} /></a>}
-      <Link className="btn" href={emailDrafts[0] ? `/inbox?view=marketing&draft_id=${emailDrafts[0].id}` : `/inbox?view=marketing&q=${encodeURIComponent(row.dealer_name)}`}><Mail size={16} /> Email activity</Link>
+      <Link className="btn" href={emailDrafts[0] ? `/inbox?view=marketing&draft_id=${emailDrafts[0].id}` : `/inbox?view=marketing&q=${encodeURIComponent(businessName)}`}><Mail size={16} /> Email activity</Link>
+      <button type="button" className="btn" onClick={() => setEditingClassification(true)}><PencilLine size={16} /> Business type</button>
       <label className="prospectInlineMove"><span className="lbl">Move stage</span><select className="field" value="" disabled={stageQuery.isLoading || stageCatalogUnavailable} onChange={(event) => setMoveStage(stages.find((stage) => stage.key === event.target.value) ?? null)}><option value="">{stageQuery.isLoading ? "Loading…" : stageCatalogUnavailable ? "Unavailable" : "Choose…"}</option>{stages.filter((stage) => stage.key !== row.stage_key).map((stage) => <option value={stage.key} key={stage.key}>{stage.label}</option>)}</select></label>
     </div>
-    {activeDraft && ["pending_review", "editing"].includes(activeDraft.status) && <div className="prospectPendingEmailBanner" role="status"><span><b>Dealer email awaiting action</b><small>{activeDraft.subject || "Untitled email"}</small></span><button type="button" className="btn" onClick={() => setComposerDraft(activeDraft)}>Review email</button><ProspectEmailVoidAction source="prospect_banner" compact showCountdown draft={activeDraft} onDraftChange={(updated) => { qc.setQueryData<DraftList>(["prospect-email-drafts", id], (current) => current ? { ...current, items: current.items.map((item) => item.id === updated.id ? updated : item) } : current); refresh(); }} /></div>}
+    {activeDraft && ["pending_review", "editing"].includes(activeDraft.status) && <div className="prospectPendingEmailBanner" role="status"><span><b>{leadTypeDefinition(activeDraft.lead_type).shortLabel} email awaiting action</b><small>{activeDraft.subject || "Untitled email"}</small></span><button type="button" className="btn" onClick={() => setComposerDraft(activeDraft)}>Review email</button><ProspectEmailVoidAction source="prospect_banner" compact showCountdown draft={activeDraft} onDraftChange={(updated) => { qc.setQueryData<DraftList>(["prospect-email-drafts", id], (current) => current ? { ...current, items: current.items.map((item) => item.id === updated.id ? updated : item) } : current); refresh(); }} /></div>}
     {activeDraft?.status === "sending" && <div className="note mt" role="alert"><b>Delivery already started and cannot be recalled.</b><span style={{ display: "block", marginTop: 4 }}>The latest provider state is being refreshed automatically.</span></div>}
     {latestCancelledDraft && <div className="prospectVoidedNotice mt" role="status"><Ban size={18} /><span><b>Voided before send</b><small>“{latestCancelledDraft.subject}” will not be delivered.</small></span></div>}
     {row.do_not_contact && <div className="prospectDoNotContact">Prospect outreach is disabled for this contact.</div>}
@@ -255,7 +261,7 @@ export default function ProspectDetailPage() {
             <button type="button" className={outcomeStep === "note" ? "selected" : ""} aria-current={outcomeStep === "note" ? "step" : undefined} onClick={() => setOutcomeStep("note")}><span>1</span><b>Internal note</b><small>Optional · private</small></button>
             {outcomeCreatesEmail && <button type="button" className={outcomeStep === "email" ? "selected" : ""} aria-current={outcomeStep === "email" ? "step" : undefined} onClick={() => setOutcomeStep("email")}><span>2</span><b>AI email</b><small>Optional · review first</small></button>}
           </nav>
-          {outcomeStep === "note" || !outcomeCreatesEmail ? <div className="prospectOutcomeStepPanel"><label><span className="lbl">Internal note <small>optional</small></span><textarea className="field" rows={2} maxLength={2000} value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="What did the dealer say? This stays private and is never sent to AI." /><small className="prospectFieldHelp">Saved to the activity timeline; excluded from the AI prompt and dealer email.</small></label>{outcomeCreatesEmail && <button type="button" className="btn prospectStepNext" onClick={() => setOutcomeStep("email")}>Continue to AI email</button>}</div> : <div className="prospectOutcomeStepPanel">
+          {outcomeStep === "note" || !outcomeCreatesEmail ? <div className="prospectOutcomeStepPanel"><label><span className="lbl">Internal note <small>optional</small></span><textarea className="field" rows={2} maxLength={2000} value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="What did the client say? This stays private and is never sent to AI." /><small className="prospectFieldHelp">Saved to the activity timeline; excluded from the AI prompt and customer email.</small></label>{outcomeCreatesEmail && <button type="button" className="btn prospectStepNext" onClick={() => setOutcomeStep("email")}>Continue to AI email</button>}</div> : <div className="prospectOutcomeStepPanel">
             <button type="button" className={`prospectSkipEmail${skipEmailDraft ? " selected" : ""}`} aria-pressed={skipEmailDraft} onClick={() => setSkipEmailDraft((current) => !current)}><span>{skipEmailDraft ? "✓" : ""}</span><span><b>Do not send an email for this outcome</b><small>The outcome and follow-up still save. No draft, attachment snapshot, or countdown is created.</small></span></button>
             {!skipEmailDraft && <>
               <label><span className="lbl">AI Draft Instructions <small>optional</small></span><textarea className="field" rows={3} maxLength={1500} value={outcomeAiInstructions} onChange={(event) => setOutcomeAiInstructions(event.target.value)} placeholder="Mention what was discussed, preferred tone, and the next action. Current instructions take priority over earlier customer-safe history." /><small className="prospectFieldHelp">QC safeguards and approved product facts remain authoritative.</small></label>
@@ -265,7 +271,7 @@ export default function ProspectDetailPage() {
             </>}
           </div>}
         </section>}
-        {outcomeBooksAppointment && <div className="prospectEffectSummary"><b>Appointment required</b><span>The dealer details are already linked. Applying this outcome opens the shared QC calendar; nothing changes if you cancel.</span></div>}
+        {outcomeBooksAppointment && <div className="prospectEffectSummary"><b>Appointment required</b><span>The client details are already linked. Applying this outcome opens the shared QC calendar; nothing changes if you cancel.</span></div>}
         {outcomeCreatesEmail && <div className={`prospectEffectSummary${skipEmailDraft ? " danger" : ""}`}><b>{skipEmailDraft ? "Email skipped" : "Email review follows"}</b><span>{skipEmailDraft ? "No email will be drafted or scheduled for this outcome. This does not mark the prospect do-not-contact." : `A reviewable email will be created${outcomeCcEmails.length ? ` with ${outcomeCcEmails.length} CC recipient${outcomeCcEmails.length === 1 ? "" : "s"}` : ""}. You can edit, approve, or permanently void it during review.`}</span></div>}
         {applyOutcome.isError && <div className="note" role="alert">{applyOutcome.error instanceof Error ? applyOutcome.error.message : "The outcome could not be saved."}</div>}
         {outcomeDraftError && <div className="note" role="alert">{outcomeDraftError}</div>}
@@ -290,13 +296,14 @@ export default function ProspectDetailPage() {
       </div></section>
     </main><aside>
        <section className="panel prospectDetailSection"><div className="panel-h"><b>Contact</b></div><div className="panel-b prospectContactFacts"><div><span>Email</span><b>{row.email}</b></div><div><span>Phone</span><a href={`tel:${row.phone}`}>{row.phone}</a></div><div><span>Next follow-up</span><FollowUpCountdown at={row.next_follow_up_at} state={row.follow_up_state} timeZone={firmFollowUpClock.data?.timezone} /></div><div><span>Last activity</span><b>{displayDate(row.last_activity_at ?? row.updated_at, true)}</b></div></div></section>
-      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Communication history</b><span className="sp" /><span className="cellchip c-mut">{emailDrafts.length} emails</span></div><div className="panel-b"><p className="sub" style={{ marginTop: 0 }}>Email delivery, replies, text messages, calls, and appointments now appear in the unified timeline.</p><Link className="btn" href={emailDrafts[0] ? `/inbox?view=marketing&draft_id=${emailDrafts[0].id}` : `/inbox?view=marketing&q=${encodeURIComponent(row.dealer_name)}`}><Mail size={16} /> Open Marketing email log</Link></div></section>
-      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Current state</b></div><div className="panel-b prospectContactFacts"><div><span>Stage</span><b>{row.stage_label ?? humanize(row.stage_key)}</b></div><div><span>Last outcome</span><b>{row.last_outcome_label || "No call logged"}</b></div><div><span>Created</span><b>{displayDate(row.created_at)}</b></div><div><span>SMS marketing consent</span><b>{row.marketing_sms_consent ? "Recorded" : "Not recorded"}</b></div></div></section>
+      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Communication history</b><span className="sp" /><span className="cellchip c-mut">{emailDrafts.length} emails</span></div><div className="panel-b"><p className="sub" style={{ marginTop: 0 }}>Email delivery, replies, text messages, calls, and appointments now appear in the unified timeline.</p><Link className="btn" href={emailDrafts[0] ? `/inbox?view=marketing&draft_id=${emailDrafts[0].id}` : `/inbox?view=marketing&q=${encodeURIComponent(businessName)}`}><Mail size={16} /> Open Marketing email log</Link></div></section>
+      <section className="panel prospectDetailSection mt"><div className="panel-h"><b>Current state</b></div><div className="panel-b prospectContactFacts"><div><span>Business type</span><b>{typeDefinition.label}</b></div><div><span>Funding need</span><b>{row.funding_intent ? humanize(row.funding_intent) : "Not selected"}</b></div><div><span>Stage</span><b>{row.stage_label ?? humanize(row.stage_key)}</b></div><div><span>Last outcome</span><b>{row.last_outcome_label || "No call logged"}</b></div><div><span>Created</span><b>{displayDate(row.created_at)}</b></div><div><span>SMS marketing consent</span><b>{row.marketing_sms_consent ? "Recorded" : "Not recorded"}</b></div></div></section>
     </aside></div>
 
     {composerDraft !== undefined && <ProspectEmailComposer prospect={row} initialDraft={composerDraft} onClose={() => setComposerDraft(undefined)} />}
     {composeMode && <InboxComposeModal onClose={() => setComposeMode(null)} seed={seed} initialChannel={composeMode} initialMarketingConsent={row.marketing_sms_consent === true} requireMarketingSmsConsent />}
-    {booking && <BookingDrawer prospect={row} triggerOutcomeKey={bookingOutcomeKey} initialNotes={bookingOutcomeKey ? outcomeNote : null} onClose={() => { setBooking(false); setBookingOutcomeKey(null); refresh(); }} onBooked={(_appointment, updated) => { if (updated) qc.setQueryData(["dealer-prospect", id], updated); setOutcomeKey(""); setOutcomeNote(""); setOutcomeAiInstructions(""); setOutcomeCcEmails(updated?.default_cc_emails ?? row.default_cc_emails ?? []); setOutcomeCcScope("this_email"); setSkipEmailDraft(false); setOutcomeStep("note"); setFollowUp(""); setFollowUpChoice("next_business_day"); refresh(); }} initialCompany={row.dealer_name} initialName={row.name} initialEmail={row.email} initialPhone={row.phone} initialKind="program_intro" />}
+    {booking && <BookingDrawer prospect={row} triggerOutcomeKey={bookingOutcomeKey} initialNotes={bookingOutcomeKey ? outcomeNote : null} onClose={() => { setBooking(false); setBookingOutcomeKey(null); refresh(); }} onBooked={(_appointment, updated) => { if (updated) qc.setQueryData(["dealer-prospect", id], updated); setOutcomeKey(""); setOutcomeNote(""); setOutcomeAiInstructions(""); setOutcomeCcEmails(updated?.default_cc_emails ?? row.default_cc_emails ?? []); setOutcomeCcScope("this_email"); setSkipEmailDraft(false); setOutcomeStep("note"); setFollowUp(""); setFollowUpChoice("next_business_day"); refresh(); }} initialCompany={businessName} initialName={row.name} initialEmail={row.email} initialPhone={row.phone} initialKind="program_intro" />}
     {moveStage && <ProspectMoveDialog prospect={row} stages={stages} destination={moveStage} onClose={() => setMoveStage(null)} onConflict={setMoveConflict} onBook={() => { setMoveStage(null); setBooking(true); }} onEmailDraft={(_moved, draft) => setComposerDraft(draft)} onMoved={() => { setMoveStage(null); refresh(); }} />}
+    {editingClassification && <ProspectReclassifyDialog prospect={row} onClose={() => setEditingClassification(false)} onUpdated={(updated) => { qc.setQueryData(["dealer-prospect", id], updated); setEditingClassification(false); setComposerDraft(undefined); refresh(); }} />}
   </div>;
 }

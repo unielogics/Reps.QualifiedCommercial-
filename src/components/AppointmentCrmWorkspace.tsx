@@ -37,6 +37,8 @@ import {
 import Drawer from "./Drawer";
 import { ConversationBubbles } from "./ConversationBubbles";
 import { LIVE_MESSAGE_QUERY_OPTIONS, type UnifiedCommunicationThreadDetail } from "@/lib/communications";
+import LeadTypePicker from "./LeadTypePicker";
+import { FUNDING_INTENTS, type FundingIntent, type LeadType } from "@/lib/leadTypes";
 
 type WorkspaceTab = "overview" | "messages" | "notes" | "outcome" | "file" | "manage";
 type EditorMode = "details" | "edit" | "reschedule";
@@ -413,7 +415,8 @@ function Outcome({
   const [followUpAt, setFollowUpAt] = useState("");
   const [fileAction, setFileAction] = useState<FileAction>(workspace.application || workspace.funding_file ? "update_linked" : "none");
   const [existingFile, setExistingFile] = useState<AppointmentFileOption | null>(null);
-  const [variant, setVariant] = useState<"dealer" | "real_estate" | "main_street" | "mca_refinance">("dealer");
+  const [leadType, setLeadType] = useState<LeadType | null>(workspace.appointment.lead_type ?? null);
+  const [fundingIntent, setFundingIntent] = useState<FundingIntent | "">(workspace.appointment.funding_intent ?? "");
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [applyBookingData, setApplyBookingData] = useState(false);
@@ -440,7 +443,9 @@ function Outcome({
         file_action: fileAction,
         existing_file_kind: existingFile?.kind ?? null,
         existing_file_id: existingFile?.id ?? null,
-        variant,
+        lead_type: leadType,
+        funding_intent: fundingIntent || null,
+        variant: fundingIntent === "mca_refinance" ? "mca_refinance" : leadType,
         secure_room_pin: pin || null,
         // Room delivery is intentionally a separate post-commit action. The
         // outcome transaction must finish before any client communication can
@@ -459,7 +464,7 @@ function Outcome({
 
   const needsConfirmation = effects.has("file_action") || effects.has("close_enquiry");
   const fileReady = !effects.has("file_action") || (fileAction !== "none" && (fileAction !== "link_existing" || Boolean(existingFile)));
-  const pinReady = fileAction !== "create_ai_intake" || (/^\d{6}$/.test(pin) && pin === pinConfirm);
+  const pinReady = fileAction !== "create_ai_intake" || (Boolean(leadType) && /^\d{6}$/.test(pin) && pin === pinConfirm);
   const ready = Boolean(selected && fileReady && pinReady && (!effects.has("schedule_follow_up") || followUpAt) && (!needsConfirmation || (confirmed && note.trim())));
 
   return (
@@ -481,7 +486,7 @@ function Outcome({
               <>
                 <label><span className="lbl">File action *</span><select className="field" value={fileAction} onChange={(event) => { setFileAction(event.target.value as FileAction); setExistingFile(null); }}><option value="none">Choose an action</option>{workspace.draft_file && workspace.draft_file.lifecycle === "draft" ? <option value="promote_draft">Promote draft file{workspace.draft_file.case_ref ? ` ${workspace.draft_file.case_ref}` : ""}</option> : null}{workspace.application || workspace.funding_file ? <option value="update_linked">Update linked file</option> : null}<option value="link_existing">Link an existing file</option><option value="create_ai_intake">Create AI Intake</option>{workspace.capabilities.can_create_funding_loan ? <option value="create_funding_loan">Create Funding file</option> : null}</select></label>
                 {fileAction === "link_existing" ? <FilePicker appointmentId={workspace.appointment.id} value={existingFile} onChange={setExistingFile} /> : null}
-                {fileAction === "create_ai_intake" ? <div className="appointmentCrmFieldGrid"><label><span className="lbl">Intake type</span><select className="field" value={variant} onChange={(event) => setVariant(event.target.value as typeof variant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street</option><option value="mca_refinance">MCA refinance</option></select></label><label><span className="lbl">Six-digit room PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><label><span className="lbl">Confirm PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><div className="note"><b>Client delivery follows creation.</b><span style={{ display: "block", marginTop: 4 }}>Finish creating the intake, then send room access from the committed secure-room workflow.</span></div></div> : null}
+                {fileAction === "create_ai_intake" ? <div className="appointmentCrmIntakeRouting"><LeadTypePicker value={leadType} onChange={setLeadType} compact /><label><span className="lbl">Funding need <small>optional</small></span><select className="field" value={fundingIntent} onChange={(event) => setFundingIntent(event.target.value as FundingIntent | "")}><option value="">Not selected yet</option>{FUNDING_INTENTS.map((intent) => <option key={intent.key} value={intent.key}>{intent.label}</option>)}</select><small>Business type controls the client experience. Main Street plus MCA refinance routes to the specialized MCA intake.</small></label><div className="appointmentCrmFieldGrid"><label><span className="lbl">Six-digit room PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><label><span className="lbl">Confirm PIN</span><input className="field" inputMode="numeric" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label></div><div className="note"><b>Client delivery follows creation.</b><span style={{ display: "block", marginTop: 4 }}>Finish creating the intake, then send room access from the committed secure-room workflow.</span></div></div> : null}
                 {fileAction !== "none" ? <CheckRow checked={applyBookingData} onChange={setApplyBookingData} label="Apply the reviewed booking data to the destination file" /> : null}
               </>
             ) : null}

@@ -30,15 +30,8 @@ import { api } from "@/lib/api";
 import BusinessAddressFields from "./BusinessAddressFields";
 import ProductFinderTaxonomy, { type ProductFinderTaxonomyValue } from "./ProductFinderTaxonomy";
 import { useMe } from "@/lib/useMe";
-
-const PURPOSES: Array<{ slug: string; label: string }> = [
-  { slug: "working_capital", label: "Working capital" },
-  { slug: "equipment", label: "Equipment" },
-  { slug: "real_estate", label: "Real estate" },
-  { slug: "refinance", label: "Refinance existing debt" },
-  { slug: "floorplan", label: "Floorplan" },
-  { slug: "other", label: "Not sure yet" },
-];
+import LeadTypePicker from "./LeadTypePicker";
+import { FUNDING_INTENTS, type LeadType } from "@/lib/leadTypes";
 
 type Form = {
   name: string;
@@ -117,6 +110,7 @@ export default function NewApplicationForm({
   const { getToken } = useAuth();
   const { isSuperAdmin } = useMe();
   const [f, setF] = useState<Form>(EMPTY);
+  const [leadType, setLeadType] = useState<LeadType | null>(null);
   const [isTraining, setIsTraining] = useState(false);
   const [taxonomy, setTaxonomy] = useState<ProductFinderTaxonomyValue>({
     industry_entry_id: null,
@@ -167,7 +161,8 @@ export default function NewApplicationForm({
   const roomPinValid = /^\d{6}$/.test(f.secure_room_pin)
     && f.secure_room_pin === f.secure_room_pin_confirm;
   const canSubmit = Boolean(
-    f.name.trim()
+    leadType
+      && f.name.trim()
       && f.entity_type.trim()
       && taxonomy.industry_entry_id
       && taxonomy.subindustry_entry_id
@@ -182,6 +177,8 @@ export default function NewApplicationForm({
   const create = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
+        lead_type: leadType,
+        funding_intent: f.funding_purpose,
         name: f.name.trim(),
         entity_type: f.entity_type,
         industry_entry_id: taxonomy.industry_entry_id,
@@ -257,6 +254,12 @@ export default function NewApplicationForm({
         }}
       >
         <div className="appform-main">
+          <div className="panel leadTypeApplicationPanel">
+            <div className="panel-b">
+              <LeadTypePicker value={leadType} onChange={setLeadType} />
+              {!leadType && <span className="validation-hint">Choose the client&apos;s business type before opening the application.</span>}
+            </div>
+          </div>
           <div className="panel">
             <div className="panel-h">The business</div>
             <div className="panel-b">
@@ -266,7 +269,6 @@ export default function NewApplicationForm({
                 value={f.name}
                 onChange={(e) => set("name", e.target.value)}
                 autoComplete="organization"
-                autoFocus
                 required
               />
 
@@ -469,8 +471,8 @@ export default function NewApplicationForm({
                 onChange={(e) => set("funding_purpose", e.target.value)}
               >
                 <option value="">—</option>
-                {PURPOSES.map((p) => (
-                  <option key={p.slug} value={p.slug}>
+                {FUNDING_INTENTS.map((p) => (
+                  <option key={p.key} value={p.key}>
                     {p.label}
                   </option>
                 ))}

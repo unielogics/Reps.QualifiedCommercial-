@@ -15,6 +15,7 @@ import type {
   ProspectStage,
 } from "@/lib/prospects";
 import Modal from "./Modal";
+import { FUNDING_INTENTS, leadTypeDefinition, leadTypeLabel } from "@/lib/leadTypes";
 
 type MoveResult = {
   prospect: DealerProspect;
@@ -25,15 +26,6 @@ type MoveResult = {
   status?: string;
 };
 
-const PURPOSES = [
-  ["working_capital", "Working capital"],
-  ["equipment", "Equipment"],
-  ["real_estate", "Real estate"],
-  ["refinance", "Refinance existing debt"],
-  ["floorplan", "Floorplan"],
-  ["other", "Not sure yet"],
-] as const;
-
 const EMPTY_PORTFOLIO: PortfolioConversionFields = {
   entity_type: "",
   requested_amount: 0,
@@ -43,7 +35,7 @@ const EMPTY_PORTFOLIO: PortfolioConversionFields = {
 };
 
 function targetLabel(target: ProspectConversionTarget): string {
-  return target === "portfolio_application" ? "Portfolio application" : "Dealer AI Intake";
+  return target === "portfolio_application" ? "Portfolio application" : "AI Intake";
 }
 
 export default function ProspectMoveDialog({
@@ -75,11 +67,15 @@ export default function ProspectMoveDialog({
   const [candidateId, setCandidateId] = useState("");
   const [detectedCandidates, setDetectedCandidates] = useState<ProspectConversionCandidate[]>([]);
   const [restrictedMatch, setRestrictedMatch] = useState(false);
-  const [portfolio, setPortfolio] = useState<PortfolioConversionFields>(EMPTY_PORTFOLIO);
+  const [portfolio, setPortfolio] = useState<PortfolioConversionFields>(() => ({
+    ...EMPTY_PORTFOLIO,
+    funding_purpose: prospect.funding_intent ?? "",
+  }));
   const current = useMemo(() => stages.find((stage) => stage.key === prospect.stage_key), [prospect.stage_key, stages]);
   const isBooked = destination.key === "booked";
   const isConverted = destination.key === "converted";
   const isNotInterested = destination.key === "not_interested";
+  const typeDefinition = leadTypeDefinition(prospect.lead_type);
 
   const conversionCandidates = useQuery({
     queryKey: ["prospect-conversion-candidates", prospect.id, conversionTarget],
@@ -88,6 +84,9 @@ export default function ProspectMoveDialog({
   });
   const candidates = detectedCandidates.length ? detectedCandidates : conversionCandidates.data?.candidates ?? [];
   const selectedCandidate = candidates.find((candidate) => candidate.id === candidateId);
+  const selectedCandidateTypeMismatch = Boolean(
+    selectedCandidate?.lead_type && selectedCandidate.lead_type !== prospect.lead_type,
+  );
   const needsCreateFields = conversionTarget === "portfolio_application" && (conversionAction === "detect" || conversionAction === "create");
   const portfolioComplete = !needsCreateFields || Boolean(
     portfolio.entity_type
@@ -117,6 +116,8 @@ export default function ProspectMoveDialog({
             expected_version: prospect.version,
             candidate_id: conversionAction === "link" || conversionAction === "reactivate" ? candidateId : null,
             note: note.trim() || null,
+            lead_type: prospect.lead_type || "dealer",
+            funding_intent: prospect.funding_intent || null,
             portfolio_application: needsCreateFields ? portfolio : null,
           }),
           authToken: (await getToken()) ?? undefined,
@@ -185,7 +186,7 @@ export default function ProspectMoveDialog({
 
   const candidatesRequireChoice = isConverted && candidates.length > 0 && conversionAction === "detect";
   const restrictedMatchRequiresChoice = isConverted && restrictedMatch && conversionAction !== "create";
-  const candidateChoiceComplete = conversionAction === "detect" || conversionAction === "create" || Boolean(candidateId);
+  const candidateChoiceComplete = conversionAction === "detect" || conversionAction === "create" || (Boolean(candidateId) && !selectedCandidateTypeMismatch);
   const canMove = !isBooked
     && (!isNotInterested || confirmedDoNotContact)
     && (!isConverted || (Boolean(conversionTarget) && !conversionCandidates.isLoading && !candidatesRequireChoice && !restrictedMatchRequiresChoice && candidateChoiceComplete && portfolioComplete));
@@ -206,13 +207,19 @@ export default function ProspectMoveDialog({
         <div><b>1. Choose the destination</b><small>Create or link exactly one operational file.</small></div>
         <div className="prospectConversionTargets" role="radiogroup" aria-label="Conversion destination">
           <button type="button" role="radio" aria-checked={conversionTarget === "portfolio_application"} className={conversionTarget === "portfolio_application" ? "selected" : ""} onClick={() => selectTarget("portfolio_application")}><b>Portfolio application</b><small>Open a standard funding application in Portfolio.</small></button>
-          <button type="button" role="radio" aria-checked={conversionTarget === "dealer_ai_intake"} className={conversionTarget === "dealer_ai_intake" ? "selected" : ""} onClick={() => selectTarget("dealer_ai_intake")}><b>Dealer AI Intake</b><small>Open the dealer-specific AI Intake and evidence bucket.</small></button>
+          <button type="button" role="radio" aria-checked={conversionTarget === "dealer_ai_intake"} className={conversionTarget === "dealer_ai_intake" ? "selected" : ""} onClick={() => selectTarget("dealer_ai_intake")}><b>{typeDefinition.shortLabel} AI Intake</b><small>Open the matching {typeDefinition.label} AI Intake and evidence bucket. The business type is inherited automatically.</small></button>
         </div>
         {conversionTarget && <>
           <div className="prospectConversionStep"><b>2. Resolve matching files</b><small>{conversionCandidates.isLoading ? "Checking accessible records…" : candidates.length ? `${candidates.length} possible match${candidates.length === 1 ? "" : "es"} found. Choose explicitly.` : `No matching ${targetLabel(conversionTarget).toLowerCase()} found. Confirm to create one.`}</small></div>
           {conversionCandidates.isError && <div className="note" role="alert">Candidate lookup failed. Retry before converting so duplicate handling stays explicit.</div>}
           {candidates.length > 0 && <div className="prospectConversionChoices">
-            {candidates.map((candidate) => <label key={candidate.id} className={`prospectIntakeCandidate${candidateId === candidate.id ? " selected" : ""}`}><input type="radio" name="conversion-candidate" value={candidate.id} checked={candidateId === candidate.id} onChange={() => { setCandidateId(candidate.id); setConversionAction(candidate.archived ? "reactivate" : "link"); }} /><span><b>{candidate.display_name}</b><small>{candidate.email || candidate.phone || "No contact details"} · {candidate.status}{candidate.archived ? " · archived" : ""}</small>{candidate.match_reasons?.length ? <em>Matched by {candidate.match_reasons.join(", ")}</em> : null}</span></label>)}
+            {candidates.map((candidate) => {
+              const typeMismatch = Boolean(candidate.lead_type && candidate.lead_type !== prospect.lead_type);
+              return <label key={candidate.id} className={`prospectIntakeCandidate${candidateId === candidate.id ? " selected" : ""}${typeMismatch ? " disabled" : ""}`}>
+                <input type="radio" name="conversion-candidate" value={candidate.id} checked={candidateId === candidate.id} disabled={typeMismatch} onChange={() => { setCandidateId(candidate.id); setConversionAction(candidate.archived ? "reactivate" : "link"); }} />
+                <span><b>{candidate.display_name}</b><small>{candidate.email || candidate.phone || "No contact details"} · {candidate.status}{candidate.lead_type ? ` · ${leadTypeLabel(candidate.lead_type)}` : " · Legacy type unavailable"}{candidate.funding_intent ? ` · ${candidate.funding_intent.replaceAll("_", " ")}` : ""}{candidate.archived ? " · archived" : ""}</small>{typeMismatch ? <em>This file belongs to a different business type and cannot be linked.</em> : candidate.match_reasons?.length ? <em>Matched by {candidate.match_reasons.join(", ")}</em> : null}</span>
+              </label>;
+            })}
             <div className="prospectConversionActions"><label><input type="radio" name="conversion-action" checked={conversionAction === "link"} onChange={() => setConversionAction("link")} disabled={!candidateId || selectedCandidate?.archived === true} /> Link existing</label><label><input type="radio" name="conversion-action" checked={conversionAction === "reactivate"} onChange={() => setConversionAction("reactivate")} disabled={!candidateId || selectedCandidate?.archived !== true} /> Reactivate and link</label><label><input type="radio" name="conversion-action" checked={conversionAction === "create"} onChange={() => { setConversionAction("create"); setCandidateId(""); }} /> Create a separate record</label></div>
           </div>}
           {restrictedMatch && <div className="note" role="alert"><b>A possible matching file cannot be shown with your current access.</b><br />Conversion stopped to prevent an accidental duplicate. Ask an authorized user to resolve the existing file, or explicitly choose to create a separate record.<label className={`consent${conversionAction === "create" ? " on" : ""}`}><input type="checkbox" checked={conversionAction === "create"} onChange={(event) => { setConversionAction(event.target.checked ? "create" : "detect"); setCandidateId(""); }} /><span className="ctext"><span className="ctitle">Create a separate record</span>I understand this may create a separate destination file.</span></label></div>}
@@ -221,7 +228,7 @@ export default function ProspectMoveDialog({
             <div className="prospectFieldGrid">
               <label><span className="lbl">Entity type</span><select className="field" required value={portfolio.entity_type} onChange={(event) => setPortfolio((value) => ({ ...value, entity_type: event.target.value }))}><option value="">Choose…</option><option value="Limited liability company">Limited liability company</option><option value="S corporation">S corporation</option><option value="C corporation">C corporation</option><option value="Partnership">Partnership</option><option value="Sole proprietorship">Sole proprietorship</option></select></label>
               <label><span className="lbl">Requested amount</span><input className="field" type="number" inputMode="decimal" min="1" step="1000" required value={portfolio.requested_amount || ""} onChange={(event) => setPortfolio((value) => ({ ...value, requested_amount: Number(event.target.value) || 0 }))} /></label>
-              <label><span className="lbl">Funding purpose</span><select className="field" required value={portfolio.funding_purpose} onChange={(event) => setPortfolio((value) => ({ ...value, funding_purpose: event.target.value }))}><option value="">Choose…</option>{PURPOSES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+              <label><span className="lbl">Funding purpose</span><select className="field" required disabled={Boolean(prospect.funding_intent)} value={portfolio.funding_purpose} onChange={(event) => setPortfolio((value) => ({ ...value, funding_purpose: event.target.value }))}><option value="">Choose…</option>{FUNDING_INTENTS.map((intent) => <option key={intent.key} value={intent.key}>{intent.label}</option>)}</select>{prospect.funding_intent ? <small>Inherited from Marketing. Reclassify the prospect before conversion to change it.</small> : null}</label>
               <label><span className="lbl">Six-digit room PIN</span><input className="field" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{6}" maxLength={6} required value={portfolio.secure_room_pin} onChange={(event) => setPortfolio((value) => ({ ...value, secure_room_pin: event.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="6 digits" /></label>
             </div>
             <label><span className="lbl">Use of proceeds</span><textarea className="field" rows={3} required value={portfolio.use_of_proceeds_note} onChange={(event) => setPortfolio((value) => ({ ...value, use_of_proceeds_note: event.target.value }))} placeholder="Explain how the requested funds will be used." /></label>
@@ -229,7 +236,7 @@ export default function ProspectMoveDialog({
         </>}
       </section>}
 
-      {isBooked && <div className="prospectBookingRequirement"><span><b>Appointment required</b><small>{prospect.do_not_contact ? "Reactivate outreach before booking this contact." : "The dealer and contact information will be filled from this prospect."}</small></span>{onBook && <button type="button" className="btn pri" disabled={prospect.do_not_contact} onClick={onBook}>Choose appointment time</button>}</div>}
+      {isBooked && <div className="prospectBookingRequirement"><span><b>Appointment required</b><small>{prospect.do_not_contact ? "Reactivate outreach before booking this contact." : "The business and contact information will be filled from this prospect."}</small></span>{onBook && <button type="button" className="btn pri" disabled={prospect.do_not_contact} onClick={onBook}>Choose appointment time</button>}</div>}
       {!isConverted && !isBooked && !isNotInterested && <label><span className="lbl">Optional action</span><select className="field" value={action} onChange={(event) => setAction(event.target.value)}><option value="">Stage change only</option><option value="draft_email">Create a reviewable email draft</option></select></label>}
       <label><span className="lbl">Internal note</span><textarea className="field" rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional context for the activity timeline" /></label>
       {isNotInterested && <label className={`consent${confirmedDoNotContact ? " on" : ""}`}><input type="checkbox" checked={confirmedDoNotContact} onChange={(event) => setConfirmedDoNotContact(event.target.checked)} /><span className="ctext"><span className="ctitle">Confirm do-not-contact</span>Clear follow-up and stop future prospect outreach for this contact.</span></label>}

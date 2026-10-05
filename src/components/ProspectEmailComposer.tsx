@@ -13,8 +13,7 @@ import ProspectCollateralSelector, { type ProspectCollateralSelection } from "./
 import ProspectCcControl from "./ProspectCcControl";
 import ProspectEmailVoidAction from "./ProspectEmailVoidAction";
 import ProspectSenderIdentityCard from "./ProspectSenderIdentityCard";
-
-const WEBSITE = "https://qualifiedcommercial.com/industries/auto";
+import { leadTypeDefinition } from "@/lib/leadTypes";
 
 function secondsUntil(value?: string | null): number {
   if (!value) return 0;
@@ -37,6 +36,10 @@ export default function ProspectEmailComposer({
   const { getToken } = useAuth();
   const me = useMe();
   const qc = useQueryClient();
+  const [draft, setDraft] = useState<ProspectEmailDraft | null>(initialDraft ?? null);
+  const draftLeadType = draft?.lead_type ?? prospect.lead_type;
+  const typeDefinition = leadTypeDefinition(draftLeadType);
+  const businessName = prospect.business_name || prospect.dealer_name;
   const [composeMode, setComposeMode] = useState<"ai" | "manual">(initialDraft?.compose_mode ?? "ai");
   const [privateNote, setPrivateNote] = useState("");
   const [verifiedContext, setVerifiedContext] = useState("");
@@ -51,7 +54,6 @@ export default function ProspectEmailComposer({
   const [submittedGeneration, setSubmittedGeneration] = useState<ProspectEmailDraftCreateRequest | null>(null);
   const [subject, setSubject] = useState(initialDraft?.subject ?? "");
   const [body, setBody] = useState(initialDraft?.editable_body ?? initialDraft?.body ?? "");
-  const [draft, setDraft] = useState<ProspectEmailDraft | null>(initialDraft ?? null);
   const [editing, setEditing] = useState(initialDraft?.status === "editing");
   const [remaining, setRemaining] = useState(() => secondsUntil(initialDraft?.send_after));
   const normalizedDelivery = String(draft?.delivery_status ?? "").toLowerCase();
@@ -132,9 +134,11 @@ export default function ProspectEmailComposer({
       cc_scope: ccScope,
       subject: composeMode === "manual" ? subject.trim() : null,
       body: composeMode === "manual" ? body.trim() : null,
-      purpose: "dealer_information" as const,
+      purpose: "information" as const,
       include_collateral: collateralSelection.includeAll,
       collateral_asset_ids: collateralSelection.selectedIds,
+      collateral_bundle_id: collateralSelection.bundleId ?? null,
+      collateral_bundle_version: collateralSelection.bundleVersion ?? null,
     };
     generate.mutate(request);
   };
@@ -166,7 +170,7 @@ export default function ProspectEmailComposer({
     setCcScope("this_email");
     setCcValid(true);
     setCcDirty(false);
-    setCollateralSelection({ includeAll: true, selectedIds: [], sendWithoutPdfs: false });
+    setCollateralSelection({ includeAll: true, selectedIds: [], sendWithoutPdfs: false, bundleId: null, bundleVersion: null });
     setCollateralReady(false);
     setSubmittedGeneration(null);
     setGenerationKey(crypto.randomUUID());
@@ -272,7 +276,7 @@ export default function ProspectEmailComposer({
       <section className="panel">
         <div className="panel-h"><b>Draft controls</b><span className={`prospectDraftStatus status-${draft?.status ?? "empty"}`}><Clock3 size={14} />{statusLabel}</span></div>
         <div className="panel-b prospectComposerControls">
-          <div className="prospectRecipient"><span><small>To</small><b>{prospect.name} · {prospect.dealer_name}</b></span><span>{prospect.email}</span></div>
+          <div className="prospectRecipient"><span><small>To</small><b>{prospect.name} · {businessName}</b></span><span><span className={`leadTypeBadge type-${draftLeadType || "dealer"}`}>{typeDefinition.shortLabel}</span> {prospect.email}</span></div>
           {!draft && <>
             <div className="prospectComposeMode" role="tablist" aria-label="Email drafting method">
               <button type="button" role="tab" aria-selected={composeMode === "ai"} className={composeMode === "ai" ? "on" : ""} disabled={generationFieldsLocked} onClick={() => setComposeMode("ai")}><Sparkles size={16} /> AI-assisted</button>
@@ -283,7 +287,7 @@ export default function ProspectEmailComposer({
               <label><span className="lbl">Verified conversation context</span><textarea className="field" rows={3} maxLength={500} value={verifiedContext} disabled={generationFieldsLocked} onChange={(event) => setVerifiedContext(event.target.value)} placeholder="We spoke earlier today at 10:00 AM." /><small className="prospectFieldHelp">Enter one short fact you can verify. It is inserted exactly into AI and deterministic fallback drafts, then checked by QC&apos;s safeguards.</small></label>
               <label><span className="lbl">AI tone and format instructions</span><textarea className="field" rows={4} maxLength={1500} value={instructions} disabled={generationFieldsLocked} onChange={(event) => setInstructions(event.target.value)} placeholder="Keep the introduction warm and concise. Use bullets instead of long paragraphs." /><small className="prospectFieldHelp">Guides wording and structure only. It cannot select programs, change approved claims, or override blocked phrases.</small></label>
             </> : <>
-              <label><span className="lbl">Subject</span><input className="field" maxLength={220} value={subject} disabled={generationFieldsLocked} onChange={(event) => setSubject(event.target.value)} placeholder={`A note for ${prospect.dealer_name}`} /></label>
+              <label><span className="lbl">Subject</span><input className="field" maxLength={220} value={subject} disabled={generationFieldsLocked} onChange={(event) => setSubject(event.target.value)} placeholder={`A note for ${businessName}`} /></label>
               <label><span className="lbl">Message</span><textarea className="field prospectEmailBody" rows={12} value={body} disabled={generationFieldsLocked} onChange={(event) => setBody(event.target.value)} placeholder="Write the message in your own words. QC adds the locked signature, disclosures, reply guidance, and unsubscribe controls." /><small className="prospectFieldHelp">Manual messages are validated against firm policy and require explicit approval. They never start an automatic countdown.</small></label>
             </>}
             <ProspectCcControl value={ccEmails} primaryEmail={prospect.email} disabled={generationFieldsLocked} onValidityChange={setCcValid} onChange={setCcEmails} />
@@ -293,7 +297,7 @@ export default function ProspectEmailComposer({
             </div>
             {Boolean(prospect.default_cc_emails?.length) && <button type="button" className="btn sm danger prospectClearSavedCc" disabled={generationFieldsLocked} onClick={() => { setCcEmails([]); setCcScope("this_and_future"); }}>Clear saved CCs with this draft</button>}
             <ProspectSenderIdentityCard identity={senderIdentity} fallbackName={me.name} fallbackEmail={me.email} />
-            <ProspectCollateralSelector value={collateralSelection} disabled={generationFieldsLocked} onChange={setCollateralSelection} onReadyChange={setCollateralReady} />
+            <ProspectCollateralSelector value={collateralSelection} leadType={prospect.lead_type || "dealer"} purpose="information" disabled={generationFieldsLocked} onChange={setCollateralSelection} onReadyChange={setCollateralReady} />
             <div className="prospectGuardrail"><ShieldCheck size={18} /><span><b>Approved content stays authoritative</b><small>The AI cannot change program facts, promises, website link, signature, compliance footer, or collateral.</small></span></div>
             {unresolvedGeneration && <div className="prospectTestUncertain" role="alert"><CircleAlert size={19} /><span><b>Draft creation did not return a resolved result.</b><small>{generate.error instanceof Error ? generate.error.message : "The network or API request did not complete."} The exact inputs and idempotency key are frozen. Retry the same request first. Starting separately uses a new key and could duplicate a draft if the first request reached the server; check the prospect activity or shared outbox before doing so.</small></span></div>}
             <div className="prospectDialogActions">{unresolvedGeneration && <button type="button" className="btn" disabled={generate.isPending} onClick={startSeparateGeneration}>I checked activity — start a separate draft</button>}<button type="button" className="btn pri" disabled={generate.isPending || !ccValid || !manualReady || (!unresolvedGeneration && (senderPreview.isLoading || senderPreview.isError || !collateralReady))} onClick={submitGeneration}>{generate.isPending ? (composeMode === "manual" ? "Preparing…" : "Drafting…") : unresolvedGeneration ? "Retry the exact same draft request" : senderPreview.isLoading ? "Loading sender identity…" : composeMode === "manual" ? "Prepare manual email for approval" : "Generate draft and start 60-second review"}</button></div>
@@ -313,8 +317,8 @@ export default function ProspectEmailComposer({
             <label><span className="lbl">Subject</span><input className="field" value={subject} readOnly={!editing} onChange={(event) => setSubject(event.target.value)} /></label>
             <label><span className="lbl">Message</span><textarea className="field prospectEmailBody" rows={15} value={body} readOnly={!editing} onChange={(event) => setBody(event.target.value)} /></label>
             {draft.locked_footer_text && <div className="prospectLockedFooter"><span className="lbl">Locked signature and compliance footer</span><pre>{draft.locked_footer_text}</pre><small>This section is added by the system and cannot be edited or removed.</small></div>}
-            <a className="prospectWebsitePreview" href={WEBSITE} target="_blank" rel="noreferrer">Dealer capabilities page · {WEBSITE}</a>
-            <div className="prospectAttachmentList"><b>Approved dealer collateral</b>{(draft.attachment_names ?? []).map((name) => <span key={name}><FileText size={15} />{name}</span>)}{!(draft.attachment_names ?? []).length && <small>{draft.attachment_count ?? 0} approved PDF attachment{draft.attachment_count === 1 ? "" : "s"}</small>}</div>
+            {draft.approved_website_url && <a className="prospectWebsitePreview" href={draft.approved_website_url} target="_blank" rel="noreferrer">{typeDefinition.label} capabilities page · {draft.approved_website_url}</a>}
+            <div className="prospectAttachmentList"><b>Approved {typeDefinition.shortLabel} collateral</b>{(draft.attachment_names ?? []).map((name) => <span key={name}><FileText size={15} />{name}</span>)}{!(draft.attachment_names ?? []).length && <small>{draft.attachment_count ?? 0} approved PDF attachment{draft.attachment_count === 1 ? "" : "s"}</small>}</div>
             {draft.secure_bundle_link_required && <div className="prospectSecureBundle"><span><b>Attachment bundle is too large</b><small>Use one secure seven-day ZIP link for the complete approved bundle. Nothing will be silently omitted.</small></span><button type="button" className="btn" disabled={busy} onClick={() => useSecureBundle.mutate()}>{useSecureBundle.isPending ? "Preparing secure link…" : "Use secure bundle link"}</button></div>}
             {draft.delivery_mode === "secure_link" && <div className="prospectSuccess">Complete collateral will be delivered through a secure bundle link{draft.secure_bundle_expires_at ? ` expiring ${new Date(draft.secure_bundle_expires_at).toLocaleString()}` : ""}.</div>}
             {draft.status === "pending_review" && <div className="prospectCountdown"><Clock3 size={20} /><span><b>{remaining > 0 ? `${remaining} seconds to review` : "Handing off to the delivery queue"}</b><small>The countdown continues if this window or browser closes.</small></span></div>}
@@ -339,5 +343,5 @@ export default function ProspectEmailComposer({
     </div>;
 
   if (embedded) return content;
-  return <Drawer title="Dealer outreach email" width={920} onClose={onClose} dismissOnBackdrop={false}>{content}</Drawer>;
+  return <Drawer title={`${typeDefinition.shortLabel} outreach email`} width={920} onClose={onClose} dismissOnBackdrop={false}>{content}</Drawer>;
 }
