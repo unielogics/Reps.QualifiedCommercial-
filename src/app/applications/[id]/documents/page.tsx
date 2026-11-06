@@ -11,8 +11,10 @@ import { useCase } from "@/lib/useCase";
 import { useMe } from "@/lib/useMe";
 import Drawer from "@/components/Drawer";
 import { semanticStatusClass } from "@/lib/semanticStatus";
+import DocumentVersionControl from "@/components/DocumentVersionControl";
+import { latestDealerDocuments, versionLabel, versionNumber, type DealerDocumentHistory, type DealerDocumentVersion, type DocumentVersionMetadata } from "@/lib/documentVersions";
 
-type Doc = {
+type Doc = DocumentVersionMetadata & {
   id: string;
   filename: string;
   content_type: string;
@@ -68,6 +70,7 @@ const DOCUMENT_KINDS = [
   ["pl", "Profit and loss"],
   ["debt_schedule", "Debt schedule"],
   ["loan_agreement", "Loan agreement"],
+  ["payoff_letter", "Payoff letter"],
 ] as const;
 
 const FUNDING_URL = process.env.NEXT_PUBLIC_FUNDING_URL ?? "https://app.qualifiedcommercial.com";
@@ -108,6 +111,28 @@ export default function DocumentsTab() {
     }
   };
   const authenticatedGet = <T,>(path: string) => authenticatedRequest<T>(path);
+  const uploadVersion = async (document: Doc, file: File, previous: DealerDocumentVersion, idempotencyKey: string) => {
+    const form = new FormData();
+    form.append("file", file); form.append("kind", document.kind || "other");
+    form.append("replaces_document_id", previous.id);
+    form.append("expected_document_version", String(versionNumber(previous)));
+    form.append("idempotency_key", idempotencyKey);
+    try { return await apiUpload<Doc>(`/dealer-os/dealers/${id}/documents`, form, { authToken: (await getToken()) ?? undefined }); }
+    catch (reason) {
+      if (!(reason instanceof ApiError) || reason.status !== 401) throw reason;
+      return apiUpload<Doc>(`/dealer-os/dealers/${id}/documents`, form, { authToken: (await getToken({ skipCache: true })) ?? undefined });
+    }
+  };
+  const openVersion = async (version: DealerDocumentVersion, download: boolean) => {
+    const result = await authenticatedGet<DocumentUrl>(`/dealer-os/dealers/${id}/documents/${version.id}/url?download=${download}`);
+    if (new URL(result.url).protocol !== "https:") throw new Error("A secure link was not available for this version.");
+    const link = window.document.createElement("a"); link.href = result.url; link.rel = "noopener noreferrer";
+    if (download) link.download = result.filename; else link.target = "_blank";
+    window.document.body.appendChild(link); link.click(); link.remove();
+  };
+  const refreshVersions = async () => {
+    await Promise.all(["documents", "document-bucket-sync", "doc-requests", "decision", "document-coverage", "pipeline-status"].map((key) => queryClient.invalidateQueries({ queryKey: [key, id] })));
+  };
   const docs = useQuery({
     queryKey: ["documents", id],
     enabled: authReady,
@@ -228,7 +253,7 @@ export default function DocumentsTab() {
     upload.mutate({ files, selectedKind: kind });
   };
 
-  const received = docs.data ?? [];
+  const received = latestDealerDocuments(docs.data ?? []);
   const open = (requests.data ?? []).filter((request) => request.status === "open");
   const requestedLabels = new Set(open.map((request) => request.title.trim().toLowerCase()));
   const bankEvidenceAccepted = Boolean(
@@ -337,7 +362,7 @@ export default function DocumentsTab() {
             }}
           />
           <span className="documentDropIcon" aria-hidden>+</span>
-          <span><b>Add documents</b><small>Choose or drop files. Upload starts immediately.</small></span>
+          <span><b>Add documents</b><small>Choose or drop files. Use a document’s Versions action for an updated copy.</small></span>
         </div>
         <label className="documentKind">
           <span className="lbl">Document type</span>
@@ -406,6 +431,7 @@ export default function DocumentsTab() {
                       <FileText size={16} /><b>{document.filename}</b>
                     </button>
                   ) : <b>{document.filename}</b>}
+                  <small className="sub" style={{ display: "block" }}>{versionLabel(document)}</small>
                 </td>
                 <td className="sub">{document.kind?.replaceAll("_", " ") || "Classifying"}</td>
                 <td className="sub">{document.source === "plaid" ? "Bank connection" : document.source || "Uploaded"}</td>
@@ -420,6 +446,7 @@ export default function DocumentsTab() {
                 <td className="r num">{document.page_count ?? "—"}</td>
                 <td className="r">
                   <span className="documentRowActions">
+                    <DocumentVersionControl document={document} load={() => authenticatedGet<DealerDocumentHistory>(`/dealer-os/dealers/${id}/documents/${document.id}/versions`)} upload={(file, previous, key) => uploadVersion(document, file, previous, key)} openVersion={openVersion} onChanged={refreshVersions} />
                     {isPdf(document) && (
                       <button type="button" className="iconBtn" onClick={() => openPreview(document)} title={`Preview ${document.filename}`} aria-label={`Preview ${document.filename}`}>
                         <Eye size={16} />
