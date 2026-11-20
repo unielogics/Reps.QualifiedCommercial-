@@ -67,6 +67,7 @@ export default function PublicBookPage() {
   const [preferredBankMethod, setPreferredBankMethod] = useState<BankMethod | "">("");
   const [vertical, setVertical] = useState<BookingVertical | "">("");
   const [smsConsent, setSmsConsent] = useState(false);
+  const [emailMarketingConsent, setEmailMarketingConsent] = useState(false);
   const [notes, setNotes] = useState("");
   const [creationIdempotencyKey, setCreationIdempotencyKey] = useState(() => crypto.randomUUID());
   const profile = useInfiniteQuery({
@@ -101,6 +102,7 @@ export default function PublicBookPage() {
             : null,
           notes: notes.trim() || null,
           transactional_sms_consent: smsConsent,
+          email_marketing_consent: emailMarketingConsent,
           // The link's origin hint (the product booklet appends ?source=…) tells
           // the server this is a rep-related booking, which opens the draft file.
           source: typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("source") : null,
@@ -241,6 +243,13 @@ export default function PublicBookPage() {
                   <textarea className="field" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
                 </div>
                 {p.sms_disclosure_text && <label className={`consent${smsConsent ? " on" : ""}`}><input type="checkbox" checked={smsConsent} onChange={(event) => setSmsConsent(event.target.checked)} /><span className="ctext"><span className="ctitle">Text me about this appointment</span>{p.sms_disclosure_text}</span></label>}
+                <label className={`consent${emailMarketingConsent ? " on" : ""}`}>
+                  <input type="checkbox" checked={emailMarketingConsent} onChange={(event) => setEmailMarketingConsent(event.target.checked)} />
+                  <span className="ctext">
+                    <span className="ctitle">Email me financing tips and lending updates (optional)</span>
+                    I want Qualified Commercial to send me these emails. I can unsubscribe at any time.
+                  </span>
+                </label>
                 {book.isError && <div className="note">{book.error instanceof Error ? book.error.message : "That time could not be booked."}</div>}
                 {book.isSuccess && <div className="note">Appointment reserved. {meetingMode === "video" ? "Your Google Meet link and confirmation" : "Your phone-call confirmation"} are being prepared.</div>}
                 <button type="button" className="btn pri" disabled={!selected || !fullName.trim() || !email.trim() || !validPhone(phone) || !requiredQuestionsComplete || profile.isError || book.isPending || book.isSuccess} onClick={() => book.mutate()}>
