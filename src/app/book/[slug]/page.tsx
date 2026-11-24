@@ -202,7 +202,11 @@ export default function PublicBookPage() {
                   </div>
                   <div>
                     <label className="lbl">Email *</label>
-                    <input className={`field required-field${email.trim() ? "" : " field-invalid"}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <input className={`field required-field${email.trim() ? "" : " field-invalid"}`} type="email" value={email} onChange={(e) => {
+                      const next = e.target.value;
+                      if (next.trim().toLowerCase() !== email.trim().toLowerCase()) setEmailMarketingConsent(false);
+                      setEmail(next);
+                    }} />
                   </div>
                   <div>
                     {/* Always asked. A host's `booking_questions.phone` setting
@@ -244,10 +248,10 @@ export default function PublicBookPage() {
                 </div>
                 {p.sms_disclosure_text && <label className={`consent${smsConsent ? " on" : ""}`}><input type="checkbox" checked={smsConsent} onChange={(event) => setSmsConsent(event.target.checked)} /><span className="ctext"><span className="ctitle">Text me about this appointment</span>{p.sms_disclosure_text}</span></label>}
                 <label className={`consent${emailMarketingConsent ? " on" : ""}`}>
-                  <input type="checkbox" checked={emailMarketingConsent} onChange={(event) => setEmailMarketingConsent(event.target.checked)} />
+                  <input type="checkbox" disabled={!email.trim()} checked={emailMarketingConsent} onChange={(event) => setEmailMarketingConsent(event.target.checked)} />
                   <span className="ctext">
                     <span className="ctitle">Email me financing tips and lending updates (optional)</span>
-                    I want Qualified Commercial to send me these emails. I can unsubscribe at any time.
+                    I want Qualified Commercial to send these emails to {email.trim() || "my booking email"}. I can unsubscribe at any time.
                   </span>
                 </label>
                 {book.isError && <div className="note">{book.error instanceof Error ? book.error.message : "That time could not be booked."}</div>}
